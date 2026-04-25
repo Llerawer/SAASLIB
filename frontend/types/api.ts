@@ -302,6 +302,11 @@ export interface components {
              * Format: date-time
              */
             first_seen: string;
+            /**
+             * Forms
+             * @description Raw word forms observed for this lemma (e.g. ['Gleaming', 'GLEAMED']). Used by the reader to highlight inflected forms client-side without running spaCy in the browser.
+             */
+            forms?: string[];
         };
         /** DictionaryEntry */
         DictionaryEntry: {

@@ -37,6 +37,7 @@ export type CapturedWord = {
   word_normalized: string;
   count: number;
   first_seen: string;
+  forms: string[];
 };
 
 export type CaptureCreateInput = {

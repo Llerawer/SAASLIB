@@ -108,7 +108,7 @@ async def list_captured_words(
     client = get_admin_client()
     rows = (
         client.table("captures")
-        .select("word_normalized, captured_at")
+        .select("word, word_normalized, captured_at")
         .eq("user_id", user_id)
         .eq("book_id", book_id)
         .execute()
@@ -119,11 +119,21 @@ async def list_captured_words(
     for r in rows:
         wn = r["word_normalized"]
         ts = r["captured_at"]
+        raw = r["word"]
         cur = agg.get(wn)
         if cur is None:
-            agg[wn] = {"word_normalized": wn, "count": 1, "first_seen": ts}
+            agg[wn] = {
+                "word_normalized": wn,
+                "count": 1,
+                "first_seen": ts,
+                "forms": {raw},
+            }
         else:
             cur["count"] += 1
+            cur["forms"].add(raw)
             if ts < cur["first_seen"]:
                 cur["first_seen"] = ts
-    return list(agg.values())
+    return [
+        {**v, "forms": sorted(v["forms"])}
+        for v in agg.values()
+    ]

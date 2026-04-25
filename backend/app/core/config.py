@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     ENVIRONMENT: str = "development"
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    # External APIs (optional — services degrade gracefully if missing).
+    DEEPL_API_KEY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

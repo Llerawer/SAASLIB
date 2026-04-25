@@ -8,6 +8,11 @@ import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { WordPopup } from "@/components/word-popup";
 import { useCapturedWords } from "@/lib/api/queries";
+import {
+  applyHighlights,
+  clientNormalize as highlightNormalize,
+  HIGHLIGHT_THEME,
+} from "@/lib/reader/highlight";
 
 type EpubUrlResponse = { url: string };
 type BookOut = { id: string; title: string; source_ref: string };
@@ -54,9 +59,12 @@ export default function ReadPage({
   const author = searchParams.get("author") ?? "";
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
-  const renditionRef = useRef<{ prev: () => void; next: () => void; destroy: () => void } | null>(
-    null,
-  );
+  const renditionRef = useRef<{
+    prev: () => void;
+    next: () => void;
+    destroy: () => void;
+    getContents: () => Array<{ document?: Document }>;
+  } | null>(null);
   const internalBookIdRef = useRef<string | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -69,12 +77,49 @@ export default function ReadPage({
 
   const capturedWordsQuery = useCapturedWords(internalBookId);
 
-  // Build merged set: server words ∪ optimisticCaptured.
+  // Build merged set: server words ∪ optimisticCaptured (lemmas).
   const mergedCaptured = useCallback((): Set<string> => {
     const merged = new Set<string>(optimisticCaptured);
     for (const w of capturedWordsQuery.data ?? []) merged.add(w.word_normalized);
     return merged;
   }, [capturedWordsQuery.data, optimisticCaptured]);
+
+  // Build the highlight set: server forms (raw) ∪ lemmas, all normalized
+  // client-side for matching against rendered text.
+  const buildHighlightSet = useCallback((): Set<string> => {
+    const set = new Set<string>();
+    for (const w of capturedWordsQuery.data ?? []) {
+      set.add(highlightNormalize(w.word_normalized));
+      for (const f of w.forms ?? []) {
+        const n = highlightNormalize(f);
+        if (n) set.add(n);
+      }
+    }
+    for (const w of optimisticCaptured) set.add(highlightNormalize(w));
+    return set;
+  }, [capturedWordsQuery.data, optimisticCaptured]);
+
+  const applyToCurrentViews = useCallback(() => {
+    const r = renditionRef.current;
+    if (!r) return;
+    const set = buildHighlightSet();
+    if (set.size === 0) return;
+    for (const c of r.getContents() ?? []) {
+      if (c.document) applyHighlights(c.document, set, highlightNormalize);
+    }
+  }, [buildHighlightSet]);
+
+  // Keep latest applyToCurrentViews in a ref so epub.js handlers always call
+  // the freshest version even though they were registered once at mount.
+  const applyRef = useRef(applyToCurrentViews);
+  useEffect(() => {
+    applyRef.current = applyToCurrentViews;
+  }, [applyToCurrentViews]);
+
+  // Re-apply highlights whenever the captured set changes.
+  useEffect(() => {
+    applyToCurrentViews();
+  }, [applyToCurrentViews]);
 
   const handleSaved = useCallback((wordNormalized: string) => {
     setOptimisticCaptured((prev) => {
@@ -117,8 +162,15 @@ export default function ReadPage({
           manager: "default",
           spread: "auto",
         });
+        rendition.themes.default(HIGHLIGHT_THEME);
         await rendition.display();
         renditionRef.current = rendition as never;
+
+        rendition.on("rendered", () => {
+          // Apply highlights after each chapter render. Use ref to avoid
+          // stale closure on captured set changes.
+          applyRef.current();
+        });
 
         rendition.on(
           "relocated",

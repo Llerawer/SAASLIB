@@ -43,3 +43,11 @@ class CapturedWord(BaseModel):
     word_normalized: str
     count: int
     first_seen: datetime
+    forms: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Raw word forms observed for this lemma (e.g. ['Gleaming', 'GLEAMED']). "
+            "Used by the reader to highlight inflected forms client-side without "
+            "running spaCy in the browser."
+        ),
+    )

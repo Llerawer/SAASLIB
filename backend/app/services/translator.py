@@ -2,19 +2,19 @@
 the lookup chain treats missing translation as soft failure."""
 from __future__ import annotations
 
-import os
-
 import httpx
+
+from app.core.config import settings
 
 DEEPL_FREE_URL = "https://api-free.deepl.com/v2/translate"
 
 
 def is_configured() -> bool:
-    return bool(os.getenv("DEEPL_API_KEY"))
+    return bool(settings.DEEPL_API_KEY)
 
 
 async def translate(text: str, source_lang: str = "EN", target_lang: str = "ES") -> str | None:
-    api_key = os.getenv("DEEPL_API_KEY")
+    api_key = settings.DEEPL_API_KEY
     if not api_key:
         return None
     async with httpx.AsyncClient(timeout=10.0) as client:
