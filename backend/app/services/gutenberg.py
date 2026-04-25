@@ -96,26 +96,36 @@ async def stream_epub(gutenberg_id: int) -> bytes:
         ]
     )
 
-    last_error: Exception | str = "no candidate URLs"
+    attempts: list[str] = []
     for url in candidates:
         try:
             async with httpx.AsyncClient(
                 timeout=_TIMEOUT, follow_redirects=True
             ) as client:
                 r = await client.get(url)
-                if r.status_code == 200 and r.content and len(r.content) > 1024:
-                    # 1KB sanity floor — Gutenberg sometimes serves a
-                    # tiny HTML "not found" page with 200 status.
-                    return r.content
-                last_error = f"{url} -> {r.status_code} ({len(r.content)} bytes)"
+                size = len(r.content) if r.content else 0
+                if r.status_code == 200 and size > 1024:
+                    # Detect HTML "not found" page that Gutenberg sometimes
+                    # serves with HTTP 200 (~6KB of HTML instead of EPUB).
+                    head = r.content[:8].lower()
+                    if head.startswith(b"pk"):  # ZIP/EPUB signature
+                        print(
+                            f"[gutenberg] OK {gutenberg_id} via {url} ({size} bytes)"
+                        )
+                        return r.content
+                    attempts.append(f"{url} -> 200 but not EPUB ({size}B)")
+                else:
+                    attempts.append(f"{url} -> {r.status_code} ({size}B)")
         except (httpx.TimeoutException, httpx.NetworkError) as e:
-            last_error = e
+            attempts.append(f"{url} -> {type(e).__name__}: {e}")
             continue
 
+    summary = " | ".join(attempts) if attempts else "no candidate URLs"
+    print(f"[gutenberg] FAIL {gutenberg_id}: {summary}")
     raise HTTPException(
         status_code=502,
         detail=(
-            f"Gutenberg no tiene EPUB para el libro {gutenberg_id}. "
-            f"Último intento: {last_error}"
+            f"Gutenberg no tiene EPUB descargable para el libro {gutenberg_id}.\n"
+            f"Intentos: {summary}"
         ),
     )
