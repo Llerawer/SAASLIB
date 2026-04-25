@@ -255,3 +255,62 @@ export function useBatchPrompt() {
       ),
   });
 }
+
+export type ReviewQueueCard = {
+  card_id: string;
+  word: string;
+  word_normalized: string;
+  translation: string | null;
+  definition: string | null;
+  ipa: string | null;
+  audio_url: string | null;
+  examples: string[];
+  mnemonic: string | null;
+  cefr: string | null;
+  notes: string | null;
+  due_at: string;
+  fsrs_state: number;
+  fsrs_difficulty: number | null;
+  fsrs_stability: number | null;
+};
+
+export type GradeResult = {
+  card_id: string;
+  state_before: Record<string, unknown>;
+  state_after: Record<string, unknown>;
+  review_id: string;
+};
+
+export function useReviewQueue() {
+  return useQuery({
+    queryKey: ["reviews-queue"] as const,
+    queryFn: () => api.get<ReviewQueueCard[]>("/api/v1/reviews/queue?limit=20"),
+    staleTime: 0, // always fresh after a grade invalidates
+  });
+}
+
+export function useGradeReview() {
+  const qc = useQueryClient();
+  return useMutation<GradeResult, Error, { card_id: string; grade: 1 | 2 | 3 | 4 }>({
+    mutationFn: ({ card_id, grade }) =>
+      api.post<GradeResult>(`/api/v1/reviews/${card_id}/grade`, { grade }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+      qc.invalidateQueries({ queryKey: ["reviews-due"] });
+      qc.invalidateQueries({ queryKey: ["stats-me"] });
+    },
+  });
+}
+
+export function useUndoReview() {
+  const qc = useQueryClient();
+  return useMutation<{ restored_card_id: string }, Error>({
+    mutationFn: () =>
+      api.post<{ restored_card_id: string }>("/api/v1/reviews/undo", {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+      qc.invalidateQueries({ queryKey: ["reviews-due"] });
+      qc.invalidateQueries({ queryKey: ["stats-me"] });
+    },
+  });
+}
