@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
 
-from app.core.auth import get_current_user_id
-from app.db.supabase_client import get_admin_client
+from app.core.auth import AuthInfo, get_auth
+from app.core.rate_limit import limiter
+from app.db.supabase_client import get_admin_client, get_user_client
 from app.schemas.books import BookOut, GutenbergRegisterRequest, ProgressUpdateRequest
 from app.schemas.captures import CapturedWord
 from app.services import gutenberg
@@ -11,8 +12,8 @@ router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
 # Endpoints serving public Gutenberg data are NOT auth-gated and DO send
 # Cache-Control: public so a CDN can deduplicate them across users. Endpoints
-# that touch user-owned rows still go through get_current_user_id with no
-# Cache-Control headers.
+# that touch user-owned rows go through get_auth (RLS via user_client) with
+# no Cache-Control headers.
 
 _PUBLIC_CACHE_HEADERS = {
     "Cache-Control": "public, s-maxage=300, stale-while-revalidate=86400",
@@ -20,10 +21,12 @@ _PUBLIC_CACHE_HEADERS = {
 
 
 @router.get("/search")
+@limiter.limit("30/minute")
 async def search(
-    q: str | None = None,
-    topic: str | None = None,
-    page: int = 1,
+    request: Request,
+    q: str | None = Query(default=None, max_length=200),
+    topic: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1, le=1000),
 ):
     """Public Gutendex proxy with backend stampede dedupe + 5-min TTLCache."""
     if not q and not topic:
@@ -33,25 +36,41 @@ async def search(
 
 
 @router.get("/{gutenberg_id}/metadata")
-async def metadata(gutenberg_id: int):
+@limiter.limit("60/minute")
+async def metadata(
+    request: Request,
+    gutenberg_id: int = Path(..., ge=1, le=10_000_000),
+):
     data = await gutenberg.get_book_metadata(gutenberg_id)
     return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
 
 
 @router.get("/{gutenberg_id}/epub-url")
-async def epub_url(gutenberg_id: int):
+@limiter.limit("60/minute")
+async def epub_url(
+    request: Request,
+    gutenberg_id: int = Path(..., ge=1, le=10_000_000),
+):
     return {"url": gutenberg.get_epub_url(gutenberg_id)}
 
 
 @router.get("/{gutenberg_id}/reading-info")
-async def reading_info(gutenberg_id: int):
+@limiter.limit("60/minute")
+async def reading_info(
+    request: Request,
+    gutenberg_id: int = Path(..., ge=1, le=10_000_000),
+):
     """Reading-ease score + approximate CEFR level. Cached in DB."""
     data = await gutenberg.get_reading_info(gutenberg_id)
     return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
 
 
 @router.get("/reading-info/batch")
-async def reading_info_batch(ids: str):
+@limiter.limit("30/minute")
+async def reading_info_batch(
+    request: Request,
+    ids: str = Query(..., max_length=2000),
+):
     """Bulk lookup of cached reading info (cache-only, no scrape).
     `ids` is a comma-separated list (e.g. ?ids=1342,1661,84). Max 100."""
     try:
@@ -65,7 +84,11 @@ async def reading_info_batch(ids: str):
 
 
 @router.get("/{gutenberg_id}/epub")
-async def epub_proxy(gutenberg_id: int):
+@limiter.limit("20/minute")
+async def epub_proxy(
+    request: Request,
+    gutenberg_id: int = Path(..., ge=1, le=10_000_000),
+):
     """Stream the EPUB binary through our backend so the browser can load it.
     Public (no auth) — the EPUB itself is freely available on gutenberg.org.
 
@@ -75,6 +98,7 @@ async def epub_proxy(gutenberg_id: int):
       3. Fallback: stream_epub queries Gutendex metadata + tries URL patterns.
     """
     # Try cached source URL from DB to skip a Gutendex round-trip.
+    # Reads from the public `books` table; admin client is fine here.
     client = get_admin_client()
     book_row = (
         client.table("books")
@@ -98,9 +122,11 @@ async def epub_proxy(gutenberg_id: int):
 
 
 @router.post("/gutenberg/register", response_model=BookOut)
+@limiter.limit("20/minute")
 async def register_gutenberg_book(
+    request: Request,
     body: GutenbergRegisterRequest,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Idempotently register a Gutenberg book in the public catalog and add
     it to the user's library.
@@ -108,12 +134,15 @@ async def register_gutenberg_book(
     Validates EPUB availability the FIRST time only — subsequent registers
     of an existing book trust the cached row. Stores the exact EPUB URL
     from Gutendex metadata so the streamer doesn't need to refetch it.
+
+    Uses admin_client for the public `books` catalog (no per-user RLS) and
+    user_client for `user_books` so RLS enforces ownership.
     """
-    client = get_admin_client()
+    admin = get_admin_client()
     book_hash = f"gutenberg:{body.gutenberg_id}"
 
     existing = (
-        client.table("books").select("*").eq("book_hash", book_hash).limit(1).execute()
+        admin.table("books").select("*").eq("book_hash", book_hash).limit(1).execute()
     )
     if existing.data:
         # Already registered → trust the cached row, skip the Gutendex hit.
@@ -127,8 +156,8 @@ async def register_gutenberg_book(
                 422,
                 f"No se pudo obtener metadata del libro {body.gutenberg_id}: {e.detail}",
             ) from e
-        epub_url = gutenberg._epub_format_url(meta)
-        if not epub_url:
+        epub_url_value = gutenberg._epub_format_url(meta)
+        if not epub_url_value:
             raise HTTPException(
                 422,
                 f"El libro {body.gutenberg_id} ('{body.title}') no tiene formato "
@@ -136,7 +165,7 @@ async def register_gutenberg_book(
                 "Busca otra edición.",
             )
         inserted = (
-            client.table("books")
+            admin.table("books")
             .insert(
                 {
                     "book_hash": book_hash,
@@ -146,7 +175,7 @@ async def register_gutenberg_book(
                     "author": body.author,
                     "language": body.language,
                     "is_public": True,
-                    "epub_source_url": epub_url,
+                    "epub_source_url": epub_url_value,
                 }
             )
             .execute()
@@ -155,9 +184,10 @@ async def register_gutenberg_book(
             raise HTTPException(500, "Failed to insert book")
         book = inserted.data[0]
 
-    client.table("user_books").upsert(
+    user_client = get_user_client(auth.jwt)
+    user_client.table("user_books").upsert(
         {
-            "user_id": user_id,
+            "user_id": auth.user_id,
             "book_id": book["id"],
             "status": "reading",
         },
@@ -168,18 +198,20 @@ async def register_gutenberg_book(
 
 
 @router.delete("/me/library/{book_id}", status_code=204)
+@limiter.limit("30/minute")
 async def remove_from_library(
+    request: Request,
     book_id: str,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Remove a book from the user's personal library (deletes user_books row).
     The book stays in the public catalog. Captures of this book remain — only
     the user_books association is dropped."""
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     res = (
         client.table("user_books")
         .delete()
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .eq("book_id", book_id)
         .execute()
     )
@@ -188,16 +220,18 @@ async def remove_from_library(
 
 
 @router.get("/{book_id}/progress")
+@limiter.limit("60/minute")
 async def get_progress(
+    request: Request,
     book_id: str,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Return saved reading position for this book + user. 404 if never read."""
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     res = (
         client.table("user_books")
         .select("current_location, progress_percent, last_read_at, status")
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .eq("book_id", book_id)
         .limit(1)
         .execute()
@@ -208,23 +242,29 @@ async def get_progress(
 
 
 @router.put("/{book_id}/progress")
+@limiter.limit("120/minute")
 async def update_progress(
+    request: Request,
     book_id: str,
     body: ProgressUpdateRequest,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
-    client = get_admin_client()
+    from datetime import datetime, timezone
+
+    client = get_user_client(auth.jwt)
     result = (
         client.table("user_books")
         .update(
             {
                 "current_location": body.location,
                 "progress_percent": body.percent,
-                "last_read_at": "now()",
+                # Server-side ISO timestamp — replaces the previous "now()"
+                # string, which PostgREST stores literally instead of evaluating.
+                "last_read_at": datetime.now(timezone.utc).isoformat(),
                 "status": "finished" if body.percent >= 99 else "reading",
             }
         )
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .eq("book_id", book_id)
         .execute()
     )
@@ -234,14 +274,18 @@ async def update_progress(
 
 
 @router.get("/me/library")
-async def my_library(user_id: str = Depends(get_current_user_id)):
+@limiter.limit("60/minute")
+async def my_library(
+    request: Request,
+    auth: AuthInfo = Depends(get_auth),
+):
     """Books the user has opened, with progress + last_read_at, sorted by
     most recently read first. Used for 'Continue reading' on the home page."""
-    client = get_admin_client()
+    user_client = get_user_client(auth.jwt)
     user_books = (
-        client.table("user_books")
+        user_client.table("user_books")
         .select("*")
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .order("last_read_at", desc=True, nullsfirst=False)
         .order("added_at", desc=True)
         .execute()
@@ -251,8 +295,10 @@ async def my_library(user_id: str = Depends(get_current_user_id)):
     if not user_books:
         return []
     book_ids = [ub["book_id"] for ub in user_books]
+    # Books table is public — admin client OK.
     books_rows = (
-        client.table("books")
+        get_admin_client()
+        .table("books")
         .select("*")
         .in_("id", book_ids)
         .execute()
@@ -284,18 +330,20 @@ async def my_library(user_id: str = Depends(get_current_user_id)):
 
 
 @router.get("/{book_id}/captured-words", response_model=list[CapturedWord])
+@limiter.limit("60/minute")
 async def list_captured_words(
+    request: Request,
     book_id: str,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Words captured in this book by this user, with frequency and
     first-seen timestamp. Used by the reader to color words and animate
     newly-discovered ones."""
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     rows = (
         client.table("captures")
         .select("word, word_normalized, captured_at")
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .eq("book_id", book_id)
         .execute()
         .data

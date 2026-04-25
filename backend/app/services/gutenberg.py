@@ -15,18 +15,31 @@ from app.core.http import get_client
 GUTENDEX_API = "https://gutendex.com/books/"
 EPUB_MIME_KEYS = ("application/epub+zip", "application/epub")
 
+# Defensive caps against malicious / runaway upstream responses.
+_MAX_JSON_RESPONSE_BYTES = 5 * 1024 * 1024     # 5 MB — Gutendex page is ~50KB
+_MAX_HTML_RESPONSE_BYTES = 2 * 1024 * 1024     # 2 MB — gutenberg.org book pages
+_MAX_EPUB_BYTES = 50 * 1024 * 1024             # 50 MB — covers all classics
+
 # On-disk cache for downloaded EPUBs.
 _CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "epub_cache"
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-_CACHE_FILE_CAP = 500  # ~10-20 GB worst case at ~30MB/book
+_CACHE_FILE_CAP = 500  # combined with _MAX_EPUB_BYTES → max ~25 GB on disk
 
 # In-memory caches (process-local). Replace with Redis when running >1 instance.
-_search_cache: TTLCache[str, dict] = TTLCache(maxsize=500, ttl=300)        # 5 min fresh
-_meta_cache: TTLCache[int, dict] = TTLCache(maxsize=2000, ttl=3600)        # 1 hour
-# Stampede dedupe: while one coroutine is fetching, others await its Future.
+# Layered: fresh TTL → in-flight Future → stale (no expiry, only LRU bound).
+_search_fresh: TTLCache[str, dict] = TTLCache(maxsize=500, ttl=300)        # 5 min fresh
+_search_stale: TTLCache[str, dict] = TTLCache(maxsize=2000, ttl=86400)     # 24 h stale floor
+_meta_fresh: TTLCache[int, dict] = TTLCache(maxsize=2000, ttl=3600)        # 1 h fresh
+_meta_stale: TTLCache[int, dict] = TTLCache(maxsize=10000, ttl=86400 * 7)  # 7 d stale floor
+
+# Stampede dedupe.
 _search_inflight: dict[str, asyncio.Future] = {}
 _meta_inflight: dict[int, asyncio.Future] = {}
 _scrape_inflight: dict[int, asyncio.Future] = {}
+
+# Background refresh dedupe — multiple stale-hits don't pile up tasks.
+_search_refresh: set[str] = set()
+_meta_refresh: set[int] = set()
 
 
 # ============================================================================
@@ -35,13 +48,19 @@ _scrape_inflight: dict[int, asyncio.Future] = {}
 
 
 async def _get_json(url: str, **params) -> dict:
-    """GET → JSON via the shared client. Retries once on transient errors."""
+    """GET → JSON via the shared client. Retries once on transient errors.
+    Caps response size to avoid memory abuse from malicious upstream."""
     client = get_client()
     last_err: Exception | None = None
     for attempt in range(2):
         try:
             r = await client.get(url, params=params or None)
             r.raise_for_status()
+            content_length = r.headers.get("content-length")
+            if content_length and int(content_length) > _MAX_JSON_RESPONSE_BYTES:
+                raise HTTPException(502, "Upstream response too large")
+            if len(r.content) > _MAX_JSON_RESPONSE_BYTES:
+                raise HTTPException(502, "Upstream response too large")
             return r.json()
         except (httpx.TimeoutException, httpx.NetworkError) as e:
             last_err = e
@@ -96,37 +115,67 @@ async def _fetch_search(query: str, topic: str | None, page: int) -> dict:
     return {**data, "results": results}
 
 
+async def _refresh_search(key: str, query: str, topic: str | None, page: int) -> None:
+    """Background refresh after a stale-hit. Errors swallowed — stale stays valid."""
+    try:
+        data = await _fetch_search(query, topic, page)
+        _search_fresh[key] = data
+        _search_stale[key] = data
+    except Exception:
+        pass
+    finally:
+        _search_refresh.discard(key)
+
+
 async def search_books(
     query: str | None = None,
     page: int = 1,
     topic: str | None = None,
 ) -> dict:
-    """Cached + deduped Gutendex search.
+    """Layered cache for Gutendex search.
 
-    100 simultaneous callers with the same key → 1 real fetch.
-    Subsequent callers within 5 min → 0 fetches (TTLCache hit).
+      1. Fresh hit (TTL 5 min) → instant return.
+      2. In-flight Future → await shared (stampede dedupe).
+      3. Stale hit → return immediately + background refresh.
+      4. Cold miss → sync fetch + populate fresh+stale.
+
+    Net effect: a category seen at least once never blocks the user again,
+    even after the 5-min fresh window expires. Only the FIRST visitor in
+    history pays the Gutendex latency.
     """
     key = f"{query or ''}|{topic or ''}|{page}"
 
-    cached = _search_cache.get(key)
-    if cached is not None:
-        return cached
+    fresh = _search_fresh.get(key)
+    if fresh is not None:
+        return fresh
 
     inflight = _search_inflight.get(key)
     if inflight is not None:
         return await inflight
 
+    stale = _search_stale.get(key)
+    if stale is not None:
+        # Return stale immediately + dispatch refresh (deduped).
+        if key not in _search_refresh:
+            _search_refresh.add(key)
+            asyncio.create_task(
+                _refresh_search(key, query or "", topic, page)
+            )
+        return stale
+
     fut: asyncio.Future = asyncio.get_event_loop().create_future()
     _search_inflight[key] = fut
     try:
         data = await _fetch_search(query or "", topic, page)
-        _search_cache[key] = data
+        _search_fresh[key] = data
+        _search_stale[key] = data
         if not fut.done():
             fut.set_result(data)
         return data
     except Exception as e:
         if not fut.done():
             fut.set_exception(e)
+        # No stale to fall back on → propagate.
         raise
     finally:
         _search_inflight.pop(key, None)
@@ -137,20 +186,40 @@ async def search_books(
 # ============================================================================
 
 
+async def _refresh_meta(gutenberg_id: int) -> None:
+    try:
+        data = await _get_json(f"{GUTENDEX_API}{gutenberg_id}")
+        _meta_fresh[gutenberg_id] = data
+        _meta_stale[gutenberg_id] = data
+    except Exception:
+        pass
+    finally:
+        _meta_refresh.discard(gutenberg_id)
+
+
 async def get_book_metadata(gutenberg_id: int) -> dict:
-    cached = _meta_cache.get(gutenberg_id)
-    if cached is not None:
-        return cached
+    """Same fresh / in-flight / stale / miss layering as search_books."""
+    fresh = _meta_fresh.get(gutenberg_id)
+    if fresh is not None:
+        return fresh
 
     inflight = _meta_inflight.get(gutenberg_id)
     if inflight is not None:
         return await inflight
 
+    stale = _meta_stale.get(gutenberg_id)
+    if stale is not None:
+        if gutenberg_id not in _meta_refresh:
+            _meta_refresh.add(gutenberg_id)
+            asyncio.create_task(_refresh_meta(gutenberg_id))
+        return stale
+
     fut: asyncio.Future = asyncio.get_event_loop().create_future()
     _meta_inflight[gutenberg_id] = fut
     try:
         data = await _get_json(f"{GUTENDEX_API}{gutenberg_id}")
-        _meta_cache[gutenberg_id] = data
+        _meta_fresh[gutenberg_id] = data
+        _meta_stale[gutenberg_id] = data
         if not fut.done():
             fut.set_result(data)
         return data
@@ -190,12 +259,15 @@ def _flesch_to_cefr(score: float) -> str:
 
 
 async def _scrape_reading_info(gutenberg_id: int) -> dict:
-    """Hit gutenberg.org HTML and extract Flesch score + grade. Best effort."""
+    """Hit gutenberg.org HTML and extract Flesch score + grade. Best effort.
+    Capped at _MAX_HTML_RESPONSE_BYTES to avoid memory abuse."""
     url = f"https://www.gutenberg.org/ebooks/{gutenberg_id}"
     client = get_client()
     try:
         r = await client.get(url)
         if r.status_code != 200:
+            return {"reading_ease": None, "grade": None, "cefr": None}
+        if len(r.content) > _MAX_HTML_RESPONSE_BYTES:
             return {"reading_ease": None, "grade": None, "cefr": None}
         html = r.text
         m_score = _READING_EASE_RE.search(html)
@@ -318,6 +390,47 @@ def _enforce_cache_cap() -> None:
             pass
 
 
+POPULAR_TOPICS = (
+    "adventure",
+    "mystery",
+    "science fiction",
+    "love",
+    "children",
+    "drama",
+    "poetry",
+    "philosophy",
+    "history",
+)
+
+
+async def warmup_popular() -> None:
+    """Background task fired at app startup. Sequentially pre-fetches the most
+    commonly clicked categories so the first user sees instant results."""
+    import sys
+
+    print(
+        f"[gutenberg] warmup starting ({len(POPULAR_TOPICS)} topics)",
+        file=sys.stderr,
+        flush=True,
+    )
+    for i, topic in enumerate(POPULAR_TOPICS, 1):
+        try:
+            await search_books(query=None, topic=topic, page=1)
+            print(
+                f"[gutenberg] warmup {i}/{len(POPULAR_TOPICS)}: {topic} ✓",
+                file=sys.stderr,
+                flush=True,
+            )
+        except Exception as e:
+            print(
+                f"[gutenberg] warmup {i}/{len(POPULAR_TOPICS)}: {topic} FAIL: {e}",
+                file=sys.stderr,
+                flush=True,
+            )
+        await asyncio.sleep(2)
+    print("[gutenberg] warmup complete", file=sys.stderr, flush=True)
+
+
 def get_epub_url(gutenberg_id: int) -> str:
     return f"https://www.gutenberg.org/ebooks/{gutenberg_id}.epub.images"
 
@@ -365,13 +478,37 @@ async def stream_epub(gutenberg_id: int, cached_url: str | None = None) -> bytes
     attempts: list[str] = []
     for url in candidates:
         try:
-            r = await client.get(url)
-            size = len(r.content) if r.content else 0
-            if r.status_code == 200 and size > 1024:
-                head = r.content[:8].lower()
+            # Stream the body and abort if it exceeds _MAX_EPUB_BYTES — protects
+            # disk + memory from a malicious / corrupted upstream response.
+            async with client.stream("GET", url) as r:
+                if r.status_code != 200:
+                    attempts.append(f"{url} -> {r.status_code}")
+                    continue
+                content_length = r.headers.get("content-length")
+                if content_length and int(content_length) > _MAX_EPUB_BYTES:
+                    attempts.append(
+                        f"{url} -> declared size {content_length} exceeds cap"
+                    )
+                    continue
+                chunks: list[bytes] = []
+                total = 0
+                oversized = False
+                async for chunk in r.aiter_bytes(chunk_size=64 * 1024):
+                    total += len(chunk)
+                    if total > _MAX_EPUB_BYTES:
+                        oversized = True
+                        break
+                    chunks.append(chunk)
+                if oversized:
+                    attempts.append(f"{url} -> exceeds {_MAX_EPUB_BYTES} bytes")
+                    continue
+            content = b"".join(chunks)
+            size = len(content)
+            if size > 1024:
+                head = content[:8].lower()
                 if head.startswith(b"pk"):
                     try:
-                        cache_path.write_bytes(r.content)
+                        cache_path.write_bytes(content)
                         _enforce_cache_cap()
                     except OSError as e:
                         print(f"[gutenberg] cache write failed: {e}")
@@ -379,10 +516,10 @@ async def stream_epub(gutenberg_id: int, cached_url: str | None = None) -> bytes
                         f"[gutenberg] OK {gutenberg_id} via {url} "
                         f"({size} bytes, cached)"
                     )
-                    return r.content
+                    return content
                 attempts.append(f"{url} -> 200 but not EPUB ({size}B)")
             else:
-                attempts.append(f"{url} -> {r.status_code} ({size}B)")
+                attempts.append(f"{url} -> too small ({size}B)")
         except (httpx.TimeoutException, httpx.NetworkError) as e:
             attempts.append(f"{url} -> {type(e).__name__}: {e}")
             continue

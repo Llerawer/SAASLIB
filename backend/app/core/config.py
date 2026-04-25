@@ -11,6 +11,8 @@ _ENV_FILE = _BACKEND_ROOT / ".env"
 class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_SERVICE_ROLE_KEY: str
+    # Anon key — used by user-scoped client so RLS applies (auth.uid() = JWT sub).
+    SUPABASE_ANON_KEY: str = ""
     # Optional: only required for legacy HS256 projects.
     # Modern projects (asymmetric ES256/RS256) verify via the public JWKS endpoint.
     SUPABASE_JWT_SECRET: str = ""

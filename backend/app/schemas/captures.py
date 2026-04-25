@@ -2,22 +2,46 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Defensive caps to keep payloads bounded and avoid DB bloat / memory abuse.
+_MAX_TAGS = 20
+_MAX_TAG_LEN = 50
+_MAX_LOCATION_LEN = 200
+_MAX_BOOK_ID_LEN = 64
 
 
 class CaptureCreate(BaseModel):
     word: str = Field(..., min_length=1, max_length=100)
     context_sentence: str | None = Field(default=None, max_length=600)
-    page_or_location: str | None = None
-    book_id: str | None = None
-    language: str = "en"
-    tags: list[str] = Field(default_factory=list)
+    page_or_location: str | None = Field(default=None, max_length=_MAX_LOCATION_LEN)
+    book_id: str | None = Field(default=None, max_length=_MAX_BOOK_ID_LEN)
+    language: str = Field(default="en", min_length=2, max_length=5)
+    tags: list[str] = Field(default_factory=list, max_length=_MAX_TAGS)
+
+    @field_validator("tags")
+    @classmethod
+    def _validate_tags(cls, v: list[str]) -> list[str]:
+        for t in v:
+            if len(t) > _MAX_TAG_LEN:
+                raise ValueError(f"tag exceeds {_MAX_TAG_LEN} chars")
+        return v
 
 
 class CaptureUpdate(BaseModel):
-    context_sentence: str | None = None
-    page_or_location: str | None = None
-    tags: list[str] | None = None
+    context_sentence: str | None = Field(default=None, max_length=600)
+    page_or_location: str | None = Field(default=None, max_length=_MAX_LOCATION_LEN)
+    tags: list[str] | None = Field(default=None, max_length=_MAX_TAGS)
+
+    @field_validator("tags")
+    @classmethod
+    def _validate_tags(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        for t in v:
+            if len(t) > _MAX_TAG_LEN:
+                raise ValueError(f"tag exceeds {_MAX_TAG_LEN} chars")
+        return v
 
 
 class CaptureOut(BaseModel):

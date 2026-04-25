@@ -4,11 +4,19 @@ Used by:
   - POST /cards                          (create explicit)
   - POST /cards/promote-from-captures    (from inbox)
   - POST /cards/parse-ai (B5)            (preview-only — does NOT use this)
+
+Client injection:
+  Public functions accept an optional `client` (a Supabase Client). When
+  callers pass a user-scoped client (`get_user_client(jwt)`), RLS enforces
+  row ownership as defense-in-depth. If omitted, falls back to the admin
+  client — only safe for trusted internal callers (tests, scripts).
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+
+from supabase import Client
 
 from app.db.supabase_client import get_admin_client
 from app.services.normalize import normalize
@@ -17,17 +25,19 @@ from app.services.normalize import normalize
 MAX_SOURCE_CAPTURES = 20
 
 
-def _client():
-    return get_admin_client()
+def _resolve_client(client: Client | None) -> Client:
+    return client if client is not None else get_admin_client()
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _existing_card(user_id: str, word_normalized: str) -> dict | None:
+def _existing_card(
+    user_id: str, word_normalized: str, client: Client | None = None
+) -> dict | None:
     res = (
-        _client()
+        _resolve_client(client)
         .table("cards")
         .select("*")
         .eq("user_id", user_id)
@@ -38,14 +48,16 @@ def _existing_card(user_id: str, word_normalized: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
-def _init_schedule(user_id: str, card_id: str) -> None:
+def _init_schedule(
+    user_id: str, card_id: str, client: Client | None = None
+) -> None:
     """Initialize FSRS state for a freshly created card. Idempotent (no-op
     if a row already exists)."""
     from app.services.fsrs_scheduler import initial_snapshot
 
-    client = _client()
+    c = _resolve_client(client)
     existing = (
-        client.table("card_schedule")
+        c.table("card_schedule")
         .select("card_id")
         .eq("card_id", card_id)
         .limit(1)
@@ -54,7 +66,7 @@ def _init_schedule(user_id: str, card_id: str) -> None:
     if existing.data:
         return
     snap = initial_snapshot()
-    client.table("card_schedule").insert(
+    c.table("card_schedule").insert(
         {
             "card_id": card_id,
             "user_id": user_id,
@@ -69,7 +81,9 @@ def _init_schedule(user_id: str, card_id: str) -> None:
     ).execute()
 
 
-def create_card(user_id: str, payload: dict[str, Any]) -> dict:
+def create_card(
+    user_id: str, payload: dict[str, Any], client: Client | None = None
+) -> dict:
     """Create a card directly. Reuses existing card if (user, word_normalized)
     already exists (returns the existing row unchanged)."""
     word = payload.get("word") or ""
@@ -79,10 +93,11 @@ def create_card(user_id: str, payload: dict[str, Any]) -> dict:
     if not word_normalized:
         raise ValueError("word_normalized required (could not derive)")
 
-    existing = _existing_card(user_id, word_normalized)
+    existing = _existing_card(user_id, word_normalized, client)
     if existing:
         return existing
 
+    c = _resolve_client(client)
     insert = {
         "user_id": user_id,
         "word": word,
@@ -97,11 +112,11 @@ def create_card(user_id: str, payload: dict[str, Any]) -> dict:
         "notes": payload.get("notes"),
         "source_capture_ids": payload.get("source_capture_ids") or [],
     }
-    res = _client().table("cards").insert(insert).execute()
+    res = c.table("cards").insert(insert).execute()
     if not res.data:
         raise RuntimeError("Failed to insert card")
     card = res.data[0]
-    _init_schedule(user_id, card["id"])
+    _init_schedule(user_id, card["id"], client)
     return card
 
 
@@ -137,12 +152,13 @@ def promote_from_captures(
     user_id: str,
     capture_ids: list[str],
     ai_data: list[dict] | None = None,
+    client: Client | None = None,
 ) -> dict:
     """Group captures by word_normalized; for each group, create or merge into
     the existing card. Mark all captures as promoted_to_card=true.
 
     AI data is keyed by `word` field of each entry (matched after normalize)."""
-    client = _client()
+    client = _resolve_client(client)
     cap_res = (
         client.table("captures")
         .select("*")
@@ -186,7 +202,7 @@ def promote_from_captures(
     merged = 0
 
     for word_normalized, group_caps in groups.items():
-        existing = _existing_card(user_id, word_normalized)
+        existing = _existing_card(user_id, word_normalized, client)
         new_capture_ids = [c["id"] for c in group_caps]
 
         if existing:
@@ -228,7 +244,7 @@ def promote_from_captures(
                 group_caps, cache_lookup, ai_lookup
             )
             payload["source_capture_ids"] = new_capture_ids[-MAX_SOURCE_CAPTURES:]
-            card = create_card(user_id, payload)
+            card = create_card(user_id, payload, client)
             cards_out.append(card)
             created += 1
 

@@ -13,10 +13,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.core.auth import get_current_user_id
-from app.db.supabase_client import get_admin_client
+from app.core.auth import AuthInfo, get_auth
+from app.core.rate_limit import limiter
+from app.db.supabase_client import get_user_client
 from app.schemas.reviews import GradeInput, GradeResult, ReviewQueueCard, UndoResult
 from app.services import fsrs_scheduler
 from app.services import stats as stats_service
@@ -29,21 +30,23 @@ def _now_iso() -> str:
 
 
 @router.get("/queue", response_model=list[ReviewQueueCard])
+@limiter.limit("60/minute")
 async def queue(
+    request: Request,
     limit: int = Query(default=20, le=100),
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Cards due now, ordered by due_at ASC, fsrs_difficulty DESC.
 
     Joins card_schedule + cards via two queries (Supabase REST PostgREST
     relational embedding); we keep them separate for clarity.
     """
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     # Pull due schedules.
     sched = (
         client.table("card_schedule")
         .select("*")
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .lte("due_at", _now_iso())
         .order("due_at", desc=False)
         .limit(limit)
@@ -91,21 +94,23 @@ async def queue(
 
 
 @router.post("/{card_id}/grade", response_model=GradeResult)
+@limiter.limit("120/minute")
 async def grade(
+    request: Request,
     card_id: str,
     body: GradeInput,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Grade a card. Atomic-ish: reads → computes → updates with CAS check
     on (card_id, last_reviewed_at). Failure on race → retry once."""
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
 
     for attempt in range(2):
         sched_rows = (
             client.table("card_schedule")
             .select("*")
             .eq("card_id", card_id)
-            .eq("user_id", user_id)
+            .eq("user_id", auth.user_id)
             .limit(1)
             .execute()
             .data
@@ -123,7 +128,7 @@ async def grade(
             client.table("card_schedule")
             .update(after.to_dict())
             .eq("card_id", card_id)
-            .eq("user_id", user_id)
+            .eq("user_id", auth.user_id)
         )
         if sched.get("last_reviewed_at") is None:
             update = update.is_("last_reviewed_at", "null")
@@ -134,7 +139,7 @@ async def grade(
         if upd_res.data:
             review_payload = {
                 "card_id": card_id,
-                "user_id": user_id,
+                "user_id": auth.user_id,
                 "grade": body.grade,
                 "fsrs_state_before": before.to_review_payload(),
                 "fsrs_state_after": after.to_review_payload(),
@@ -144,7 +149,7 @@ async def grade(
             )
             if not review_ins.data:
                 raise HTTPException(500, "Failed to insert review row")
-            stats_service.invalidate(user_id)
+            stats_service.invalidate(auth.user_id)
             return GradeResult(
                 card_id=card_id,
                 state_before=before.to_review_payload(),
@@ -163,15 +168,17 @@ async def grade(
 
 
 @router.post("/undo", response_model=UndoResult)
+@limiter.limit("30/minute")
 async def undo(
-    user_id: str = Depends(get_current_user_id),
+    request: Request,
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Restore the user's last review: revert card_schedule, delete review row."""
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     last = (
         client.table("reviews")
         .select("*")
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .order("reviewed_at", desc=True)
         .limit(1)
         .execute()
@@ -186,9 +193,9 @@ async def undo(
     )
     client.table("card_schedule").update(before.to_dict()).eq(
         "card_id", rev["card_id"]
-    ).eq("user_id", user_id).execute()
+    ).eq("user_id", auth.user_id).execute()
     client.table("reviews").delete().eq("id", rev["id"]).execute()
-    stats_service.invalidate(user_id)
+    stats_service.invalidate(auth.user_id)
     return UndoResult(
         restored_card_id=rev["card_id"],
         restored_state=before.to_review_payload(),

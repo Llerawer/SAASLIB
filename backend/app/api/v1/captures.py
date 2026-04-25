@@ -1,22 +1,24 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.core.auth import get_current_user_id
-from app.db.supabase_client import get_admin_client
+from app.core.auth import AuthInfo, get_auth
+from app.core.rate_limit import limiter
+from app.db.supabase_client import get_user_client
 from app.schemas.captures import CaptureCreate, CaptureOut, CaptureUpdate
 from app.services import prompt_template, word_lookup
 from app.services.normalize import normalize
 
 
 class BatchPromptInput(BaseModel):
-    capture_ids: list[str] = Field(..., min_length=1)
+    capture_ids: list[str] = Field(..., min_length=1, max_length=100)
 
 
 class BatchPromptOutput(BaseModel):
     markdown: str
     count: int
+
 
 router = APIRouter(prefix="/api/v1/captures", tags=["captures"])
 
@@ -46,10 +48,12 @@ def _row_to_capture(row: dict, enrichment: dict | None = None) -> CaptureOut:
 
 
 @router.post("", response_model=CaptureOut)
+@limiter.limit("30/minute")
 async def create_capture(
+    request: Request,
     body: CaptureCreate,
     background_tasks: BackgroundTasks,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     word_normalized = normalize(body.word, body.language)
     if not word_normalized:
@@ -60,7 +64,7 @@ async def create_capture(
     )
 
     payload = {
-        "user_id": user_id,
+        "user_id": auth.user_id,
         "word": body.word,
         "word_normalized": word_normalized,
         "context_sentence": body.context_sentence,
@@ -68,7 +72,8 @@ async def create_capture(
         "book_id": body.book_id,
         "tags": body.tags,
     }
-    client = get_admin_client()
+    # User-scoped client → RLS enforces user_id = auth.uid() on insert.
+    client = get_user_client(auth.jwt)
     inserted = client.table("captures").insert(payload).execute()
     if not inserted.data:
         raise HTTPException(500, "Failed to insert capture")
@@ -79,20 +84,23 @@ async def create_capture(
 
 
 @router.get("", response_model=list[CaptureOut])
+@limiter.limit("60/minute")
 async def list_captures(
+    request: Request,
     book_id: str | None = None,
     promoted: bool | None = None,
     tag: str | None = None,
     q: str | None = None,
     limit: int = Query(default=50, le=200),
-    offset: int = 0,
-    user_id: str = Depends(get_current_user_id),
+    offset: int = Query(default=0, ge=0),
+    auth: AuthInfo = Depends(get_auth),
 ):
-    client = get_admin_client()
+    # RLS already restricts to the user; .eq("user_id") is now defense-in-depth.
+    client = get_user_client(auth.jwt)
     query = (
         client.table("captures")
         .select("*")
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .order("captured_at", desc=True)
         .range(offset, offset + limit - 1)
     )
@@ -109,20 +117,22 @@ async def list_captures(
 
 
 @router.put("/{capture_id}", response_model=CaptureOut)
+@limiter.limit("60/minute")
 async def update_capture(
+    request: Request,
     capture_id: str,
     body: CaptureUpdate,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     if not update:
         raise HTTPException(422, "No fields to update")
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     res = (
         client.table("captures")
         .update(update)
         .eq("id", capture_id)
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .execute()
     )
     if not res.data:
@@ -131,16 +141,18 @@ async def update_capture(
 
 
 @router.delete("/{capture_id}", status_code=204)
+@limiter.limit("60/minute")
 async def delete_capture(
+    request: Request,
     capture_id: str,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     res = (
         client.table("captures")
         .delete()
         .eq("id", capture_id)
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .execute()
     )
     if not res.data:
@@ -148,18 +160,20 @@ async def delete_capture(
 
 
 @router.post("/batch-prompt", response_model=BatchPromptOutput)
+@limiter.limit("20/minute")
 async def batch_prompt(
+    request: Request,
     body: BatchPromptInput,
-    user_id: str = Depends(get_current_user_id),
+    auth: AuthInfo = Depends(get_auth),
 ):
     """Generate the markdown prompt the user pastes into Claude/ChatGPT
     for the selected captures. Returned ready to copy to clipboard."""
-    client = get_admin_client()
+    client = get_user_client(auth.jwt)
     rows = (
         client.table("captures")
         .select("*")
         .in_("id", body.capture_ids)
-        .eq("user_id", user_id)
+        .eq("user_id", auth.user_id)
         .execute()
         .data
         or []
