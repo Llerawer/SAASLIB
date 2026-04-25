@@ -7,6 +7,7 @@ import logging
 import re
 from pathlib import Path
 
+import asyncpg
 import httpx
 from cachetools import TTLCache
 from fastapi import HTTPException
@@ -163,6 +164,8 @@ async def _refresh_search(key: str, query: str, topic: str | None, page: int) ->
         if _is_topic_only(query, topic, page):
             try:
                 await upsert_search_cache(topic, data)  # type: ignore[arg-type]
+            except asyncpg.exceptions.UndefinedTableError:
+                pass
             except Exception:
                 logger.exception("search-cache upsert failed", extra={"topic": topic})
     except Exception:
@@ -218,6 +221,11 @@ async def search_books(
     if topic_only:
         try:
             db_hit = await select_search_cache(topic)  # type: ignore[arg-type]
+        except asyncpg.exceptions.UndefinedTableError:
+            # Transient: pgbouncer-cached catalog before migration was visible
+            # to this connection. Self-heals as the pool recycles. Don't spam
+            # tracebacks; just degrade to "no DB cache hit" silently.
+            db_hit = None
         except Exception:
             logger.exception("search-cache read failed", extra={"topic": topic})
             db_hit = None
@@ -254,6 +262,8 @@ async def search_books(
             if topic_only:
                 try:
                     await upsert_search_cache(topic, data)  # type: ignore[arg-type]
+                except asyncpg.exceptions.UndefinedTableError:
+                    pass  # see read path: transient pgbouncer catalog lag
                 except Exception:
                     logger.exception(
                         "search-cache upsert failed", extra={"topic": topic}
