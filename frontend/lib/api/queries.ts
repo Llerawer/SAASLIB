@@ -376,14 +376,32 @@ export type ReadingInfo = {
   cefr: string | null;
 };
 
+type BatchAsyncResponse = {
+  data: Record<string, ReadingInfo>;
+  pending_ids: number[];
+};
+
+/**
+ * Async-mode batch reader. Endpoint returns cached data instantly; missing
+ * ids scrape in background. Re-poll every 3s while pending_ids non-empty.
+ */
 export function useReadingInfoBatch(ids: number[]) {
   const sortedIds = [...ids].sort((a, b) => a - b);
   return useQuery({
     queryKey: ["reading-info-batch", sortedIds] as const,
-    queryFn: () =>
-      api.get<Record<string, ReadingInfo>>(
-        `/api/v1/books/reading-info/batch?ids=${sortedIds.join(",")}`,
-      ),
+    queryFn: async ({ signal }) => {
+      const response = await api.get<BatchAsyncResponse>(
+        `/api/v1/books/reading-info/batch?async_scrape=true&ids=${sortedIds.join(",")}`,
+        { signal },
+      );
+      // Tag with pending_ids so refetchInterval can react.
+      return response;
+    },
+    select: (response: BatchAsyncResponse) => response.data,
+    refetchInterval: (q) => {
+      const data = q.state.data as BatchAsyncResponse | undefined;
+      return data && data.pending_ids.length > 0 ? 3000 : false;
+    },
     enabled: sortedIds.length > 0,
     staleTime: 5 * 60_000,
   });

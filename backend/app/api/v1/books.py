@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+)
 from fastapi.responses import JSONResponse
 
 from app.core.auth import AuthInfo, get_auth
@@ -77,26 +86,43 @@ async def reading_info(
 @limiter.limit("30/minute")
 async def reading_info_batch(
     request: Request,
+    background_tasks: BackgroundTasks,
     ids: str = Query(..., max_length=2000),
     scrape_missing: bool = Query(default=True),
+    async_scrape: bool = Query(
+        default=False,
+        description=(
+            "If true, return cached subset immediately + scrape missing in "
+            "background. Response includes 'pending_ids'. Frontend should "
+            "poll again in 2-5s for updated CEFR data."
+        ),
+    ),
 ):
-    """Bulk lookup of reading info for many books. ONE-SHOT replacement
-    for the frontend N+1 pattern.
+    """Bulk lookup of reading info for many books.
 
-    Default behavior (`scrape_missing=true`): for ids not yet cached in DB,
-    scrape gutenberg.org in parallel under a Semaphore(12). One bulk
-    UPSERT persists all successful scrapes.
+    Three modes:
 
-    `scrape_missing=false`: cache-only lookup, returns immediately with
-    only the ids already in DB. Useful when you don't want to wait for
-    fresh scrapes (e.g. background prefetch).
+    - Default `scrape_missing=true, async_scrape=false`: scrape inline.
+      Worst case 2-30s, returns full data. Good for warmup / cron.
+
+    - `scrape_missing=true, async_scrape=true` (RECOMMENDED for user-facing
+      paths): cache hit → instant return + start scrape in background.
+      Frontend polls again to fill in pending_ids. Eliminates request-path
+      scraping latency.
+
+    - `scrape_missing=false`: cache-only. Instant. Returns only what's
+      already persisted in DB.
 
     Cache-Control:
-      - `public, s-maxage=300` ONLY if every requested id resolved.
-      - `no-cache` if any scrape failed → prevents CDN from poisoning
-        all global users with a 5-min window of "?" badges.
+      - `public, s-maxage=300` only if cdn_safe (attempted everything AND
+        data_density >= 0.8).
+      - `private, max-age=60` if attempted but low density.
+      - `no-cache` if scrapes failed.
 
-    `ids` is a comma-separated list. Max 100 per batch.
+    Response body when `async_scrape=true`:
+        { "data": {id: info}, "pending_ids": [int] }
+    Otherwise:
+        { id: info, ... }   (legacy shape, unchanged)
     """
     try:
         id_list = [int(x) for x in ids.split(",") if x.strip()]
@@ -104,17 +130,36 @@ async def reading_info_batch(
         raise HTTPException(422, "ids must be comma-separated integers") from e
     if len(id_list) > 100:
         raise HTTPException(422, "max 100 ids per batch")
+
+    if async_scrape:
+        # Cache-only fast path; scrape any missing in the background AFTER
+        # we've sent the response. Frontend re-queries in a few seconds.
+        result = await gutenberg.get_reading_info_batch(
+            id_list, scrape_missing=False
+        )
+        pending = [i for i in id_list if i not in result.data]
+        if pending:
+            background_tasks.add_task(
+                gutenberg.background_scrape_ids, pending
+            )
+        body = {"data": result.data, "pending_ids": pending}
+        # NEVER cache async responses on CDN — by definition incomplete.
+        headers = {
+            "Cache-Control": "no-cache, no-store",
+            "X-Data-Density": f"{result.data_density:.2f}",
+            "X-Pending-Count": str(len(pending)),
+        }
+        return JSONResponse(content=body, headers=headers)
+
+    # Synchronous (legacy) path.
     result = await gutenberg.get_reading_info_batch(
         id_list, scrape_missing=scrape_missing
     )
     if result.cdn_safe:
         headers = _PUBLIC_CACHE_HEADERS
     elif result.attempted_ok:
-        # All attempts went through but data density is low → don't poison
-        # the long edge cache, but a short browser cache is fine.
         headers = {"Cache-Control": "private, max-age=60"}
     else:
-        # Some scrapes failed → don't cache anywhere.
         headers = {"Cache-Control": "no-cache, no-store"}
     headers = {
         **headers,

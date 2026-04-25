@@ -1,5 +1,5 @@
 """Gutendex + Gutenberg.org integration with shared httpx pool, layered
-cache and stampede protection."""
+cache, distributed stampede protection and circuit breaker."""
 from __future__ import annotations
 
 import asyncio
@@ -10,10 +10,26 @@ from pathlib import Path
 import httpx
 from cachetools import TTLCache
 from fastapi import HTTPException
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
+from app.core.circuit import CircuitOpenError, call_with_breaker, get_breaker
 from app.core.http import get_client
 
 logger = logging.getLogger(__name__)
+
+
+# Per-host breakers. 5 consecutive failures → open for 60s.
+_GUTENDEX_BREAKER = get_breaker(
+    "gutendex.com", failure_threshold=5, cooldown_seconds=60.0
+)
+_GUTENBERG_HTML_BREAKER = get_breaker(
+    "gutenberg.org/ebooks", failure_threshold=5, cooldown_seconds=60.0
+)
 
 GUTENDEX_API = "https://gutendex.com/books/"
 EPUB_MIME_KEYS = ("application/epub+zip", "application/epub")
@@ -50,35 +66,50 @@ _meta_refresh: set[int] = set()
 # ============================================================================
 
 
-async def _get_json(url: str, **params) -> dict:
-    """GET → JSON via the shared client. Retries once on transient errors.
-    Caps response size to avoid memory abuse from malicious upstream."""
+@retry(
+    retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+    reraise=True,
+)
+async def _gutendex_fetch_inner(url: str, params: dict | None) -> dict:
+    """Real HTTP call to gutendex.com — retried with exp backoff for
+    transient errors. The breaker around this catches sustained outages."""
     client = get_client()
-    last_err: Exception | None = None
-    for attempt in range(2):
-        try:
-            r = await client.get(url, params=params or None)
-            r.raise_for_status()
-            content_length = r.headers.get("content-length")
-            if content_length and int(content_length) > _MAX_JSON_RESPONSE_BYTES:
-                raise HTTPException(502, "Upstream response too large")
-            if len(r.content) > _MAX_JSON_RESPONSE_BYTES:
-                raise HTTPException(502, "Upstream response too large")
-            return r.json()
-        except (httpx.TimeoutException, httpx.NetworkError) as e:
-            last_err = e
-            if attempt == 0:
-                continue
-            raise HTTPException(
-                status_code=504,
-                detail="Gutendex no respondió a tiempo. Intenta de nuevo.",
-            ) from e
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Gutendex error: {e.response.status_code}",
-            ) from e
-    raise HTTPException(status_code=500, detail=str(last_err))
+    r = await client.get(url, params=params)
+    r.raise_for_status()
+    content_length = r.headers.get("content-length")
+    if content_length and int(content_length) > _MAX_JSON_RESPONSE_BYTES:
+        raise HTTPException(502, "Upstream response too large")
+    if len(r.content) > _MAX_JSON_RESPONSE_BYTES:
+        raise HTTPException(502, "Upstream response too large")
+    return r.json()
+
+
+async def _get_json(url: str, **params) -> dict:
+    """GET → JSON via shared client + circuit breaker + retry."""
+    real_params = params or None
+    try:
+        return await call_with_breaker(
+            _GUTENDEX_BREAKER,
+            lambda: _gutendex_fetch_inner(url, real_params),
+        )
+    except CircuitOpenError as e:
+        # Sustained outage. Don't make the user wait — fail fast.
+        raise HTTPException(
+            503,
+            "Gutendex temporalmente no disponible. Intenta en un minuto.",
+        ) from e
+    except (httpx.TimeoutException, httpx.NetworkError) as e:
+        raise HTTPException(
+            status_code=504,
+            detail="Gutendex no respondió a tiempo. Intenta de nuevo.",
+        ) from e
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Gutendex error: {e.response.status_code}",
+        ) from e
 
 
 # ============================================================================
@@ -261,24 +292,46 @@ def _flesch_to_cefr(score: float) -> str:
     return "C2"
 
 
-async def _scrape_reading_info(gutenberg_id: int) -> dict:
-    """Hit gutenberg.org HTML and extract Flesch score + grade. Best effort.
-    Capped at _MAX_HTML_RESPONSE_BYTES to avoid memory abuse."""
+@retry(
+    retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=0.3, min=0.3, max=2),
+    reraise=True,
+)
+async def _scrape_html_inner(gutenberg_id: int) -> dict:
     url = f"https://www.gutenberg.org/ebooks/{gutenberg_id}"
     client = get_client()
+    r = await client.get(url)
+    if r.status_code != 200:
+        return {"reading_ease": None, "grade": None, "cefr": None}
+    if len(r.content) > _MAX_HTML_RESPONSE_BYTES:
+        return {"reading_ease": None, "grade": None, "cefr": None}
+    html = r.text
+    m_score = _READING_EASE_RE.search(html)
+    m_grade = _GRADE_RE.search(html)
+    score = float(m_score.group(1)) if m_score else None
+    grade = int(m_grade.group(1)) if m_grade else None
+    cefr = _flesch_to_cefr(score) if score is not None else None
+    return {"reading_ease": score, "grade": grade, "cefr": cefr}
+
+
+async def _scrape_reading_info(gutenberg_id: int) -> dict:
+    """Hit gutenberg.org HTML and extract Flesch score + grade.
+
+    Wrapped in:
+      - retry (2 attempts, exp backoff for transient network errors)
+      - circuit breaker (after 5 sustained failures, fail fast for 60s)
+
+    Returns the empty info shape on circuit-open or final exhaustion so
+    callers can keep moving (frontend gets "?", DB doesn't get poisoned)."""
     try:
-        r = await client.get(url)
-        if r.status_code != 200:
-            return {"reading_ease": None, "grade": None, "cefr": None}
-        if len(r.content) > _MAX_HTML_RESPONSE_BYTES:
-            return {"reading_ease": None, "grade": None, "cefr": None}
-        html = r.text
-        m_score = _READING_EASE_RE.search(html)
-        m_grade = _GRADE_RE.search(html)
-        score = float(m_score.group(1)) if m_score else None
-        grade = int(m_grade.group(1)) if m_grade else None
-        cefr = _flesch_to_cefr(score) if score is not None else None
-        return {"reading_ease": score, "grade": grade, "cefr": cefr}
+        return await call_with_breaker(
+            _GUTENBERG_HTML_BREAKER,
+            lambda: _scrape_html_inner(gutenberg_id),
+        )
+    except CircuitOpenError:
+        # gutenberg.org is sustainedly down. Don't queue more work.
+        return {"reading_ease": None, "grade": None, "cefr": None}
     except (httpx.TimeoutException, httpx.NetworkError):
         return {"reading_ease": None, "grade": None, "cefr": None}
 
@@ -557,6 +610,27 @@ def _enforce_cache_cap() -> None:
             p.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+async def background_scrape_ids(ids: list[int]) -> None:
+    """Fire-and-forget scrape for the async_scrape endpoint mode. Errors
+    swallowed (only logged) — the next user poll picks up the result from DB."""
+    if not ids:
+        return
+    try:
+        result = await get_reading_info_batch(ids, scrape_missing=True)
+        logger.info(
+            "background scrape complete",
+            extra={
+                "ids": len(ids),
+                "data_density": result.data_density,
+                "attempted_ok": result.attempted_ok,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "background scrape failed", extra={"ids_count": len(ids)}
+        )
 
 
 POPULAR_TOPICS = (
