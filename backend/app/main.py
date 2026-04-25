@@ -10,6 +10,7 @@ from starlette.responses import Response
 import asyncio
 
 from app.api.v1 import books, captures, cards, dictionary, internal, reviews, stats
+from app.core.alerts import install_default_alerts, run_periodic
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.db import close_pool
@@ -28,14 +29,22 @@ async def lifespan(_app: FastAPI):
     # instead of silently degrading later).
     await ensure_redis_ready()
 
+    # Install default alert rules + start the evaluator loop.
+    install_default_alerts()
+    alert_task = asyncio.create_task(run_periodic(30.0), name="alert-evaluator")
+    _background_tasks.add(alert_task)
+    alert_task.add_done_callback(_background_tasks.discard)
+
     # Warm cache for popular categories so the first user click is instant.
     # KEEP the reference — asyncio holds only weak refs; otherwise the task
     # can be garbage-collected mid-execution.
-    task = asyncio.create_task(warmup_popular(), name="gutenberg-warmup")
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    warmup_task = asyncio.create_task(warmup_popular(), name="gutenberg-warmup")
+    _background_tasks.add(warmup_task)
+    warmup_task.add_done_callback(_background_tasks.discard)
+
     yield
-    # Cancel warmup if still running, then close pools.
+
+    # Cancel background loops, then close pools.
     for t in list(_background_tasks):
         if not t.done():
             t.cancel()
@@ -88,6 +97,19 @@ app.add_middleware(SecurityHeadersMiddleware)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    """Prometheus scrape endpoint (text/plain). Public — Prometheus servers
+    don't send auth headers. Don't expose secrets in metric labels.
+    Production: restrict by network policy / private port."""
+    from starlette.responses import Response
+
+    from app.core.metrics import render_prometheus
+
+    body, content_type = render_prometheus()
+    return Response(content=body, media_type=content_type)
 
 
 @app.get("/api/v1/me")

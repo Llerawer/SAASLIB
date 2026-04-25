@@ -18,7 +18,13 @@ from tenacity import (
 )
 
 from app.core.circuit import CircuitOpenError, call_with_breaker, get_breaker
+from app.core.distributed_lock import (
+    stampede_lock,
+    stampede_publish,
+    stampede_publish_error,
+)
 from app.core.http import get_client
+from app.core.metrics import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +50,15 @@ _CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "epub_cache"
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 _CACHE_FILE_CAP = 500  # combined with _MAX_EPUB_BYTES → max ~25 GB on disk
 
-# In-memory caches (process-local). Replace with Redis when running >1 instance.
-# Layered: fresh TTL → in-flight Future → stale (no expiry, only LRU bound).
+# In-memory caches (process-local). Layered: fresh TTL → stale floor.
+# Stampede protection across both layers is provided by stampede_lock().
 _search_fresh: TTLCache[str, dict] = TTLCache(maxsize=500, ttl=300)        # 5 min fresh
 _search_stale: TTLCache[str, dict] = TTLCache(maxsize=2000, ttl=86400)     # 24 h stale floor
 _meta_fresh: TTLCache[int, dict] = TTLCache(maxsize=2000, ttl=3600)        # 1 h fresh
 _meta_stale: TTLCache[int, dict] = TTLCache(maxsize=10000, ttl=86400 * 7)  # 7 d stale floor
 
-# Stampede dedupe.
-_search_inflight: dict[str, asyncio.Future] = {}
-_meta_inflight: dict[int, asyncio.Future] = {}
-_scrape_inflight: dict[int, asyncio.Future] = {}
+# Stampede dedupe is handled by app.core.distributed_lock.stampede_lock —
+# Redis-backed when REDIS_URL is set (multi-pod safe), in-memory otherwise.
 
 # Background refresh dedupe — multiple stale-hits don't pile up tasks.
 _search_refresh: set[str] = set()
@@ -169,9 +173,8 @@ async def search_books(
     """Layered cache for Gutendex search.
 
       1. Fresh hit (TTL 5 min) → instant return.
-      2. In-flight Future → await shared (stampede dedupe).
-      3. Stale hit → return immediately + background refresh.
-      4. Cold miss → sync fetch + populate fresh+stale.
+      2. Stale hit → return immediately + background refresh.
+      3. Cold miss → distributed stampede lock + fetch + populate fresh+stale.
 
     Net effect: a category seen at least once never blocks the user again,
     even after the 5-min fresh window expires. Only the FIRST visitor in
@@ -183,10 +186,6 @@ async def search_books(
     if fresh is not None:
         return fresh
 
-    inflight = _search_inflight.get(key)
-    if inflight is not None:
-        return await inflight
-
     stale = _search_stale.get(key)
     if stale is not None:
         # Return stale immediately + dispatch refresh (deduped).
@@ -197,22 +196,34 @@ async def search_books(
             )
         return stale
 
-    fut: asyncio.Future = asyncio.get_running_loop().create_future()
-    _search_inflight[key] = fut
-    try:
-        data = await _fetch_search(query or "", topic, page)
-        _search_fresh[key] = data
-        _search_stale[key] = data
-        if not fut.done():
-            fut.set_result(data)
-        return data
-    except Exception as e:
-        if not fut.done():
-            fut.set_exception(e)
-        # No stale to fall back on → propagate.
-        raise
-    finally:
-        _search_inflight.pop(key, None)
+    lock_key = f"gutendex:search:{key}"
+    async with stampede_lock(lock_key, ttl=60) as (is_owner, fut):
+        if not is_owner:
+            try:
+                return await fut
+            except Exception:
+                # Owner failed and we have no stale → fall through to retry.
+                pass
+            # Re-check fresh/stale that the owner may have populated.
+            fresh = _search_fresh.get(key)
+            if fresh is not None:
+                return fresh
+            stale = _search_stale.get(key)
+            if stale is not None:
+                return stale
+            # Last resort: re-enter to attempt as a fresh caller.
+            return await search_books(query=query, page=page, topic=topic)
+
+        try:
+            data = await _fetch_search(query or "", topic, page)
+            _search_fresh[key] = data
+            _search_stale[key] = data
+            await stampede_publish(lock_key, data)
+            return data
+        except Exception as e:
+            await stampede_publish_error(lock_key, e)
+            # No stale to fall back on → propagate.
+            raise
 
 
 # ============================================================================
@@ -232,14 +243,11 @@ async def _refresh_meta(gutenberg_id: int) -> None:
 
 
 async def get_book_metadata(gutenberg_id: int) -> dict:
-    """Same fresh / in-flight / stale / miss layering as search_books."""
+    """Same fresh / stale / miss layering as search_books, with distributed
+    stampede protection on cold misses."""
     fresh = _meta_fresh.get(gutenberg_id)
     if fresh is not None:
         return fresh
-
-    inflight = _meta_inflight.get(gutenberg_id)
-    if inflight is not None:
-        return await inflight
 
     stale = _meta_stale.get(gutenberg_id)
     if stale is not None:
@@ -248,21 +256,30 @@ async def get_book_metadata(gutenberg_id: int) -> dict:
             asyncio.create_task(_refresh_meta(gutenberg_id))
         return stale
 
-    fut: asyncio.Future = asyncio.get_running_loop().create_future()
-    _meta_inflight[gutenberg_id] = fut
-    try:
-        data = await _get_json(f"{GUTENDEX_API}{gutenberg_id}")
-        _meta_fresh[gutenberg_id] = data
-        _meta_stale[gutenberg_id] = data
-        if not fut.done():
-            fut.set_result(data)
-        return data
-    except Exception as e:
-        if not fut.done():
-            fut.set_exception(e)
-        raise
-    finally:
-        _meta_inflight.pop(gutenberg_id, None)
+    lock_key = f"gutendex:meta:{gutenberg_id}"
+    async with stampede_lock(lock_key, ttl=60) as (is_owner, fut):
+        if not is_owner:
+            try:
+                return await fut
+            except Exception:
+                pass
+            fresh = _meta_fresh.get(gutenberg_id)
+            if fresh is not None:
+                return fresh
+            stale = _meta_stale.get(gutenberg_id)
+            if stale is not None:
+                return stale
+            return await get_book_metadata(gutenberg_id)
+
+        try:
+            data = await _get_json(f"{GUTENDEX_API}{gutenberg_id}")
+            _meta_fresh[gutenberg_id] = data
+            _meta_stale[gutenberg_id] = data
+            await stampede_publish(lock_key, data)
+            return data
+        except Exception as e:
+            await stampede_publish_error(lock_key, e)
+            raise
 
 
 # ============================================================================
@@ -387,7 +404,7 @@ _scrape_negative: TTLCache[int, bool] = TTLCache(maxsize=2000, ttl=300)
 async def get_reading_info(gutenberg_id: int) -> dict:
     """Single-id entry point. Layered:
        1. DB cache (async, doesn't block event loop)
-       2. In-flight Future dedupe (cross-request stampede)
+       2. Distributed stampede lock (Redis when active, else in-memory)
        3. Scrape gutenberg.org → persist if score found
        4. Negative cache transient failures so we don't retry every request
     """
@@ -395,72 +412,70 @@ async def get_reading_info(gutenberg_id: int) -> dict:
     if cached is not None:
         return cached
 
-    inflight = _scrape_inflight.get(gutenberg_id)
-    if inflight is not None:
-        return await inflight
+    lock_key = f"scrape:reading-info:{gutenberg_id}"
+    async with stampede_lock(lock_key, ttl=60) as (is_owner, fut):
+        if not is_owner:
+            try:
+                return await fut
+            except Exception:
+                # Owner crashed → fall through to scrape ourselves below.
+                pass
 
-    fut: asyncio.Future = asyncio.get_running_loop().create_future()
-    _scrape_inflight[gutenberg_id] = fut
-    try:
-        info = await _scrape_reading_info(gutenberg_id)
-        # Distinguish legitimate "no score on gutenberg.org" (persist forever
-        # so we don't re-scrape) vs transient failure (don't pollute DB).
-        is_real_result = (
-            info.get("reading_ease") is not None or info.get("cefr") is not None
-        )
-        if is_real_result:
-            await _upsert_many([_info_to_row(gutenberg_id, info)])
-        else:
-            # Could be the book legitimately has no score, OR scrape failed.
-            # Conservative: short-lived negative cache, no DB pollution.
-            _scrape_negative[gutenberg_id] = True
-        if not fut.done():
-            fut.set_result(info)
-        return info
-    except Exception as e:
-        logger.exception(
-            "get_reading_info failed", extra={"gutenberg_id": gutenberg_id}
-        )
-        if not fut.done():
-            fut.set_exception(e)
-        raise
-    finally:
-        _scrape_inflight.pop(gutenberg_id, None)
+        if not is_owner:
+            # Non-owner reached after a crashed owner. Re-attempt as a fresh
+            # caller (will try its own lock acquire — likely succeed since
+            # owner's release dropped the lock).
+            return await get_reading_info(gutenberg_id)
+
+        try:
+            info = await _scrape_reading_info(gutenberg_id)
+            is_real_result = (
+                info.get("reading_ease") is not None or info.get("cefr") is not None
+            )
+            if is_real_result:
+                await _upsert_many([_info_to_row(gutenberg_id, info)])
+            else:
+                _scrape_negative[gutenberg_id] = True
+            await stampede_publish(lock_key, info)
+            return info
+        except Exception as e:
+            logger.exception(
+                "get_reading_info failed",
+                extra={"gutenberg_id": gutenberg_id},
+            )
+            await stampede_publish_error(lock_key, e)
+            raise
 
 
 async def _scrape_only(gutenberg_id: int) -> tuple[int, dict | None]:
-    """Used by the batch path: scrape under semaphore + per-id stampede
-    dedupe, but skip the per-id DB SELECT (the batch already did it).
+    """Used by the batch path: scrape under semaphore + distributed stampede
+    lock, but skip the per-id DB SELECT (the batch already did it).
     Returns (gid, info) on success, (gid, None) on failure."""
     if gutenberg_id in _scrape_negative:
         return gutenberg_id, {"reading_ease": None, "grade": None, "cefr": None}
 
-    inflight = _scrape_inflight.get(gutenberg_id)
-    if inflight is not None:
-        try:
-            info = await inflight
-            return gutenberg_id, info
-        except Exception:
-            return gutenberg_id, None
+    lock_key = f"scrape:reading-info:{gutenberg_id}"
+    async with stampede_lock(lock_key, ttl=60) as (is_owner, fut):
+        if not is_owner:
+            try:
+                info = await fut
+                return gutenberg_id, info
+            except Exception:
+                return gutenberg_id, None
 
-    fut: asyncio.Future = asyncio.get_running_loop().create_future()
-    _scrape_inflight[gutenberg_id] = fut
-    try:
-        async with _scrape_semaphore:
-            info = await _scrape_reading_info(gutenberg_id)
-        if not fut.done():
-            fut.set_result(info)
-        return gutenberg_id, info
-    except Exception as e:
-        logger.warning(
-            "scrape_only failed",
-            extra={"gutenberg_id": gutenberg_id, "error": str(e)},
-        )
-        if not fut.done():
-            fut.set_exception(e)
-        return gutenberg_id, None
-    finally:
-        _scrape_inflight.pop(gutenberg_id, None)
+        try:
+            async with _scrape_semaphore:
+                info = await _scrape_reading_info(gutenberg_id)
+            await stampede_publish(lock_key, info)
+            return gutenberg_id, info
+        except Exception as e:
+            logger.warning(
+                "scrape_only failed",
+                extra={"gutenberg_id": gutenberg_id, "error": str(e)},
+            )
+            metrics.incr("scrape.failures")
+            await stampede_publish_error(lock_key, e)
+            return gutenberg_id, None
 
 
 class BatchResult:
@@ -511,8 +526,8 @@ async def get_reading_info_batch(
 
     Pipeline:
       1. ONE bulk SELECT IN_(ids) via asyncpg (real async, no threadpool).
-      2. For missing: parallel scrape under Semaphore(12) + per-id stampede
-         dedupe via _scrape_inflight (process-local for now — see TODO).
+      2. For missing: parallel scrape under Semaphore(12) + per-id distributed
+         stampede lock (Redis-backed multi-pod safe when REDIS_URL is set).
       3. ONE bulk UPSERT for all successfully-scraped non-null results.
       4. Failures logged with sample ids. Density tracked for cdn_safe flag.
     """

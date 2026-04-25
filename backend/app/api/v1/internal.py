@@ -14,6 +14,7 @@ import os
 
 from fastapi import APIRouter, Header, HTTPException
 
+from app.core.alerts import active_alerts
 from app.core.config import settings
 from app.core.metrics import metrics
 from app.core.redis_client import get_redis, is_enabled as redis_enabled
@@ -61,6 +62,7 @@ async def metrics_snapshot(
         "redis_active": redis_enabled(),
         "environment": settings.ENVIRONMENT,
     }
+    snap["active_alerts"] = active_alerts()
     return snap
 
 
