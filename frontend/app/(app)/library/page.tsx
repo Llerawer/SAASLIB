@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -11,6 +11,11 @@ import {
   Layers,
   GraduationCap,
 } from "lucide-react";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
@@ -22,6 +27,7 @@ import {
   type ReadingInfo,
 } from "@/lib/api/queries";
 import { TOPIC_GROUPS } from "@/lib/library/topics";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +46,11 @@ type GutendexBook = {
   bookshelves?: string[];
   download_count?: number;
 };
-type GutendexResponse = { results: GutendexBook[]; count: number; next?: string | null };
+type GutendexResponse = {
+  results: GutendexBook[];
+  count: number;
+  next?: string | null;
+};
 
 type LevelFilter = "all" | "easy" | "intermediate" | "advanced";
 
@@ -54,27 +64,80 @@ const LEVEL_OPTIONS: { value: LevelFilter; label: string; cefr: string[] }[] = [
 const PAGE_SIZE = 10;
 const PREFETCH_CONCURRENCY = 4;
 
+type SearchKey = {
+  q: string;
+  topic: string | null;
+  page: number;
+};
+
 export default function LibraryPage() {
+  const qc = useQueryClient();
   const myLibrary = useMyLibrary();
-  const [query, setQuery] = useState("");
+
+  // --- Search input + state ---
+  const [queryInput, setQueryInput] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(submittedQuery, 300);
+
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const [activeTopicLabel, setActiveTopicLabel] = useState<string | null>(null);
   const [gutendexPage, setGutendexPage] = useState(1);
-  const [results, setResults] = useState<GutendexBook[]>([]);
-  const [resultsCount, setResultsCount] = useState<number | null>(null);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [previewBook, setPreviewBook] = useState<BookPreviewSeed | null>(null);
+
+  // Discriminator for the *currently displayed* search. Used for the
+  // belt-and-suspenders requestIdRef pattern: even if TanStack Query +
+  // signal misses a corner case, our setReadingMap effects only act on
+  // the latest selection.
+  const requestIdRef = useRef(0);
+  const [activeKeyId, setActiveKeyId] = useState(0);
+
+  // Reset chunk + filter every time search target changes.
   const [chunkIndex, setChunkIndex] = useState(0);
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
+  const [previewBook, setPreviewBook] = useState<BookPreviewSeed | null>(null);
   const [readingMap, setReadingMap] = useState<Record<number, ReadingInfo>>({});
 
-  // Prefetch cached reading info for current results.
+  const searchKey: SearchKey = {
+    q: debouncedQuery,
+    topic: activeTopic,
+    page: gutendexPage,
+  };
+
+  const enabled = !!searchKey.q || !!searchKey.topic;
+
+  const search = useQuery({
+    queryKey: ["search", searchKey] as const,
+    enabled,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (searchKey.q) params.set("q", searchKey.q);
+      if (searchKey.topic) params.set("topic", searchKey.topic);
+      if (searchKey.page > 1) params.set("page", String(searchKey.page));
+      return api.get<GutendexResponse>(
+        `/api/v1/books/search?${params.toString()}`,
+        { signal },
+      );
+    },
+  });
+
+  // Reset chunk + filter when target changes (topic or query, NOT page).
+  useEffect(() => {
+    setChunkIndex(0);
+    setLevelFilter("all");
+    requestIdRef.current += 1;
+    setActiveKeyId(requestIdRef.current);
+  }, [activeTopic, debouncedQuery]);
+
+  const results = search.data?.results ?? [];
+  const resultsCount = search.data?.count ?? null;
+  const hasNextPage = !!search.data?.next;
+
+  // --- Reading info prefetch ---
   const ids = useMemo(() => results.map((b) => b.id), [results]);
   const cachedQuery = useReadingInfoBatch(ids);
 
-  // Merge cached results into local map.
   useEffect(() => {
     if (!cachedQuery.data) return;
     setReadingMap((prev) => {
@@ -86,25 +149,34 @@ export default function LibraryPage() {
     });
   }, [cachedQuery.data]);
 
-  // For ids without cached info, scrape on-demand with limited concurrency.
+  // For ids without cached info, scrape on-demand. Cancel & ignore stale
+  // results when search target changes via activeKeyId.
   useEffect(() => {
     if (ids.length === 0) return;
+    const myId = activeKeyId;
     let cancelled = false;
+    const ctrl = new AbortController();
     const missing = ids.filter((id) => !readingMap[id]);
     if (missing.length === 0) return;
 
     let active = 0;
     let cursor = 0;
-    const queue: number[] = [...missing];
 
     function pump() {
-      while (active < PREFETCH_CONCURRENCY && cursor < queue.length) {
-        const id = queue[cursor++];
+      while (
+        !cancelled &&
+        active < PREFETCH_CONCURRENCY &&
+        cursor < missing.length
+      ) {
+        const id = missing[cursor++];
         active++;
         api
-          .get<ReadingInfo>(`/api/v1/books/${id}/reading-info`)
+          .get<ReadingInfo>(`/api/v1/books/${id}/reading-info`, {
+            signal: ctrl.signal,
+          })
           .then((info) => {
-            if (cancelled) return;
+            // Double-safety: ignore if a newer search has started.
+            if (cancelled || myId !== requestIdRef.current) return;
             setReadingMap((prev) => ({ ...prev, [id]: info }));
           })
           .catch(() => undefined)
@@ -117,75 +189,53 @@ export default function LibraryPage() {
     pump();
     return () => {
       cancelled = true;
+      ctrl.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ids.join(",")]);
+  }, [ids.join(","), activeKeyId]);
 
-  async function runSearch(opts: {
-    q?: string;
-    topic?: string | null;
-    page?: number;
-  }) {
-    const q = opts.q?.trim() ?? "";
-    const topic = opts.topic ?? null;
-    const page = opts.page ?? 1;
-    if (!q && !topic) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      if (q) params.set("q", q);
-      if (topic) params.set("topic", topic);
-      if (page > 1) params.set("page", String(page));
-      const data = await api.get<GutendexResponse>(
-        `/api/v1/books/search?${params.toString()}`,
-      );
-      setResults(data.results ?? []);
-      setResultsCount(data.count ?? null);
-      setHasNextPage(!!data.next);
-      setGutendexPage(page);
-      setChunkIndex(0);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error inesperado");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+  // --- Handlers ---
   function handleSearch(e: FormEvent) {
     e.preventDefault();
     setActiveTopic(null);
     setActiveTopicLabel(null);
-    runSearch({ q: query, page: 1 });
+    setSubmittedQuery(queryInput);
+    setGutendexPage(1);
   }
 
   function handleTopicClick(topic: string, label: string) {
-    setQuery("");
+    setQueryInput("");
+    setSubmittedQuery("");
     setActiveTopic(topic);
     setActiveTopicLabel(label);
-    runSearch({ topic, page: 1 });
+    setGutendexPage(1);
   }
 
   function clearTopic() {
     setActiveTopic(null);
     setActiveTopicLabel(null);
-    setResults([]);
-    setResultsCount(null);
-    setHasNextPage(false);
+    setSubmittedQuery("");
+    setQueryInput("");
+    setGutendexPage(1);
+    // Drop any stale cached search to free memory.
+    qc.removeQueries({ queryKey: ["search"], exact: false });
   }
 
-  // Filter by level.
-  const allowedCefr = useMemo(() => {
-    return LEVEL_OPTIONS.find((l) => l.value === levelFilter)?.cefr ?? [];
-  }, [levelFilter]);
+  function goToPage(p: number) {
+    setGutendexPage(p);
+  }
+
+  // --- Filter ---
+  const allowedCefr = useMemo(
+    () => LEVEL_OPTIONS.find((l) => l.value === levelFilter)?.cefr ?? [],
+    [levelFilter],
+  );
 
   const filteredResults = useMemo(() => {
     if (levelFilter === "all") return results;
     return results.filter((b) => {
       const cefr = readingMap[b.id]?.cefr;
-      // Books without yet-known CEFR pass through (don't hide them while
-      // prefetch is still in flight); user sees them with "?" badge.
-      if (!cefr) return true;
+      if (!cefr) return true; // unknown CEFR pass through (loading)
       return allowedCefr.includes(cefr);
     });
   }, [results, levelFilter, allowedCefr, readingMap]);
@@ -198,11 +248,14 @@ export default function LibraryPage() {
   );
 
   const myBooks = myLibrary.data ?? [];
-  const showResults = results.length > 0 || loading;
+  const showResults = enabled;
+  const isFetching = search.isFetching;
+  // Loading state: only show full-skeleton while we have NO data yet.
+  // Once we have placeholderData, just dim it.
+  const isInitialLoading = enabled && !search.data;
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Mi biblioteca */}
       {myBooks.length > 0 && (
         <section className="mb-10">
           <h2 className="text-xl font-bold mb-1 flex items-center gap-2">
@@ -220,7 +273,6 @@ export default function LibraryPage() {
         </section>
       )}
 
-      {/* Buscar Gutenberg */}
       <section>
         <h2 className="text-xl font-bold mb-1 flex items-center gap-2">
           <Search className="h-5 w-5" /> Explorar Gutenberg
@@ -231,23 +283,20 @@ export default function LibraryPage() {
 
         <form onSubmit={handleSearch} className="flex gap-2 mb-6">
           <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
             placeholder="ej: Sherlock Holmes, Pride and Prejudice…"
           />
-          <Button type="submit" disabled={loading}>
-            {loading ? "Buscando…" : "Buscar"}
-          </Button>
+          <Button type="submit">Buscar</Button>
         </form>
 
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-          {/* Sidebar de categorías */}
           <aside className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold flex items-center gap-1">
                 <Layers className="h-4 w-4" /> Categorías
               </h3>
-              {activeTopic && (
+              {(activeTopic || debouncedQuery) && (
                 <button
                   onClick={clearTopic}
                   className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
@@ -268,7 +317,6 @@ export default function LibraryPage() {
             </div>
           </aside>
 
-          {/* Resultados */}
           <div>
             <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
               <div>
@@ -285,7 +333,8 @@ export default function LibraryPage() {
                 )}
                 {results.length > 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Mostrando {filteredResults.length === 0
+                    Mostrando{" "}
+                    {filteredResults.length === 0
                       ? 0
                       : safeChunkIndex * PAGE_SIZE + 1}
                     –
@@ -300,7 +349,6 @@ export default function LibraryPage() {
                 )}
               </div>
 
-              {/* Level filter */}
               {results.length > 0 && (
                 <label className="flex items-center gap-2 text-sm">
                   <GraduationCap className="h-4 w-4 text-muted-foreground" />
@@ -322,7 +370,11 @@ export default function LibraryPage() {
               )}
             </div>
 
-            {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+            {search.error && (
+              <p className="text-sm text-red-600 mb-4">
+                {(search.error as Error).message}
+              </p>
+            )}
 
             {!showResults && (
               <div className="border rounded-lg p-12 text-center text-sm text-muted-foreground">
@@ -330,11 +382,15 @@ export default function LibraryPage() {
               </div>
             )}
 
-            {loading && (
-              <p className="text-sm text-muted-foreground">Cargando…</p>
+            {isInitialLoading && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonCard key={i} />
+                ))}
+              </div>
             )}
 
-            {!loading &&
+            {!isInitialLoading &&
               filteredResults.length === 0 &&
               results.length > 0 && (
                 <p className="text-sm text-muted-foreground">
@@ -343,20 +399,24 @@ export default function LibraryPage() {
                 </p>
               )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {visibleResults.map((book) => (
-                <BookSearchCard
-                  key={book.id}
-                  book={book}
-                  reading={readingMap[book.id] ?? null}
-                  onPick={() => setPreviewBook(book)}
-                />
-              ))}
-            </div>
+            {!isInitialLoading && results.length > 0 && (
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity"
+                style={{ opacity: isFetching ? 0.5 : 1 }}
+              >
+                {visibleResults.map((book) => (
+                  <BookSearchCard
+                    key={book.id}
+                    book={book}
+                    reading={readingMap[book.id] ?? null}
+                    onPick={() => setPreviewBook(book)}
+                  />
+                ))}
+              </div>
+            )}
 
-            {/* Pagination controls */}
-            {filteredResults.length > 0 && (
-              <div className="flex items-center justify-between mt-6 text-sm">
+            {filteredResults.length > 0 && !isInitialLoading && (
+              <div className="flex items-center justify-between mt-6 text-sm flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
@@ -381,7 +441,6 @@ export default function LibraryPage() {
                   </Button>
                 </div>
 
-                {/* Gutendex page navigation */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
                     Página {gutendexPage}
@@ -390,13 +449,8 @@ export default function LibraryPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() =>
-                        runSearch({
-                          q: query,
-                          topic: activeTopic,
-                          page: gutendexPage - 1,
-                        })
-                      }
+                      disabled={isFetching}
+                      onClick={() => goToPage(gutendexPage - 1)}
                     >
                       ← Anteriores
                     </Button>
@@ -405,13 +459,8 @@ export default function LibraryPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() =>
-                        runSearch({
-                          q: query,
-                          topic: activeTopic,
-                          page: gutendexPage + 1,
-                        })
-                      }
+                      disabled={isFetching}
+                      onClick={() => goToPage(gutendexPage + 1)}
                     >
                       Siguientes →
                     </Button>
@@ -428,6 +477,19 @@ export default function LibraryPage() {
         open={!!previewBook}
         onOpenChange={(v) => !v && setPreviewBook(null)}
       />
+    </div>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div className="flex gap-3 border rounded-lg p-3 animate-pulse">
+      <div className="w-16 h-24 bg-muted rounded shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 bg-muted rounded w-3/4" />
+        <div className="h-3 bg-muted rounded w-1/2" />
+        <div className="h-3 bg-muted rounded w-1/3" />
+      </div>
     </div>
   );
 }
@@ -509,7 +571,6 @@ function BookSearchCard({
       onClick={onPick}
       className="text-left flex gap-3 border rounded-lg p-3 hover:bg-accent transition-colors w-full relative"
     >
-      {/* CEFR badge — esquina superior derecha, prominente */}
       {cefr ? (
         <span
           className={`absolute top-2 right-2 text-xs font-bold px-2 py-0.5 rounded border ${CEFR_COLOR[cefr] ?? "bg-muted"}`}
