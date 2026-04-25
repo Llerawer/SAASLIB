@@ -62,7 +62,6 @@ const LEVEL_OPTIONS: { value: LevelFilter; label: string; cefr: string[] }[] = [
 ];
 
 const PAGE_SIZE = 10;
-const PREFETCH_CONCURRENCY = 4;
 
 type SearchKey = {
   q: string;
@@ -134,25 +133,30 @@ export default function LibraryPage() {
   const resultsCount = search.data?.count ?? null;
   const hasNextPage = !!search.data?.next;
 
-  // --- Reading info prefetch ---
+  // --- Reading info: ONE batch call per category, NO N+1 ---
+  // Backend's /reading-info/batch handles cache lookup + parallel scrape
+  // internally. Frontend just gets the final {id: info} map back.
   const ids = useMemo(() => results.map((b) => b.id), [results]);
-  const cachedQuery = useReadingInfoBatch(ids);
+  const batchQuery = useReadingInfoBatch(ids);
 
   useEffect(() => {
-    if (!cachedQuery.data) return;
+    if (!batchQuery.data) return;
+    // Discard if a newer search has started — guards against the rare case
+    // where this batch resolves AFTER the user already moved on.
+    const myId = activeKeyId;
+    if (myId !== requestIdRef.current) return;
+
     setReadingMap((prev) => {
       const next = { ...prev };
-      for (const [k, v] of Object.entries(cachedQuery.data!)) {
+      for (const [k, v] of Object.entries(batchQuery.data!)) {
         next[Number(k)] = v;
       }
       return next;
     });
-  }, [cachedQuery.data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchQuery.data]);
 
   // Cap memory: drop entries whose IDs aren't in the current results window.
-  // The TanStack Query cache for ["search", ...] keeps the underlying response
-  // for staleTime — re-entering a previous category re-prefetches its CEFRs
-  // from DB (cheap, batch endpoint).
   useEffect(() => {
     if (results.length === 0) return;
     setReadingMap((prev) => {
@@ -166,51 +170,6 @@ export default function LibraryPage() {
       return changed ? next : prev;
     });
   }, [results]);
-
-  // For ids without cached info, scrape on-demand. Cancel & ignore stale
-  // results when search target changes via activeKeyId.
-  useEffect(() => {
-    if (ids.length === 0) return;
-    const myId = activeKeyId;
-    let cancelled = false;
-    const ctrl = new AbortController();
-    const missing = ids.filter((id) => !readingMap[id]);
-    if (missing.length === 0) return;
-
-    let active = 0;
-    let cursor = 0;
-
-    function pump() {
-      while (
-        !cancelled &&
-        active < PREFETCH_CONCURRENCY &&
-        cursor < missing.length
-      ) {
-        const id = missing[cursor++];
-        active++;
-        api
-          .get<ReadingInfo>(`/api/v1/books/${id}/reading-info`, {
-            signal: ctrl.signal,
-          })
-          .then((info) => {
-            // Double-safety: ignore if a newer search has started.
-            if (cancelled || myId !== requestIdRef.current) return;
-            setReadingMap((prev) => ({ ...prev, [id]: info }));
-          })
-          .catch(() => undefined)
-          .finally(() => {
-            active--;
-            if (!cancelled) pump();
-          });
-      }
-    }
-    pump();
-    return () => {
-      cancelled = true;
-      ctrl.abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ids.join(","), activeKeyId]);
 
   // --- Handlers ---
   function handleSearch(e: FormEvent) {

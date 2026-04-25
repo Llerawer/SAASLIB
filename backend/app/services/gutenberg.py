@@ -345,6 +345,7 @@ async def get_reading_info(gutenberg_id: int) -> dict:
 
 
 def get_reading_info_batch_cached(ids: list[int]) -> dict[int, dict]:
+    """Cache-only bulk lookup. Returns {id: info} for ids already cached."""
     if not ids:
         return {}
     from app.db.supabase_client import get_admin_client
@@ -367,6 +368,65 @@ def get_reading_info_batch_cached(ids: list[int]) -> dict[int, dict]:
             "grade": r.get("reading_grade"),
             "cefr": r.get("cefr"),
         }
+    return out
+
+
+# Concurrency cap for fan-out scrapes to gutenberg.org. Higher than this and
+# we risk being rate-limited.
+_SCRAPE_CONCURRENCY = 12
+_scrape_semaphore = asyncio.Semaphore(_SCRAPE_CONCURRENCY)
+
+
+async def _scrape_one_for_batch(gutenberg_id: int) -> tuple[int, dict]:
+    """Wrap get_reading_info with the global semaphore so the batch endpoint
+    can call asyncio.gather on N ids without saturating gutenberg.org."""
+    async with _scrape_semaphore:
+        info = await get_reading_info(gutenberg_id)
+        return gutenberg_id, info
+
+
+async def get_reading_info_batch(
+    ids: list[int],
+    scrape_missing: bool = True,
+) -> dict[int, dict]:
+    """One-shot batch endpoint that the frontend uses ONCE per category.
+
+    1. SELECT cache rows from DB for every id (1 round-trip).
+    2. For ids NOT cached: scrape in parallel under a Semaphore(12) so we
+       don't open 32 simultaneous connections to gutenberg.org.
+       get_reading_info already has its own per-id stampede dedupe via
+       _scrape_inflight, so concurrent batch requests with overlapping
+       ids share the same in-flight Future.
+    3. UPSERTs are handled inside get_reading_info; new rows are persisted
+       so the next batch sees them as cache hits.
+
+    This eliminates the frontend N+1: 1 HTTP request → 1 backend handler →
+    1 DB round-trip + N scrapes (parallel, capped) → 1 JSON response.
+    """
+    if not ids:
+        return {}
+
+    # L1: bulk DB lookup.
+    cached = get_reading_info_batch_cached(ids)
+    if not scrape_missing:
+        return cached
+
+    missing = [i for i in ids if i not in cached]
+    if not missing:
+        return cached
+
+    # L2: parallel scrapes with bounded concurrency. asyncio.gather collects
+    # all in one go; per-id failures don't take down the batch.
+    results = await asyncio.gather(
+        *(_scrape_one_for_batch(i) for i in missing),
+        return_exceptions=True,
+    )
+    out: dict[int, dict] = dict(cached)
+    for entry in results:
+        if isinstance(entry, BaseException):
+            continue
+        gid, info = entry
+        out[gid] = info
     return out
 
 
@@ -404,20 +464,36 @@ POPULAR_TOPICS = (
 
 
 async def warmup_popular() -> None:
-    """Background task fired at app startup. Sequentially pre-fetches the most
-    commonly clicked categories so the first user sees instant results."""
+    """Background warmup. Two phases:
+
+    1. Sequentially pre-fetch top categories so the search itself is instant.
+    2. For each category, pre-batch the reading-info of the first N books
+       so the user's first click delivers cards WITH CEFR badges already.
+
+    Errors swallowed; if Gutendex is down the cache stays empty and the
+    live request path takes over.
+    """
     import sys
 
+    BOOKS_PER_TOPIC_TO_WARM = 10  # top 10 books per category get reading-info
+
     print(
-        f"[gutenberg] warmup starting ({len(POPULAR_TOPICS)} topics)",
+        f"[gutenberg] warmup phase 1: {len(POPULAR_TOPICS)} category searches",
         file=sys.stderr,
         flush=True,
     )
+    warmed_book_ids: set[int] = set()
     for i, topic in enumerate(POPULAR_TOPICS, 1):
         try:
-            await search_books(query=None, topic=topic, page=1)
+            data = await search_books(query=None, topic=topic, page=1)
+            results = data.get("results") or []
+            for b in results[:BOOKS_PER_TOPIC_TO_WARM]:
+                bid = b.get("id")
+                if isinstance(bid, int):
+                    warmed_book_ids.add(bid)
             print(
-                f"[gutenberg] warmup {i}/{len(POPULAR_TOPICS)}: {topic} ✓",
+                f"[gutenberg] warmup {i}/{len(POPULAR_TOPICS)}: "
+                f"{topic} ({len(results)} books)",
                 file=sys.stderr,
                 flush=True,
             )
@@ -428,6 +504,27 @@ async def warmup_popular() -> None:
                 flush=True,
             )
         await asyncio.sleep(2)
+
+    if warmed_book_ids:
+        print(
+            f"[gutenberg] warmup phase 2: {len(warmed_book_ids)} reading-info scrapes",
+            file=sys.stderr,
+            flush=True,
+        )
+        try:
+            await get_reading_info_batch(list(warmed_book_ids), scrape_missing=True)
+            print(
+                "[gutenberg] warmup phase 2 complete",
+                file=sys.stderr,
+                flush=True,
+            )
+        except Exception as e:
+            print(
+                f"[gutenberg] warmup phase 2 FAIL: {e}",
+                file=sys.stderr,
+                flush=True,
+            )
+
     print("[gutenberg] warmup complete", file=sys.stderr, flush=True)
 
 

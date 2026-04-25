@@ -70,16 +70,30 @@ async def reading_info(
 async def reading_info_batch(
     request: Request,
     ids: str = Query(..., max_length=2000),
+    scrape_missing: bool = Query(default=True),
 ):
-    """Bulk lookup of cached reading info (cache-only, no scrape).
-    `ids` is a comma-separated list (e.g. ?ids=1342,1661,84). Max 100."""
+    """Bulk lookup of reading info for many books. ONE-SHOT replacement
+    for the frontend N+1 pattern.
+
+    Default behavior (`scrape_missing=true`): for ids not yet cached in DB,
+    scrape gutenberg.org in parallel under a Semaphore(12). The frontend
+    gets every CEFR in a single response, no per-book fan-out.
+
+    `scrape_missing=false`: cache-only lookup, returns immediately with
+    only the ids already in DB. Useful when you don't want to wait for
+    fresh scrapes (e.g. background prefetch).
+
+    `ids` is a comma-separated list. Max 100 per batch.
+    """
     try:
         id_list = [int(x) for x in ids.split(",") if x.strip()]
     except ValueError as e:
         raise HTTPException(422, "ids must be comma-separated integers") from e
     if len(id_list) > 100:
         raise HTTPException(422, "max 100 ids per batch")
-    data = gutenberg.get_reading_info_batch_cached(id_list)
+    data = await gutenberg.get_reading_info_batch(
+        id_list, scrape_missing=scrape_missing
+    )
     return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
 
 
