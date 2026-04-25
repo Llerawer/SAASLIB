@@ -9,12 +9,13 @@ from starlette.responses import Response
 
 import asyncio
 
-from app.api.v1 import books, captures, cards, dictionary, reviews, stats
+from app.api.v1 import books, captures, cards, dictionary, internal, reviews, stats
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.db import close_pool
 from app.core.http import close_client
 from app.core.rate_limit import limiter
+from app.core.redis_client import close_redis, ensure_redis_ready
 from app.services.gutenberg import warmup_popular
 
 
@@ -23,6 +24,10 @@ _background_tasks: set[asyncio.Task] = set()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Validate Redis BEFORE accepting traffic (CACHE_MODE=redis fails here
+    # instead of silently degrading later).
+    await ensure_redis_ready()
+
     # Warm cache for popular categories so the first user click is instant.
     # KEEP the reference — asyncio holds only weak refs; otherwise the task
     # can be garbage-collected mid-execution.
@@ -36,6 +41,7 @@ async def lifespan(_app: FastAPI):
             t.cancel()
     await close_client()
     await close_pool()
+    await close_redis()
 
 
 app = FastAPI(title="LinguaReader API", version="0.1.0", lifespan=lifespan)
@@ -95,3 +101,4 @@ app.include_router(cards.router)
 app.include_router(dictionary.router)
 app.include_router(reviews.router)
 app.include_router(stats.router)
+app.include_router(internal.router)

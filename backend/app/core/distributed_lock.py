@@ -29,6 +29,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
+from app.core.metrics import metrics
 from app.core.redis_client import get_redis
 
 
@@ -220,12 +221,15 @@ async def stampede_lock(
     must publish via stampede_publish/stampede_publish_error. is_owner=False
     → caller awaits the future."""
     is_owner, fut = await _redis_acquire(key, ttl)
+    backend = "redis" if (await get_redis()) is not None else "memory"
+    metrics.incr(f"lock.acquired.{backend}")
+    if not is_owner:
+        metrics.incr("lock.contention")
     try:
         yield is_owner, fut
     finally:
-        # If owner exits without publishing (e.g. unhandled exception), make
-        # sure waiters don't hang forever.
         if is_owner and not fut.done():
+            metrics.incr("lock.owner_died_without_publish")
             await _redis_release(
                 key,
                 error=RuntimeError("stampede owner did not publish"),

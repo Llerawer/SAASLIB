@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +22,17 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     # External APIs (optional — services degrade gracefully if missing).
     DEEPL_API_KEY: str = ""
+
+    # ===== Cache / distributed lock backend selection =====
+    # auto   = use Redis if REDIS_URL is reachable, else in-memory.
+    #          Convenient for dev. NOT recommended for prod (silent fallback
+    #          masks Redis outages).
+    # redis  = REQUIRE Redis. App fails to boot if REDIS_URL is missing or
+    #          unreachable. Production-safe.
+    # memory = NEVER use Redis even if REDIS_URL is set. Useful for single-
+    #          process deployments where you want fully predictable behavior.
+    CACHE_MODE: Literal["auto", "redis", "memory"] = "auto"
+    REDIS_URL: str = ""
 
     model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
 

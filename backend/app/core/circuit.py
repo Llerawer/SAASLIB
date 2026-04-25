@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Awaitable, Callable, TypeVar
 
+from app.core.metrics import metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,14 +79,18 @@ class CircuitBreaker:
                 logger.info(
                     "circuit recovered", extra={"breaker": self.name}
                 )
+                metrics.incr(f"circuit.{self.name}.recovered")
             self._state.state = State.CLOSED
             self._state.consecutive_failures = 0
+        metrics.incr(f"circuit.{self.name}.success")
 
     async def _record_failure(self) -> None:
         async with self._lock:
             self._state.consecutive_failures += 1
+            opened = False
             if self._state.consecutive_failures >= self.failure_threshold:
                 if self._state.state is not State.OPEN:
+                    opened = True
                     logger.warning(
                         "circuit OPEN",
                         extra={
@@ -94,6 +100,9 @@ class CircuitBreaker:
                     )
                 self._state.state = State.OPEN
                 self._state.opened_at = time.monotonic()
+        metrics.incr(f"circuit.{self.name}.failure")
+        if opened:
+            metrics.incr(f"circuit.{self.name}.opened")
 
 
 T = TypeVar("T")
@@ -105,6 +114,7 @@ async def call_with_breaker(
 ) -> T:
     """Run fn() under breaker semantics. Raises CircuitOpenError when open."""
     if not await breaker._allow():
+        metrics.incr(f"circuit.{breaker.name}.short_circuited")
         raise CircuitOpenError(f"circuit '{breaker.name}' is open")
     try:
         result = await fn()

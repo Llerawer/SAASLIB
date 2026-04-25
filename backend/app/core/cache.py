@@ -19,6 +19,7 @@ from typing import Any
 
 from cachetools import TTLCache
 
+from app.core.metrics import metrics
 from app.core.redis_client import cache_get, cache_mget, cache_mset, cache_set
 
 
@@ -43,10 +44,15 @@ class TwoLayerCache:
         """L1 first; on miss, ask L2; if L2 hits, populate L1."""
         l1 = self._l1.get(key)
         if l1 is not None:
+            metrics.incr(f"cache.{self._namespace}.l1.hit")
             return l1
+        metrics.incr(f"cache.{self._namespace}.l1.miss")
         l2 = await cache_get(self._qualified(key))
         if l2 is not None:
             self._l1[key] = l2
+            metrics.incr(f"cache.{self._namespace}.l2.hit")
+        else:
+            metrics.incr(f"cache.{self._namespace}.l2.miss")
         return l2
 
     async def get_many(self, keys: list[str]) -> dict[str, Any]:
