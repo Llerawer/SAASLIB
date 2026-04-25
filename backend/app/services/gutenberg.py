@@ -57,10 +57,22 @@ def _epub_format_url(book: dict) -> str | None:
     return None
 
 
-async def search_books(query: str, page: int = 1):
-    """Search Gutendex; filter results to only books that actually have an
-    EPUB format. Saves the user from clicking on audiobook-only results."""
-    data = await _get(GUTENDEX_API, search=query, languages="en", page=page)
+async def search_books(
+    query: str | None = None,
+    page: int = 1,
+    topic: str | None = None,
+):
+    """Search Gutendex; filter results to only books with EPUB available.
+
+    `topic` uses Gutendex's full-text search across `subjects` and
+    `bookshelves` (e.g. 'adventure', 'mystery', 'science fiction').
+    """
+    params: dict[str, str | int] = {"languages": "en", "page": page}
+    if query:
+        params["search"] = query
+    if topic:
+        params["topic"] = topic
+    data = await _get(GUTENDEX_API, **params)
     results = data.get("results") or []
     filtered = [b for b in results if _has_epub(b)]
     return {**data, "results": filtered}

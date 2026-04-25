@@ -10,8 +10,15 @@ router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
 
 @router.get("/search")
-async def search(q: str, page: int = 1, user_id: str = Depends(get_current_user_id)):
-    return await gutenberg.search_books(q, page)
+async def search(
+    q: str | None = None,
+    topic: str | None = None,
+    page: int = 1,
+    user_id: str = Depends(get_current_user_id),
+):
+    if not q and not topic:
+        raise HTTPException(422, "Provide either q or topic")
+    return await gutenberg.search_books(query=q, page=page, topic=topic)
 
 
 @router.get("/{gutenberg_id}/metadata")

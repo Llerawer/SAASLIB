@@ -13,6 +13,10 @@ import {
 } from "@/lib/api/queries";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  BookPreviewDialog,
+  type BookPreviewSeed,
+} from "@/components/book-preview-dialog";
 
 type GutendexAuthor = { name: string; birth_year?: number; death_year?: number };
 type GutendexBook = {
@@ -24,21 +28,39 @@ type GutendexBook = {
 };
 type GutendexResponse = { results: GutendexBook[]; count: number };
 
+const POPULAR_TOPICS: { label: string; topic: string }[] = [
+  { label: "Adventure", topic: "adventure" },
+  { label: "Mystery", topic: "mystery" },
+  { label: "Sci-fi", topic: "science fiction" },
+  { label: "Romance", topic: "love" },
+  { label: "Children's", topic: "children" },
+  { label: "Drama", topic: "drama" },
+  { label: "Poetry", topic: "poetry" },
+  { label: "History", topic: "history" },
+  { label: "Philosophy", topic: "philosophy" },
+];
+
 export default function LibraryPage() {
   const myLibrary = useMyLibrary();
   const [query, setQuery] = useState("");
+  const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const [results, setResults] = useState<GutendexBook[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewBook, setPreviewBook] = useState<BookPreviewSeed | null>(null);
 
-  async function handleSearch(e: FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  async function runSearch(opts: { q?: string; topic?: string | null }) {
+    const q = opts.q?.trim() ?? "";
+    const topic = opts.topic ?? null;
+    if (!q && !topic) return;
     setLoading(true);
     setError(null);
     try {
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (topic) params.set("topic", topic);
       const data = await api.get<GutendexResponse>(
-        `/api/v1/books/search?q=${encodeURIComponent(query)}`,
+        `/api/v1/books/search?${params.toString()}`,
       );
       setResults(data.results ?? []);
     } catch (err) {
@@ -46,6 +68,23 @@ export default function LibraryPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSearch(e: FormEvent) {
+    e.preventDefault();
+    setActiveTopic(null);
+    runSearch({ q: query });
+  }
+
+  function handleTopicClick(topic: string) {
+    setQuery("");
+    setActiveTopic(topic);
+    runSearch({ topic });
+  }
+
+  function clearTopic() {
+    setActiveTopic(null);
+    setResults([]);
   }
 
   const myBooks = myLibrary.data ?? [];
@@ -59,7 +98,8 @@ export default function LibraryPage() {
             <BookOpen className="h-5 w-5" /> Continuar leyendo
           </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            {myBooks.length} {myBooks.length === 1 ? "libro" : "libros"} en tu biblioteca
+            {myBooks.length} {myBooks.length === 1 ? "libro" : "libros"} en tu
+            biblioteca
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {myBooks.map((b) => (
@@ -78,7 +118,7 @@ export default function LibraryPage() {
           Encuentra un libro de dominio público y empieza a leer.
         </p>
 
-        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
+        <form onSubmit={handleSearch} className="flex gap-2 mb-3">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -89,30 +129,64 @@ export default function LibraryPage() {
           </Button>
         </form>
 
+        {/* Topic chips */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <span className="text-xs text-muted-foreground self-center mr-1">
+            Categorías:
+          </span>
+          {POPULAR_TOPICS.map((t) => (
+            <button
+              key={t.topic}
+              onClick={() => handleTopicClick(t.topic)}
+              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                activeTopic === t.topic
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-accent border-input"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+          {activeTopic && (
+            <button
+              onClick={clearTopic}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 ml-1"
+            >
+              <X className="h-3 w-3" /> Limpiar
+            </button>
+          )}
+        </div>
+
         {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
         {results.length === 0 && !loading && myBooks.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            Empieza buscando un autor o título arriba.
+            Empieza buscando un autor, título, o haz click en una categoría.
           </p>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {results.map((book) => (
-            <Link
+            <button
               key={book.id}
-              href={`/read/${book.id}?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.authors?.[0]?.name ?? "")}`}
-              className="border rounded-lg p-4 hover:bg-accent transition-colors"
+              onClick={() => setPreviewBook(book)}
+              className="text-left border rounded-lg p-4 hover:bg-accent transition-colors"
             >
               <h3 className="font-semibold text-sm line-clamp-2">{book.title}</h3>
               <p className="text-xs text-muted-foreground mt-1">
                 {book.authors?.[0]?.name ?? "Autor desconocido"}
               </p>
               <p className="text-xs text-muted-foreground mt-2">#{book.id}</p>
-            </Link>
+            </button>
           ))}
         </div>
       </section>
+
+      <BookPreviewDialog
+        book={previewBook}
+        open={!!previewBook}
+        onOpenChange={(v) => !v && setPreviewBook(null)}
+      />
     </div>
   );
 }
