@@ -14,7 +14,6 @@ import {
   HIGHLIGHT_THEME,
 } from "@/lib/reader/highlight";
 
-type EpubUrlResponse = { url: string };
 type BookOut = { id: string; title: string; source_ref: string };
 
 const WORD_RE = /[\w'-]+/u;
@@ -148,13 +147,14 @@ export default function ReadPage({
         internalBookIdRef.current = registered.id;
         setInternalBookId(registered.id);
 
-        const { url } = await api.get<EpubUrlResponse>(
-          `/api/v1/books/${gutenbergId}/epub-url`,
-        );
+        // Proxy the EPUB through our backend (Gutenberg has no CORS headers).
+        const apiBase =
+          process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8095";
+        const proxyUrl = `${apiBase}/api/v1/books/${gutenbergId}/epub`;
         if (cancelled || !viewerRef.current) return;
 
         const ePub = (await import("epubjs")).default;
-        const book = ePub(url, { openAs: "epub" });
+        const book = ePub(proxyUrl, { openAs: "epub" });
         const rendition = book.renderTo(viewerRef.current, {
           width: "100%",
           height: "100%",

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.core.auth import get_current_user_id
 from app.db.supabase_client import get_admin_client
@@ -22,6 +22,22 @@ async def metadata(gutenberg_id: int, user_id: str = Depends(get_current_user_id
 @router.get("/{gutenberg_id}/epub-url")
 async def epub_url(gutenberg_id: int, user_id: str = Depends(get_current_user_id)):
     return {"url": gutenberg.get_epub_url(gutenberg_id)}
+
+
+@router.get("/{gutenberg_id}/epub")
+async def epub_proxy(gutenberg_id: int):
+    """Stream the EPUB binary through our backend so the browser can load it.
+    Public (no auth) — the EPUB itself is freely available on gutenberg.org.
+    epub.js doesn't send Authorization headers on its internal fetches anyway."""
+    content = await gutenberg.stream_epub(gutenberg_id)
+    return Response(
+        content=content,
+        media_type="application/epub+zip",
+        headers={
+            "Content-Disposition": f'inline; filename="gutenberg-{gutenberg_id}.epub"',
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
 
 
 @router.post("/gutenberg/register", response_model=BookOut)
