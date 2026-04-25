@@ -104,15 +104,23 @@ async def reading_info_batch(
         raise HTTPException(422, "ids must be comma-separated integers") from e
     if len(id_list) > 100:
         raise HTTPException(422, "max 100 ids per batch")
-    data, complete = await gutenberg.get_reading_info_batch(
+    result = await gutenberg.get_reading_info_batch(
         id_list, scrape_missing=scrape_missing
     )
-    headers = (
-        _PUBLIC_CACHE_HEADERS
-        if complete
-        else {"Cache-Control": "no-cache, no-store"}
-    )
-    return JSONResponse(content=data, headers=headers)
+    if result.cdn_safe:
+        headers = _PUBLIC_CACHE_HEADERS
+    elif result.attempted_ok:
+        # All attempts went through but data density is low → don't poison
+        # the long edge cache, but a short browser cache is fine.
+        headers = {"Cache-Control": "private, max-age=60"}
+    else:
+        # Some scrapes failed → don't cache anywhere.
+        headers = {"Cache-Control": "no-cache, no-store"}
+    headers = {
+        **headers,
+        "X-Data-Density": f"{result.data_density:.2f}",
+    }
+    return JSONResponse(content=result.data, headers=headers)
 
 
 @router.get("/{gutenberg_id}/epub")

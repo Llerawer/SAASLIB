@@ -284,19 +284,10 @@ async def _scrape_reading_info(gutenberg_id: int) -> dict:
 
 
 # ============================================================================
-# DB cache layer — wrapped in asyncio.to_thread so the supabase-py SYNC client
-# doesn't block the event loop. All access funnels through these helpers.
+# DB cache layer — uses asyncpg directly (real async, no threadpool wrapping).
 # ============================================================================
 
-
-def _row_to_info(row: dict) -> dict:
-    return {
-        "reading_ease": float(row["flesch_score"])
-        if row.get("flesch_score") is not None
-        else None,
-        "grade": row.get("reading_grade"),
-        "cefr": row.get("cefr"),
-    }
+from app.core.db import select_reading_info_many, upsert_reading_info_many
 
 
 def _info_to_row(gutenberg_id: int, info: dict) -> dict:
@@ -308,60 +299,22 @@ def _info_to_row(gutenberg_id: int, info: dict) -> dict:
     }
 
 
-def _select_one_sync(gutenberg_id: int) -> dict | None:
-    from app.db.supabase_client import get_admin_client
-
-    res = (
-        get_admin_client()
-        .table("gutenberg_reading_info")
-        .select("flesch_score, reading_grade, cefr")
-        .eq("gutenberg_id", gutenberg_id)
-        .limit(1)
-        .execute()
-    )
-    return _row_to_info(res.data[0]) if res.data else None
-
-
-def _select_many_sync(ids: list[int]) -> dict[int, dict]:
-    if not ids:
-        return {}
-    from app.db.supabase_client import get_admin_client
-
-    rows = (
-        get_admin_client()
-        .table("gutenberg_reading_info")
-        .select("gutenberg_id, flesch_score, reading_grade, cefr")
-        .in_("gutenberg_id", ids)
-        .execute()
-        .data
-        or []
-    )
-    return {int(r["gutenberg_id"]): _row_to_info(r) for r in rows}
-
-
-def _upsert_many_sync(rows: list[dict]) -> None:
-    if not rows:
-        return
-    from app.db.supabase_client import get_admin_client
-
-    get_admin_client().table("gutenberg_reading_info").upsert(
-        rows, on_conflict="gutenberg_id"
-    ).execute()
-
-
 async def _select_one(gid: int) -> dict | None:
-    return await asyncio.to_thread(_select_one_sync, gid)
+    """One-id helper — used only in single-id path. Hits the same asyncpg
+    pool as the bulk select."""
+    result = await select_reading_info_many([gid])
+    return result.get(gid)
 
 
 async def _select_many(ids: list[int]) -> dict[int, dict]:
-    return await asyncio.to_thread(_select_many_sync, ids)
+    return await select_reading_info_many(ids)
 
 
 async def _upsert_many(rows: list[dict]) -> None:
-    await asyncio.to_thread(_upsert_many_sync, rows)
+    await upsert_reading_info_many(rows)
 
 
-# Public name kept for callers; now async + non-blocking.
+# Public name kept for callers; now backed by real async pool.
 async def get_reading_info_batch_cached(ids: list[int]) -> dict[int, dict]:
     return await _select_many(ids)
 
@@ -457,48 +410,96 @@ async def _scrape_only(gutenberg_id: int) -> tuple[int, dict | None]:
         _scrape_inflight.pop(gutenberg_id, None)
 
 
+class BatchResult:
+    """Richer result type than (data, bool). The endpoint uses it to decide
+    Cache-Control with full information about HOW complete the response is.
+
+    Attributes:
+      data: {gutenberg_id: info}
+      attempted_ok: every id had a chance to resolve (no scrape exceptions).
+      data_density: fraction of ids with non-null cefr (0.0–1.0).
+      had_negative_cache_hits: some ids returned from short-lived negative
+        cache (5-min). Worth retrying soon.
+    """
+
+    __slots__ = (
+        "data",
+        "attempted_ok",
+        "data_density",
+        "had_negative_cache_hits",
+    )
+
+    def __init__(
+        self,
+        data: dict[int, dict],
+        attempted_ok: bool,
+        data_density: float,
+        had_negative_cache_hits: bool,
+    ) -> None:
+        self.data = data
+        self.attempted_ok = attempted_ok
+        self.data_density = data_density
+        self.had_negative_cache_hits = had_negative_cache_hits
+
+    @property
+    def cdn_safe(self) -> bool:
+        """Cache-Control: public is safe ONLY if we attempted everything AND
+        we have at least 80% real data. Below that, the response is too
+        incomplete to share globally — readers will see a wave of '?'
+        badges that get fixed only after the user reloads."""
+        return self.attempted_ok and self.data_density >= 0.8
+
+
 async def get_reading_info_batch(
     ids: list[int],
     scrape_missing: bool = True,
-) -> tuple[dict[int, dict], bool]:
-    """One-shot batch lookup.
-
-    Returns (data, all_complete):
-      - data: dict {gutenberg_id: info} with every id that resolved.
-      - all_complete: True if every requested id has a result (cached or
-        freshly scraped). False if any scrape failed → caller should NOT
-        cache the response (e.g. send Cache-Control: no-cache to CDN).
+) -> BatchResult:
+    """One-shot batch lookup. See BatchResult for shape.
 
     Pipeline:
-      1. ONE bulk SELECT IN_(ids) → cached subset.
-      2. For missing: parallel scrape under Semaphore(12).
-         No per-id DB lookup — the batch select already did the work.
+      1. ONE bulk SELECT IN_(ids) via asyncpg (real async, no threadpool).
+      2. For missing: parallel scrape under Semaphore(12) + per-id stampede
+         dedupe via _scrape_inflight (process-local for now — see TODO).
       3. ONE bulk UPSERT for all successfully-scraped non-null results.
-      4. Failures are logged + tracked for the all_complete flag.
+      4. Failures logged with sample ids. Density tracked for cdn_safe flag.
     """
     if not ids:
-        return {}, True
+        return BatchResult({}, attempted_ok=True, data_density=1.0,
+                           had_negative_cache_hits=False)
 
     cached = await _select_many(ids)
     if not scrape_missing:
-        return cached, len(cached) == len(ids)
+        density = (
+            sum(1 for v in cached.values() if v.get("cefr") is not None)
+            / len(ids)
+        )
+        return BatchResult(
+            cached,
+            attempted_ok=len(cached) == len(ids),
+            data_density=density,
+            had_negative_cache_hits=False,
+        )
 
     missing = [i for i in ids if i not in cached]
+    had_negative = any(i in _scrape_negative for i in missing)
     if not missing:
-        return cached, True
+        density = sum(1 for v in cached.values() if v.get("cefr") is not None) / len(ids)
+        return BatchResult(cached, True, density, had_negative)
 
     results = await asyncio.gather(
         *(_scrape_only(i) for i in missing),
-        return_exceptions=False,  # we never raise from _scrape_only
+        return_exceptions=False,
     )
 
     out = dict(cached)
     rows_to_upsert: list[dict] = []
     failures = 0
+    failed_ids: list[int] = []
 
     for gid, info in results:
         if info is None:
             failures += 1
+            failed_ids.append(gid)
             _scrape_negative[gid] = True
             continue
         out[gid] = info
@@ -508,13 +509,11 @@ async def get_reading_info_batch(
             _scrape_negative[gid] = True
 
     if rows_to_upsert:
-        # ONE UPSERT for the entire batch, not N writes.
         try:
             await _upsert_many(rows_to_upsert)
         except Exception:
             logger.exception(
-                "bulk upsert failed",
-                extra={"row_count": len(rows_to_upsert)},
+                "bulk upsert failed", extra={"row_count": len(rows_to_upsert)}
             )
 
     if failures:
@@ -523,14 +522,21 @@ async def get_reading_info_batch(
             extra={
                 "total_missing": len(missing),
                 "failures": failures,
-                "sample_failed_ids": [
-                    g for g, i in results if i is None
-                ][:5],
+                "sample_failed_ids": failed_ids[:5],
             },
         )
 
-    all_complete = failures == 0
-    return out, all_complete
+    real_data_count = sum(
+        1 for v in out.values() if v.get("cefr") is not None
+    )
+    density = real_data_count / len(ids)
+
+    return BatchResult(
+        data=out,
+        attempted_ok=failures == 0,
+        data_density=density,
+        had_negative_cache_hits=had_negative,
+    )
 
 
 # ============================================================================
@@ -615,9 +621,12 @@ async def warmup_popular() -> None:
             flush=True,
         )
         try:
-            await get_reading_info_batch(list(warmed_book_ids), scrape_missing=True)
+            r = await get_reading_info_batch(
+                list(warmed_book_ids), scrape_missing=True
+            )
             print(
-                "[gutenberg] warmup phase 2 complete",
+                f"[gutenberg] warmup phase 2 complete "
+                f"(density={r.data_density:.2f} attempted_ok={r.attempted_ok})",
                 file=sys.stderr,
                 flush=True,
             )

@@ -12,6 +12,7 @@ import asyncio
 from app.api.v1 import books, captures, cards, dictionary, reviews, stats
 from app.core.auth import get_current_user_id
 from app.core.config import settings
+from app.core.db import close_pool
 from app.core.http import close_client
 from app.core.rate_limit import limiter
 from app.services.gutenberg import warmup_popular
@@ -29,11 +30,12 @@ async def lifespan(_app: FastAPI):
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     yield
-    # Cancel warmup if still running, then close pool.
+    # Cancel warmup if still running, then close pools.
     for t in list(_background_tasks):
         if not t.done():
             t.cancel()
     await close_client()
+    await close_pool()
 
 
 app = FastAPI(title="LinguaReader API", version="0.1.0", lifespan=lifespan)
