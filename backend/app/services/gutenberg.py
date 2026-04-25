@@ -3,6 +3,7 @@ cache and stampede protection."""
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from cachetools import TTLCache
 from fastapi import HTTPException
 
 from app.core.http import get_client
+
+logger = logging.getLogger(__name__)
 
 GUTENDEX_API = "https://gutendex.com/books/"
 EPUB_MIME_KEYS = ("application/epub+zip", "application/epub")
@@ -163,7 +166,7 @@ async def search_books(
             )
         return stale
 
-    fut: asyncio.Future = asyncio.get_event_loop().create_future()
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
     _search_inflight[key] = fut
     try:
         data = await _fetch_search(query or "", topic, page)
@@ -214,7 +217,7 @@ async def get_book_metadata(gutenberg_id: int) -> dict:
             asyncio.create_task(_refresh_meta(gutenberg_id))
         return stale
 
-    fut: asyncio.Future = asyncio.get_event_loop().create_future()
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
     _meta_inflight[gutenberg_id] = fut
     try:
         data = await _get_json(f"{GUTENDEX_API}{gutenberg_id}")
@@ -280,7 +283,32 @@ async def _scrape_reading_info(gutenberg_id: int) -> dict:
         return {"reading_ease": None, "grade": None, "cefr": None}
 
 
-def _cache_lookup(gutenberg_id: int) -> dict | None:
+# ============================================================================
+# DB cache layer — wrapped in asyncio.to_thread so the supabase-py SYNC client
+# doesn't block the event loop. All access funnels through these helpers.
+# ============================================================================
+
+
+def _row_to_info(row: dict) -> dict:
+    return {
+        "reading_ease": float(row["flesch_score"])
+        if row.get("flesch_score") is not None
+        else None,
+        "grade": row.get("reading_grade"),
+        "cefr": row.get("cefr"),
+    }
+
+
+def _info_to_row(gutenberg_id: int, info: dict) -> dict:
+    return {
+        "gutenberg_id": gutenberg_id,
+        "flesch_score": info.get("reading_ease"),
+        "reading_grade": info.get("grade"),
+        "cefr": info.get("cefr"),
+    }
+
+
+def _select_one_sync(gutenberg_id: int) -> dict | None:
     from app.db.supabase_client import get_admin_client
 
     res = (
@@ -291,61 +319,10 @@ def _cache_lookup(gutenberg_id: int) -> dict | None:
         .limit(1)
         .execute()
     )
-    if not res.data:
-        return None
-    row = res.data[0]
-    return {
-        "reading_ease": float(row["flesch_score"])
-        if row.get("flesch_score") is not None
-        else None,
-        "grade": row.get("reading_grade"),
-        "cefr": row.get("cefr"),
-    }
+    return _row_to_info(res.data[0]) if res.data else None
 
 
-def _cache_write(gutenberg_id: int, info: dict) -> None:
-    from app.db.supabase_client import get_admin_client
-
-    get_admin_client().table("gutenberg_reading_info").upsert(
-        {
-            "gutenberg_id": gutenberg_id,
-            "flesch_score": info.get("reading_ease"),
-            "reading_grade": info.get("grade"),
-            "cefr": info.get("cefr"),
-        },
-        on_conflict="gutenberg_id",
-    ).execute()
-
-
-async def get_reading_info(gutenberg_id: int) -> dict:
-    """Layered: DB cache → in-flight dedupe → scrape → persist."""
-    cached = _cache_lookup(gutenberg_id)
-    if cached is not None:
-        return cached
-
-    inflight = _scrape_inflight.get(gutenberg_id)
-    if inflight is not None:
-        return await inflight
-
-    fut: asyncio.Future = asyncio.get_event_loop().create_future()
-    _scrape_inflight[gutenberg_id] = fut
-    try:
-        info = await _scrape_reading_info(gutenberg_id)
-        # Persist even null results so we don't re-scrape books with no score.
-        _cache_write(gutenberg_id, info)
-        if not fut.done():
-            fut.set_result(info)
-        return info
-    except Exception as e:
-        if not fut.done():
-            fut.set_exception(e)
-        raise
-    finally:
-        _scrape_inflight.pop(gutenberg_id, None)
-
-
-def get_reading_info_batch_cached(ids: list[int]) -> dict[int, dict]:
-    """Cache-only bulk lookup. Returns {id: info} for ids already cached."""
+def _select_many_sync(ids: list[int]) -> dict[int, dict]:
     if not ids:
         return {}
     from app.db.supabase_client import get_admin_client
@@ -359,75 +336,201 @@ def get_reading_info_batch_cached(ids: list[int]) -> dict[int, dict]:
         .data
         or []
     )
-    out: dict[int, dict] = {}
-    for r in rows:
-        out[int(r["gutenberg_id"])] = {
-            "reading_ease": float(r["flesch_score"])
-            if r.get("flesch_score") is not None
-            else None,
-            "grade": r.get("reading_grade"),
-            "cefr": r.get("cefr"),
-        }
-    return out
+    return {int(r["gutenberg_id"]): _row_to_info(r) for r in rows}
 
 
-# Concurrency cap for fan-out scrapes to gutenberg.org. Higher than this and
-# we risk being rate-limited.
+def _upsert_many_sync(rows: list[dict]) -> None:
+    if not rows:
+        return
+    from app.db.supabase_client import get_admin_client
+
+    get_admin_client().table("gutenberg_reading_info").upsert(
+        rows, on_conflict="gutenberg_id"
+    ).execute()
+
+
+async def _select_one(gid: int) -> dict | None:
+    return await asyncio.to_thread(_select_one_sync, gid)
+
+
+async def _select_many(ids: list[int]) -> dict[int, dict]:
+    return await asyncio.to_thread(_select_many_sync, ids)
+
+
+async def _upsert_many(rows: list[dict]) -> None:
+    await asyncio.to_thread(_upsert_many_sync, rows)
+
+
+# Public name kept for callers; now async + non-blocking.
+async def get_reading_info_batch_cached(ids: list[int]) -> dict[int, dict]:
+    return await _select_many(ids)
+
+
+# ============================================================================
+# Reading info — single + batch with no N+1, no event-loop blocking
+# ============================================================================
+
+
 _SCRAPE_CONCURRENCY = 12
 _scrape_semaphore = asyncio.Semaphore(_SCRAPE_CONCURRENCY)
+# Negative cache for transient scrape failures: avoid hammering gutenberg.org
+# when it's down without poisoning the persistent DB cache. 5 min TTL.
+_scrape_negative: TTLCache[int, bool] = TTLCache(maxsize=2000, ttl=300)
 
 
-async def _scrape_one_for_batch(gutenberg_id: int) -> tuple[int, dict]:
-    """Wrap get_reading_info with the global semaphore so the batch endpoint
-    can call asyncio.gather on N ids without saturating gutenberg.org."""
-    async with _scrape_semaphore:
-        info = await get_reading_info(gutenberg_id)
+async def get_reading_info(gutenberg_id: int) -> dict:
+    """Single-id entry point. Layered:
+       1. DB cache (async, doesn't block event loop)
+       2. In-flight Future dedupe (cross-request stampede)
+       3. Scrape gutenberg.org → persist if score found
+       4. Negative cache transient failures so we don't retry every request
+    """
+    cached = await _select_one(gutenberg_id)
+    if cached is not None:
+        return cached
+
+    inflight = _scrape_inflight.get(gutenberg_id)
+    if inflight is not None:
+        return await inflight
+
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
+    _scrape_inflight[gutenberg_id] = fut
+    try:
+        info = await _scrape_reading_info(gutenberg_id)
+        # Distinguish legitimate "no score on gutenberg.org" (persist forever
+        # so we don't re-scrape) vs transient failure (don't pollute DB).
+        is_real_result = (
+            info.get("reading_ease") is not None or info.get("cefr") is not None
+        )
+        if is_real_result:
+            await _upsert_many([_info_to_row(gutenberg_id, info)])
+        else:
+            # Could be the book legitimately has no score, OR scrape failed.
+            # Conservative: short-lived negative cache, no DB pollution.
+            _scrape_negative[gutenberg_id] = True
+        if not fut.done():
+            fut.set_result(info)
+        return info
+    except Exception as e:
+        logger.exception(
+            "get_reading_info failed", extra={"gutenberg_id": gutenberg_id}
+        )
+        if not fut.done():
+            fut.set_exception(e)
+        raise
+    finally:
+        _scrape_inflight.pop(gutenberg_id, None)
+
+
+async def _scrape_only(gutenberg_id: int) -> tuple[int, dict | None]:
+    """Used by the batch path: scrape under semaphore + per-id stampede
+    dedupe, but skip the per-id DB SELECT (the batch already did it).
+    Returns (gid, info) on success, (gid, None) on failure."""
+    if gutenberg_id in _scrape_negative:
+        return gutenberg_id, {"reading_ease": None, "grade": None, "cefr": None}
+
+    inflight = _scrape_inflight.get(gutenberg_id)
+    if inflight is not None:
+        try:
+            info = await inflight
+            return gutenberg_id, info
+        except Exception:
+            return gutenberg_id, None
+
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
+    _scrape_inflight[gutenberg_id] = fut
+    try:
+        async with _scrape_semaphore:
+            info = await _scrape_reading_info(gutenberg_id)
+        if not fut.done():
+            fut.set_result(info)
         return gutenberg_id, info
+    except Exception as e:
+        logger.warning(
+            "scrape_only failed",
+            extra={"gutenberg_id": gutenberg_id, "error": str(e)},
+        )
+        if not fut.done():
+            fut.set_exception(e)
+        return gutenberg_id, None
+    finally:
+        _scrape_inflight.pop(gutenberg_id, None)
 
 
 async def get_reading_info_batch(
     ids: list[int],
     scrape_missing: bool = True,
-) -> dict[int, dict]:
-    """One-shot batch endpoint that the frontend uses ONCE per category.
+) -> tuple[dict[int, dict], bool]:
+    """One-shot batch lookup.
 
-    1. SELECT cache rows from DB for every id (1 round-trip).
-    2. For ids NOT cached: scrape in parallel under a Semaphore(12) so we
-       don't open 32 simultaneous connections to gutenberg.org.
-       get_reading_info already has its own per-id stampede dedupe via
-       _scrape_inflight, so concurrent batch requests with overlapping
-       ids share the same in-flight Future.
-    3. UPSERTs are handled inside get_reading_info; new rows are persisted
-       so the next batch sees them as cache hits.
+    Returns (data, all_complete):
+      - data: dict {gutenberg_id: info} with every id that resolved.
+      - all_complete: True if every requested id has a result (cached or
+        freshly scraped). False if any scrape failed → caller should NOT
+        cache the response (e.g. send Cache-Control: no-cache to CDN).
 
-    This eliminates the frontend N+1: 1 HTTP request → 1 backend handler →
-    1 DB round-trip + N scrapes (parallel, capped) → 1 JSON response.
+    Pipeline:
+      1. ONE bulk SELECT IN_(ids) → cached subset.
+      2. For missing: parallel scrape under Semaphore(12).
+         No per-id DB lookup — the batch select already did the work.
+      3. ONE bulk UPSERT for all successfully-scraped non-null results.
+      4. Failures are logged + tracked for the all_complete flag.
     """
     if not ids:
-        return {}
+        return {}, True
 
-    # L1: bulk DB lookup.
-    cached = get_reading_info_batch_cached(ids)
+    cached = await _select_many(ids)
     if not scrape_missing:
-        return cached
+        return cached, len(cached) == len(ids)
 
     missing = [i for i in ids if i not in cached]
     if not missing:
-        return cached
+        return cached, True
 
-    # L2: parallel scrapes with bounded concurrency. asyncio.gather collects
-    # all in one go; per-id failures don't take down the batch.
     results = await asyncio.gather(
-        *(_scrape_one_for_batch(i) for i in missing),
-        return_exceptions=True,
+        *(_scrape_only(i) for i in missing),
+        return_exceptions=False,  # we never raise from _scrape_only
     )
-    out: dict[int, dict] = dict(cached)
-    for entry in results:
-        if isinstance(entry, BaseException):
+
+    out = dict(cached)
+    rows_to_upsert: list[dict] = []
+    failures = 0
+
+    for gid, info in results:
+        if info is None:
+            failures += 1
+            _scrape_negative[gid] = True
             continue
-        gid, info = entry
         out[gid] = info
-    return out
+        if info.get("reading_ease") is not None or info.get("cefr") is not None:
+            rows_to_upsert.append(_info_to_row(gid, info))
+        else:
+            _scrape_negative[gid] = True
+
+    if rows_to_upsert:
+        # ONE UPSERT for the entire batch, not N writes.
+        try:
+            await _upsert_many(rows_to_upsert)
+        except Exception:
+            logger.exception(
+                "bulk upsert failed",
+                extra={"row_count": len(rows_to_upsert)},
+            )
+
+    if failures:
+        logger.warning(
+            "reading_info_batch had failures",
+            extra={
+                "total_missing": len(missing),
+                "failures": failures,
+                "sample_failed_ids": [
+                    g for g, i in results if i is None
+                ][:5],
+            },
+        )
+
+    all_complete = failures == 0
+    return out, all_complete
 
 
 # ============================================================================

@@ -62,7 +62,15 @@ async def reading_info(
 ):
     """Reading-ease score + approximate CEFR level. Cached in DB."""
     data = await gutenberg.get_reading_info(gutenberg_id)
-    return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
+    # Don't poison CDN with null responses (transient gutenberg.org failures
+    # or books legitimately without scores). Real data → public cache OK.
+    has_data = (
+        data.get("reading_ease") is not None or data.get("cefr") is not None
+    )
+    headers = (
+        _PUBLIC_CACHE_HEADERS if has_data else {"Cache-Control": "no-cache, no-store"}
+    )
+    return JSONResponse(content=data, headers=headers)
 
 
 @router.get("/reading-info/batch")
@@ -76,12 +84,17 @@ async def reading_info_batch(
     for the frontend N+1 pattern.
 
     Default behavior (`scrape_missing=true`): for ids not yet cached in DB,
-    scrape gutenberg.org in parallel under a Semaphore(12). The frontend
-    gets every CEFR in a single response, no per-book fan-out.
+    scrape gutenberg.org in parallel under a Semaphore(12). One bulk
+    UPSERT persists all successful scrapes.
 
     `scrape_missing=false`: cache-only lookup, returns immediately with
     only the ids already in DB. Useful when you don't want to wait for
     fresh scrapes (e.g. background prefetch).
+
+    Cache-Control:
+      - `public, s-maxage=300` ONLY if every requested id resolved.
+      - `no-cache` if any scrape failed → prevents CDN from poisoning
+        all global users with a 5-min window of "?" badges.
 
     `ids` is a comma-separated list. Max 100 per batch.
     """
@@ -91,10 +104,15 @@ async def reading_info_batch(
         raise HTTPException(422, "ids must be comma-separated integers") from e
     if len(id_list) > 100:
         raise HTTPException(422, "max 100 ids per batch")
-    data = await gutenberg.get_reading_info_batch(
+    data, complete = await gutenberg.get_reading_info_batch(
         id_list, scrape_missing=scrape_missing
     )
-    return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
+    headers = (
+        _PUBLIC_CACHE_HEADERS
+        if complete
+        else {"Cache-Control": "no-cache, no-store"}
+    )
+    return JSONResponse(content=data, headers=headers)
 
 
 @router.get("/{gutenberg_id}/epub")
