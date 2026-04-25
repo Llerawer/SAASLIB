@@ -41,6 +41,8 @@ def _existing_card(user_id: str, word_normalized: str) -> dict | None:
 def _init_schedule(user_id: str, card_id: str) -> None:
     """Initialize FSRS state for a freshly created card. Idempotent (no-op
     if a row already exists)."""
+    from app.services.fsrs_scheduler import initial_snapshot
+
     client = _client()
     existing = (
         client.table("card_schedule")
@@ -51,14 +53,16 @@ def _init_schedule(user_id: str, card_id: str) -> None:
     )
     if existing.data:
         return
+    snap = initial_snapshot()
     client.table("card_schedule").insert(
         {
             "card_id": card_id,
             "user_id": user_id,
-            "due_at": _now_iso(),
-            "fsrs_state": 0,  # 0=new
-            "fsrs_difficulty": 0,
-            "fsrs_stability": 0,
+            "due_at": snap.due_at.isoformat(),
+            "fsrs_state": snap.state,
+            "fsrs_step": snap.step,
+            "fsrs_difficulty": snap.difficulty,
+            "fsrs_stability": snap.stability,
             "fsrs_reps": 0,
             "fsrs_lapses": 0,
         }
