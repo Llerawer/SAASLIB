@@ -1,0 +1,96 @@
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.core.auth import get_current_user_id
+from app.db.supabase_client import get_admin_client
+from app.schemas.books import BookOut, GutenbergRegisterRequest, ProgressUpdateRequest
+from app.services import gutenberg
+
+router = APIRouter(prefix="/api/v1/books", tags=["books"])
+
+
+@router.get("/search")
+async def search(q: str, page: int = 1, user_id: str = Depends(get_current_user_id)):
+    return await gutenberg.search_books(q, page)
+
+
+@router.get("/{gutenberg_id}/metadata")
+async def metadata(gutenberg_id: int, user_id: str = Depends(get_current_user_id)):
+    return await gutenberg.get_book_metadata(gutenberg_id)
+
+
+@router.get("/{gutenberg_id}/epub-url")
+async def epub_url(gutenberg_id: int, user_id: str = Depends(get_current_user_id)):
+    return {"url": gutenberg.get_epub_url(gutenberg_id)}
+
+
+@router.post("/gutenberg/register", response_model=BookOut)
+async def register_gutenberg_book(
+    body: GutenbergRegisterRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Idempotently register a Gutenberg book in the public catalog and add
+    it to the user's library. Returns the book row."""
+    client = get_admin_client()
+    book_hash = f"gutenberg:{body.gutenberg_id}"
+
+    existing = (
+        client.table("books").select("*").eq("book_hash", book_hash).limit(1).execute()
+    )
+    if existing.data:
+        book = existing.data[0]
+    else:
+        inserted = (
+            client.table("books")
+            .insert(
+                {
+                    "book_hash": book_hash,
+                    "source_type": "gutenberg",
+                    "source_ref": str(body.gutenberg_id),
+                    "title": body.title,
+                    "author": body.author,
+                    "language": body.language,
+                    "is_public": True,
+                }
+            )
+            .execute()
+        )
+        if not inserted.data:
+            raise HTTPException(500, "Failed to insert book")
+        book = inserted.data[0]
+
+    client.table("user_books").upsert(
+        {
+            "user_id": user_id,
+            "book_id": book["id"],
+            "status": "reading",
+        },
+        on_conflict="user_id,book_id",
+    ).execute()
+
+    return book
+
+
+@router.put("/{book_id}/progress")
+async def update_progress(
+    book_id: str,
+    body: ProgressUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    client = get_admin_client()
+    result = (
+        client.table("user_books")
+        .update(
+            {
+                "current_location": body.location,
+                "progress_percent": body.percent,
+                "last_read_at": "now()",
+                "status": "finished" if body.percent >= 99 else "reading",
+            }
+        )
+        .eq("user_id", user_id)
+        .eq("book_id", book_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(404, "user_book not found — register the book first")
+    return {"ok": True}

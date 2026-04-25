@@ -1,0 +1,36 @@
+# Node
+node_modules/
+.next/
+out/
+dist/
+build/
+*.log
+.env*.local
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Supabase
+supabase/.branches
+supabase/.temp
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+backend/.env
+frontend/.env*.local
