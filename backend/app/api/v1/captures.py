@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+
+from app.core.auth import get_current_user_id
+from app.db.supabase_client import get_admin_client
+from app.schemas.captures import CaptureCreate, CaptureOut, CaptureUpdate
+from app.services import word_lookup
+from app.services.normalize import normalize
+
+router = APIRouter(prefix="/api/v1/captures", tags=["captures"])
+
+
+def _row_to_capture(row: dict, enrichment: dict | None = None) -> CaptureOut:
+    base = {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "word": row["word"],
+        "word_normalized": row["word_normalized"],
+        "context_sentence": row.get("context_sentence"),
+        "page_or_location": row.get("page_or_location"),
+        "book_id": row.get("book_id"),
+        "tags": row.get("tags") or [],
+        "promoted_to_card": row.get("promoted_to_card", False),
+        "captured_at": row["captured_at"],
+    }
+    if enrichment:
+        base.update(
+            translation=enrichment.get("translation"),
+            definition=enrichment.get("definition"),
+            ipa=enrichment.get("ipa"),
+            audio_url=enrichment.get("audio_url"),
+            examples=enrichment.get("examples") or [],
+        )
+    return CaptureOut(**base)
+
+
+@router.post("", response_model=CaptureOut)
+async def create_capture(
+    body: CaptureCreate,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user_id),
+):
+    word_normalized = normalize(body.word, body.language)
+    if not word_normalized:
+        raise HTTPException(422, "Word normalizes to empty string")
+
+    lookup_result = await word_lookup.lookup(
+        word_normalized, body.language, background_tasks
+    )
+
+    payload = {
+        "user_id": user_id,
+        "word": body.word,
+        "word_normalized": word_normalized,
+        "context_sentence": body.context_sentence,
+        "page_or_location": body.page_or_location,
+        "book_id": body.book_id,
+        "tags": body.tags,
+    }
+    client = get_admin_client()
+    inserted = client.table("captures").insert(payload).execute()
+    if not inserted.data:
+        raise HTTPException(500, "Failed to insert capture")
+
+    return _row_to_capture(
+        inserted.data[0], enrichment=word_lookup.to_dict(lookup_result)
+    )
+
+
+@router.get("", response_model=list[CaptureOut])
+async def list_captures(
+    book_id: str | None = None,
+    promoted: bool | None = None,
+    tag: str | None = None,
+    q: str | None = None,
+    limit: int = Query(default=50, le=200),
+    offset: int = 0,
+    user_id: str = Depends(get_current_user_id),
+):
+    client = get_admin_client()
+    query = (
+        client.table("captures")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("captured_at", desc=True)
+        .range(offset, offset + limit - 1)
+    )
+    if book_id is not None:
+        query = query.eq("book_id", book_id)
+    if promoted is not None:
+        query = query.eq("promoted_to_card", promoted)
+    if tag is not None:
+        query = query.contains("tags", [tag])
+    if q:
+        query = query.ilike("word", f"%{q}%")
+    rows = query.execute().data or []
+    return [_row_to_capture(r) for r in rows]
+
+
+@router.put("/{capture_id}", response_model=CaptureOut)
+async def update_capture(
+    capture_id: str,
+    body: CaptureUpdate,
+    user_id: str = Depends(get_current_user_id),
+):
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(422, "No fields to update")
+    client = get_admin_client()
+    res = (
+        client.table("captures")
+        .update(update)
+        .eq("id", capture_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Capture not found")
+    return _row_to_capture(res.data[0])
+
+
+@router.delete("/{capture_id}", status_code=204)
+async def delete_capture(
+    capture_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    client = get_admin_client()
+    res = (
+        client.table("captures")
+        .delete()
+        .eq("id", capture_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Capture not found")

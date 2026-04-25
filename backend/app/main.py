@@ -1,7 +1,7 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import books
+from app.api.v1 import books, captures, dictionary
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 
@@ -27,3 +27,5 @@ async def me(user_id: str = Depends(get_current_user_id)):
 
 
 app.include_router(books.router)
+app.include_router(captures.router)
+app.include_router(dictionary.router)

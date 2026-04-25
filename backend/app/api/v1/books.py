@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.auth import get_current_user_id
 from app.db.supabase_client import get_admin_client
 from app.schemas.books import BookOut, GutenbergRegisterRequest, ProgressUpdateRequest
+from app.schemas.captures import CapturedWord
 from app.services import gutenberg
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
@@ -94,3 +95,35 @@ async def update_progress(
     if not result.data:
         raise HTTPException(404, "user_book not found — register the book first")
     return {"ok": True}
+
+
+@router.get("/{book_id}/captured-words", response_model=list[CapturedWord])
+async def list_captured_words(
+    book_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Words captured in this book by this user, with frequency and
+    first-seen timestamp. Used by the reader to color words and animate
+    newly-discovered ones."""
+    client = get_admin_client()
+    rows = (
+        client.table("captures")
+        .select("word_normalized, captured_at")
+        .eq("user_id", user_id)
+        .eq("book_id", book_id)
+        .execute()
+        .data
+        or []
+    )
+    agg: dict[str, dict] = {}
+    for r in rows:
+        wn = r["word_normalized"]
+        ts = r["captured_at"]
+        cur = agg.get(wn)
+        if cur is None:
+            agg[wn] = {"word_normalized": wn, "count": 1, "first_seen": ts}
+        else:
+            cur["count"] += 1
+            if ts < cur["first_seen"]:
+                cur["first_seen"] = ts
+    return list(agg.values())
