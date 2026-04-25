@@ -87,6 +87,26 @@ async def register_gutenberg_book(
     return book
 
 
+@router.get("/{book_id}/progress")
+async def get_progress(
+    book_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Return saved reading position for this book + user. 404 if never read."""
+    client = get_admin_client()
+    res = (
+        client.table("user_books")
+        .select("current_location, progress_percent, last_read_at, status")
+        .eq("user_id", user_id)
+        .eq("book_id", book_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Not in user library yet")
+    return res.data[0]
+
+
 @router.put("/{book_id}/progress")
 async def update_progress(
     book_id: str,

@@ -163,12 +163,21 @@ export default function ReadPage({
           spread: "auto",
         });
         rendition.themes.default(HIGHLIGHT_THEME);
-        await rendition.display();
+
+        // Try to resume from saved progress.
+        let savedCfi: string | null = null;
+        try {
+          const saved = await api.get<{ current_location: string | null }>(
+            `/api/v1/books/${registered.id}/progress`,
+          );
+          savedCfi = saved.current_location ?? null;
+        } catch {
+          // 404 first time — fine.
+        }
+        await rendition.display(savedCfi ?? undefined);
         renditionRef.current = rendition as never;
 
         rendition.on("rendered", () => {
-          // Apply highlights after each chapter render. Use ref to avoid
-          // stale closure on captured set changes.
           applyRef.current();
         });
 
@@ -189,67 +198,62 @@ export default function ReadPage({
           },
         );
 
-        // Double-click → extract word + context, open popup.
-        rendition.on("dblclick", (event: MouseEvent) => {
-          const target = event.target as Node | null;
-          if (!target) return;
+        // Register dblclick handler on every chapter iframe via epub.js hooks.
+        // The rendition.on("dblclick") API doesn't fire reliably across
+        // iframes in epub.js v0.3 — we attach directly to each chapter doc.
+        rendition.hooks.content.register(
+          (contents: { document: Document; window: Window }) => {
+            const doc = contents.document;
+            const handler = (event: MouseEvent) => {
+              const view = contents.window;
+              const sel = view.getSelection?.();
+              if (!sel) return;
 
-          // Get the word at click point via Selection inside the iframe.
-          const doc = (target.ownerDocument ?? null) as Document | null;
-          if (!doc) return;
-          const view = doc.defaultView;
-          if (!view) return;
-          const sel = view.getSelection();
-          if (!sel) return;
+              const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+              let text = sel.toString().trim();
 
-          // If user double-clicked, browser usually selects the word already.
-          const text = sel.toString().trim();
-          let word = text;
-          const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+              if (!text && range) {
+                const node = range.startContainer;
+                if (node.nodeType === 3 && node.textContent) {
+                  const m = WORD_RE.exec(
+                    node.textContent.slice(Math.max(0, range.startOffset - 30)),
+                  );
+                  if (m) text = m[0];
+                }
+              }
 
-          if (!word && range) {
-            // Fallback: use the text node + offset to extract word.
-            const node = range.startContainer;
-            if (node.nodeType === 3 && node.textContent) {
-              const nodeText = node.textContent;
-              const offset = range.startOffset;
-              const match = WORD_RE.exec(nodeText.slice(Math.max(0, offset - 30)));
-              if (match) word = match[0];
-            }
-          }
+              const word = (text.match(WORD_RE)?.[0] ?? text).trim();
+              const normalizedClient = clientNormalize(word);
+              if (!normalizedClient) return;
 
-          word = (word.match(WORD_RE)?.[0] ?? word).trim();
-          const normalizedClient = clientNormalize(word);
-          if (!normalizedClient) return;
+              let contextSentence: string | null = null;
+              if (range) {
+                const node = range.startContainer;
+                if (node.nodeType === 3 && node.textContent) {
+                  contextSentence = extractContextSentence(
+                    node.textContent,
+                    range.startOffset,
+                  );
+                }
+              }
 
-          // Build context from the surrounding text.
-          let contextSentence: string | null = null;
-          if (range) {
-            const node = range.startContainer;
-            if (node.nodeType === 3 && node.textContent) {
-              const offsetInNode = range.startOffset;
-              contextSentence = extractContextSentence(
-                node.textContent,
-                offsetInNode,
-              );
-            }
-          }
+              // Position relative to host window.
+              const iframe = view.frameElement as HTMLIFrameElement | null;
+              const rect = iframe?.getBoundingClientRect();
+              const x = (rect?.left ?? 0) + event.clientX;
+              const y = (rect?.top ?? 0) + event.clientY;
 
-          // Compute popup position relative to host window.
-          const iframe = (event.target as HTMLElement)?.ownerDocument
-            ?.defaultView?.frameElement as HTMLIFrameElement | null;
-          const iframeRect = iframe?.getBoundingClientRect();
-          const x = (iframeRect?.left ?? 0) + event.clientX;
-          const y = (iframeRect?.top ?? 0) + event.clientY;
-
-          setPopup({
-            word,
-            normalizedClient,
-            contextSentence,
-            pageOrLocation: null,
-            position: { x, y },
-          });
-        });
+              setPopup({
+                word,
+                normalizedClient,
+                contextSentence,
+                pageOrLocation: null,
+                position: { x, y },
+              });
+            };
+            doc.addEventListener("dblclick", handler);
+          },
+        );
 
         cleanup = () => {
           if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
