@@ -314,3 +314,26 @@ export function useUndoReview() {
     },
   });
 }
+
+export type StatsHeatmapDay = {
+  date: string;
+  reviews: number;
+  captures: number;
+};
+
+export type Stats = {
+  cards_today_due: number;
+  cards_today_done: number;
+  retention_30d: number | null;
+  streak_days: number;
+  heatmap_90d: StatsHeatmapDay[];
+  totals: { captures: number; cards: number; reviews: number };
+};
+
+export function useStats() {
+  return useQuery({
+    queryKey: ["stats-me"] as const,
+    queryFn: () => api.get<Stats>("/api/v1/stats/me"),
+    staleTime: 60_000,
+  });
+}

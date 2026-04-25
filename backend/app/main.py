@@ -1,7 +1,7 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import books, captures, cards, dictionary, reviews
+from app.api.v1 import books, captures, cards, dictionary, reviews, stats
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 
@@ -31,3 +31,4 @@ app.include_router(captures.router)
 app.include_router(cards.router)
 app.include_router(dictionary.router)
 app.include_router(reviews.router)
+app.include_router(stats.router)

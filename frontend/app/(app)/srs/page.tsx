@@ -12,6 +12,7 @@ import {
   type ReviewQueueCard,
 } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
+import { StatsCompact } from "@/components/stats-compact";
 
 type GradeKey = 1 | 2 | 3 | 4;
 
@@ -157,14 +158,15 @@ export default function SrsPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-6">
-      <header className="flex items-center justify-between mb-4 text-sm">
-        <span className="text-muted-foreground">
+      <header className="flex items-center justify-between mb-4 text-sm gap-4">
+        <span className="text-muted-foreground shrink-0">
           {progress} hechas · {total} en cola
         </span>
-        <span className="text-xs text-muted-foreground">
-          Space: voltear · 1-4: grade · U: deshacer · ←/→: navegar
-        </span>
+        <StatsCompact />
       </header>
+      <p className="text-xs text-muted-foreground mb-4">
+        Space: voltear · 1-4: grade · U: deshacer · ←/→: navegar
+      </p>
 
       <CardView
         card={card}

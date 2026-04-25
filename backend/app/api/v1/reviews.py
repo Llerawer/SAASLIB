@@ -19,6 +19,7 @@ from app.core.auth import get_current_user_id
 from app.db.supabase_client import get_admin_client
 from app.schemas.reviews import GradeInput, GradeResult, ReviewQueueCard, UndoResult
 from app.services import fsrs_scheduler
+from app.services import stats as stats_service
 
 router = APIRouter(prefix="/api/v1/reviews", tags=["reviews"])
 
@@ -143,6 +144,7 @@ async def grade(
             )
             if not review_ins.data:
                 raise HTTPException(500, "Failed to insert review row")
+            stats_service.invalidate(user_id)
             return GradeResult(
                 card_id=card_id,
                 state_before=before.to_review_payload(),
@@ -186,6 +188,7 @@ async def undo(
         "card_id", rev["card_id"]
     ).eq("user_id", user_id).execute()
     client.table("reviews").delete().eq("id", rev["id"]).execute()
+    stats_service.invalidate(user_id)
     return UndoResult(
         restored_card_id=rev["card_id"],
         restored_state=before.to_review_payload(),

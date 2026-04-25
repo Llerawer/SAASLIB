@@ -19,7 +19,7 @@ export default async function AppLayout({
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b px-4 py-3 flex items-center justify-between">
-        <nav className="flex gap-4 text-sm">
+        <nav className="flex gap-4 text-sm items-center">
           <Link href="/library" className="font-bold">
             LinguaReader
           </Link>
@@ -31,6 +31,9 @@ export default async function AppLayout({
           </Link>
           <Link href="/srs" className="text-muted-foreground hover:text-foreground">
             Repaso
+          </Link>
+          <Link href="/settings" className="text-muted-foreground hover:text-foreground">
+            Stats
           </Link>
         </nav>
         <div className="flex items-center gap-3 text-sm">
