@@ -2,10 +2,15 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Search } from "lucide-react";
+import { BookOpen, Search, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
-import { useMyLibrary, type MyLibraryBook } from "@/lib/api/queries";
+import {
+  useMyLibrary,
+  useRemoveFromLibrary,
+  type MyLibraryBook,
+} from "@/lib/api/queries";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -113,6 +118,7 @@ export default function LibraryPage() {
 }
 
 function MyBookCard({ book }: { book: MyLibraryBook }) {
+  const remove = useRemoveFromLibrary();
   const gutenbergId = book.source_type === "gutenberg" ? book.source_ref : null;
   const href = gutenbergId
     ? `/read/${gutenbergId}?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author ?? "")}`
@@ -123,14 +129,35 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
     ? new Date(book.last_read_at).toLocaleDateString()
     : "—";
 
+  async function handleRemove(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm(`¿Quitar "${book.title}" de tu biblioteca?`)) return;
+    try {
+      await remove.mutateAsync(book.book_id);
+      toast.success("Libro quitado");
+    } catch (err) {
+      toast.error(`No se pudo quitar: ${(err as Error).message}`);
+    }
+  }
+
   return (
     <Link
       href={href}
-      className="group border rounded-lg overflow-hidden hover:bg-accent transition-colors"
+      className="group relative border rounded-lg overflow-hidden hover:bg-accent transition-colors"
     >
+      <button
+        onClick={handleRemove}
+        disabled={remove.isPending}
+        className="absolute top-2 right-2 p-1 rounded bg-background/80 text-muted-foreground hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+        aria-label="Quitar de la biblioteca"
+        title="Quitar"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
       <div className="p-4">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-sm line-clamp-2 flex-1">
+          <h3 className="font-semibold text-sm line-clamp-2 flex-1 pr-6">
             {book.title}
           </h3>
           {isFinished && (

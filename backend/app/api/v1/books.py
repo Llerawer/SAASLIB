@@ -46,7 +46,24 @@ async def register_gutenberg_book(
     user_id: str = Depends(get_current_user_id),
 ):
     """Idempotently register a Gutenberg book in the public catalog and add
-    it to the user's library. Returns the book row."""
+    it to the user's library. Validates the book has an EPUB format before
+    accepting — rejects audiobooks and other EPUB-less records up front."""
+    # Validate: this id actually has an EPUB on Gutenberg.
+    try:
+        meta = await gutenberg.get_book_metadata(body.gutenberg_id)
+    except HTTPException as e:
+        raise HTTPException(
+            422,
+            f"No se pudo obtener metadata del libro {body.gutenberg_id}: {e.detail}",
+        ) from e
+    if not gutenberg._has_epub(meta):
+        raise HTTPException(
+            422,
+            f"El libro {body.gutenberg_id} ('{body.title}') no tiene formato "
+            "EPUB en Gutenberg. Probablemente es un audiolibro u otro formato. "
+            "Busca otra edición.",
+        )
+
     client = get_admin_client()
     book_hash = f"gutenberg:{body.gutenberg_id}"
 
@@ -85,6 +102,26 @@ async def register_gutenberg_book(
     ).execute()
 
     return book
+
+
+@router.delete("/me/library/{book_id}", status_code=204)
+async def remove_from_library(
+    book_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Remove a book from the user's personal library (deletes user_books row).
+    The book stays in the public catalog. Captures of this book remain — only
+    the user_books association is dropped."""
+    client = get_admin_client()
+    res = (
+        client.table("user_books")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("book_id", book_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Book not in your library")
 
 
 @router.get("/{book_id}/progress")

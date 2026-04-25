@@ -359,3 +359,13 @@ export function useMyLibrary() {
     staleTime: 30_000,
   });
 }
+
+export function useRemoveFromLibrary() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (bookId) => api.del(`/api/v1/books/me/library/${bookId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-library"] });
+    },
+  });
+}
