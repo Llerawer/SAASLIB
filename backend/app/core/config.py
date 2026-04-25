@@ -1,4 +1,11 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env relative to the backend/ root regardless of where the process
+# was launched from (e.g. uvicorn --app-dir, pytest from monorepo root, etc.).
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_ENV_FILE = _BACKEND_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -13,7 +20,7 @@ class Settings(BaseSettings):
     # External APIs (optional — services degrade gracefully if missing).
     DEEPL_API_KEY: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
 
 
 settings = Settings()

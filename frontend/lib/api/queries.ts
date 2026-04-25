@@ -104,3 +104,115 @@ export function useCreateCapture(callbacks?: CreateCaptureCallbacks) {
     },
   });
 }
+
+export type CaptureFilters = {
+  book_id?: string;
+  promoted?: boolean;
+  tag?: string;
+  q?: string;
+  limit?: number;
+};
+
+export function useCapturesList(filters: CaptureFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.book_id) params.set("book_id", filters.book_id);
+  if (filters.promoted !== undefined) params.set("promoted", String(filters.promoted));
+  if (filters.tag) params.set("tag", filters.tag);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return useQuery({
+    queryKey: queryKeys.captures(filters as Record<string, unknown>),
+    queryFn: () => api.get<Capture[]>(`/api/v1/captures${qs ? `?${qs}` : ""}`),
+    staleTime: 10_000,
+  });
+}
+
+type CaptureUpdateInput = {
+  context_sentence?: string | null;
+  page_or_location?: string | null;
+  tags?: string[];
+};
+
+export function useUpdateCapture() {
+  const qc = useQueryClient();
+  return useMutation<Capture, Error, { id: string; patch: CaptureUpdateInput }>({
+    mutationFn: ({ id, patch }) => api.put<Capture>(`/api/v1/captures/${id}`, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.captures() });
+    },
+  });
+}
+
+export function useDeleteCapture() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.del(`/api/v1/captures/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.captures() });
+      qc.invalidateQueries({ queryKey: queryKeys.capturesPendingCount() });
+    },
+  });
+}
+
+export type Card = {
+  id: string;
+  user_id: string;
+  word: string;
+  word_normalized: string;
+  translation: string | null;
+  definition: string | null;
+  ipa: string | null;
+  audio_url: string | null;
+  examples: string[];
+  mnemonic: string | null;
+  cefr: string | null;
+  notes: string | null;
+  source_capture_ids: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type PromoteResult = {
+  cards: Card[];
+  created_count: number;
+  merged_count: number;
+};
+
+type PromoteAiData = {
+  word: string;
+  translation?: string | null;
+  definition?: string | null;
+  ipa?: string | null;
+  cefr?: string | null;
+  mnemonic?: string | null;
+  examples?: string[];
+  tip?: string | null;
+};
+
+type PromoteInput = {
+  capture_ids: string[];
+  ai_data?: PromoteAiData[];
+};
+
+export function usePromoteCaptures() {
+  const qc = useQueryClient();
+  return useMutation<PromoteResult, Error, PromoteInput>({
+    mutationFn: (input) =>
+      api.post<PromoteResult>("/api/v1/cards/promote-from-captures", input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.captures() });
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: queryKeys.capturesPendingCount() });
+      qc.invalidateQueries({ queryKey: ["reviews-due"] });
+    },
+  });
+}
+
+export function useCardsList() {
+  return useQuery({
+    queryKey: ["cards"] as const,
+    queryFn: () => api.get<Card[]>("/api/v1/cards"),
+    staleTime: 10_000,
+  });
+}

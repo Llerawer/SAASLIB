@@ -145,11 +145,11 @@ def main():
             # The full string normalizes weirdly, try a safer one.
             pass
 
-        # Capture more "gleam" forms and another lemma "shine"
+        # Capture more "gleam" forms and another lemma "run"
         r1 = httpx.post(f"{API}/api/v1/captures", headers=auth,
                         json={"word": "gleams", "language": "en"}, timeout=30).json()
         r2 = httpx.post(f"{API}/api/v1/captures", headers=auth,
-                        json={"word": "shining", "language": "en"}, timeout=30).json()
+                        json={"word": "running", "language": "en"}, timeout=30).json()
 
         r = httpx.post(
             f"{API}/api/v1/cards/promote-from-captures",
