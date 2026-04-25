@@ -28,8 +28,25 @@ async def epub_url(gutenberg_id: int, user_id: str = Depends(get_current_user_id
 async def epub_proxy(gutenberg_id: int):
     """Stream the EPUB binary through our backend so the browser can load it.
     Public (no auth) — the EPUB itself is freely available on gutenberg.org.
-    epub.js doesn't send Authorization headers on its internal fetches anyway."""
-    content = await gutenberg.stream_epub(gutenberg_id)
+
+    Lookup chain:
+      1. On-disk cache (data/epub_cache/{id}.epub) — instant after first hit.
+      2. books.epub_source_url stored at register time — skips Gutendex lookup.
+      3. Fallback: stream_epub queries Gutendex metadata + tries URL patterns.
+    """
+    # Try cached source URL from DB to skip a Gutendex round-trip.
+    client = get_admin_client()
+    book_row = (
+        client.table("books")
+        .select("epub_source_url")
+        .eq("book_hash", f"gutenberg:{gutenberg_id}")
+        .limit(1)
+        .execute()
+        .data
+    )
+    cached_url = book_row[0]["epub_source_url"] if book_row else None
+
+    content = await gutenberg.stream_epub(gutenberg_id, cached_url=cached_url)
     return Response(
         content=content,
         media_type="application/epub+zip",
@@ -46,24 +63,12 @@ async def register_gutenberg_book(
     user_id: str = Depends(get_current_user_id),
 ):
     """Idempotently register a Gutenberg book in the public catalog and add
-    it to the user's library. Validates the book has an EPUB format before
-    accepting — rejects audiobooks and other EPUB-less records up front."""
-    # Validate: this id actually has an EPUB on Gutenberg.
-    try:
-        meta = await gutenberg.get_book_metadata(body.gutenberg_id)
-    except HTTPException as e:
-        raise HTTPException(
-            422,
-            f"No se pudo obtener metadata del libro {body.gutenberg_id}: {e.detail}",
-        ) from e
-    if not gutenberg._has_epub(meta):
-        raise HTTPException(
-            422,
-            f"El libro {body.gutenberg_id} ('{body.title}') no tiene formato "
-            "EPUB en Gutenberg. Probablemente es un audiolibro u otro formato. "
-            "Busca otra edición.",
-        )
+    it to the user's library.
 
+    Validates EPUB availability the FIRST time only — subsequent registers
+    of an existing book trust the cached row. Stores the exact EPUB URL
+    from Gutendex metadata so the streamer doesn't need to refetch it.
+    """
     client = get_admin_client()
     book_hash = f"gutenberg:{body.gutenberg_id}"
 
@@ -71,8 +76,25 @@ async def register_gutenberg_book(
         client.table("books").select("*").eq("book_hash", book_hash).limit(1).execute()
     )
     if existing.data:
+        # Already registered → trust the cached row, skip the Gutendex hit.
         book = existing.data[0]
     else:
+        # New book: validate EPUB exists + cache the source URL.
+        try:
+            meta = await gutenberg.get_book_metadata(body.gutenberg_id)
+        except HTTPException as e:
+            raise HTTPException(
+                422,
+                f"No se pudo obtener metadata del libro {body.gutenberg_id}: {e.detail}",
+            ) from e
+        epub_url = gutenberg._epub_format_url(meta)
+        if not epub_url:
+            raise HTTPException(
+                422,
+                f"El libro {body.gutenberg_id} ('{body.title}') no tiene formato "
+                "EPUB en Gutenberg. Probablemente es un audiolibro u otro formato. "
+                "Busca otra edición.",
+            )
         inserted = (
             client.table("books")
             .insert(
@@ -84,6 +106,7 @@ async def register_gutenberg_book(
                     "author": body.author,
                     "language": body.language,
                     "is_public": True,
+                    "epub_source_url": epub_url,
                 }
             )
             .execute()

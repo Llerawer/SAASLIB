@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import httpx
 from fastapi import HTTPException
 
@@ -6,6 +8,11 @@ EPUB_MIME_KEYS = ("application/epub+zip", "application/epub")
 
 # Gutendex/Gutenberg are sometimes very slow (30s+). Generous timeout + retry once.
 _TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
+
+# On-disk cache for downloaded EPUBs. Lives next to the backend module so it
+# follows the project across machines, and so the .gitignore catches it.
+_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "epub_cache"
+_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 async def _get(url: str, **params) -> dict:
@@ -67,25 +74,36 @@ def get_epub_url(gutenberg_id: int) -> str:
     return f"https://www.gutenberg.org/ebooks/{gutenberg_id}.epub.images"
 
 
-async def stream_epub(gutenberg_id: int) -> bytes:
+async def stream_epub(gutenberg_id: int, cached_url: str | None = None) -> bytes:
     """Stream the EPUB binary from Gutenberg through our backend.
 
-    Strategy:
-      1. Hit Gutendex metadata to find the *exact* EPUB URL Gutenberg lists
-         (most reliable — Gutenberg's URL patterns vary by book).
-      2. Fall back to common URL patterns if metadata lookup fails.
+    Performance strategy:
+      0. On-disk cache first — instant return after the initial download.
+      1. Use cached_url from books.epub_source_url if provided (no Gutendex hit).
+      2. Otherwise fetch Gutendex metadata to find the EPUB URL.
+      3. Fall back to common URL patterns.
+      Successful downloads write to the cache for next time.
     """
-    candidates: list[str] = []
+    cache_path = _CACHE_DIR / f"{gutenberg_id}.epub"
+    if cache_path.exists() and cache_path.stat().st_size > 1024:
+        try:
+            data = cache_path.read_bytes()
+            print(f"[gutenberg] CACHE-HIT {gutenberg_id} ({len(data)} bytes)")
+            return data
+        except OSError:
+            pass  # corrupt cache → re-download
 
-    # Try metadata first.
-    try:
-        meta = await get_book_metadata(gutenberg_id)
-        url_from_meta = _epub_format_url(meta)
-        if url_from_meta:
-            candidates.append(url_from_meta)
-    except HTTPException:
-        # Continue to fallbacks.
-        pass
+    candidates: list[str] = []
+    if cached_url:
+        candidates.append(cached_url)
+    else:
+        try:
+            meta = await get_book_metadata(gutenberg_id)
+            url_from_meta = _epub_format_url(meta)
+            if url_from_meta:
+                candidates.append(url_from_meta)
+        except HTTPException:
+            pass
 
     candidates.extend(
         [
@@ -95,6 +113,9 @@ async def stream_epub(gutenberg_id: int) -> bytes:
             f"https://www.gutenberg.org/cache/epub/{gutenberg_id}/pg{gutenberg_id}.epub",
         ]
     )
+    # De-dup while preserving order.
+    seen: set[str] = set()
+    candidates = [u for u in candidates if not (u in seen or seen.add(u))]
 
     attempts: list[str] = []
     for url in candidates:
@@ -109,8 +130,13 @@ async def stream_epub(gutenberg_id: int) -> bytes:
                     # serves with HTTP 200 (~6KB of HTML instead of EPUB).
                     head = r.content[:8].lower()
                     if head.startswith(b"pk"):  # ZIP/EPUB signature
+                        try:
+                            cache_path.write_bytes(r.content)
+                        except OSError as e:
+                            print(f"[gutenberg] cache write failed: {e}")
                         print(
-                            f"[gutenberg] OK {gutenberg_id} via {url} ({size} bytes)"
+                            f"[gutenberg] OK {gutenberg_id} via {url} "
+                            f"({size} bytes, cached)"
                         )
                         return r.content
                     attempts.append(f"{url} -> 200 but not EPUB ({size}B)")

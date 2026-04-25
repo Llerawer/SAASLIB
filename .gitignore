@@ -35,3 +35,5 @@ Thumbs.db
 # Project
 backend/.env
 frontend/.env*.local
+backend/data/epub_cache/
+backend/data/
