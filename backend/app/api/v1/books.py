@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 
 from app.core.auth import get_current_user_id
 from app.db.supabase_client import get_admin_client
@@ -8,56 +9,59 @@ from app.services import gutenberg
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
+# Endpoints serving public Gutenberg data are NOT auth-gated and DO send
+# Cache-Control: public so a CDN can deduplicate them across users. Endpoints
+# that touch user-owned rows still go through get_current_user_id with no
+# Cache-Control headers.
+
+_PUBLIC_CACHE_HEADERS = {
+    "Cache-Control": "public, s-maxage=300, stale-while-revalidate=86400",
+}
+
 
 @router.get("/search")
 async def search(
     q: str | None = None,
     topic: str | None = None,
     page: int = 1,
-    user_id: str = Depends(get_current_user_id),
 ):
+    """Public Gutendex proxy with backend stampede dedupe + 5-min TTLCache."""
     if not q and not topic:
         raise HTTPException(422, "Provide either q or topic")
-    return await gutenberg.search_books(query=q, page=page, topic=topic)
+    data = await gutenberg.search_books(query=q, page=page, topic=topic)
+    return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
 
 
 @router.get("/{gutenberg_id}/metadata")
-async def metadata(gutenberg_id: int, user_id: str = Depends(get_current_user_id)):
-    return await gutenberg.get_book_metadata(gutenberg_id)
+async def metadata(gutenberg_id: int):
+    data = await gutenberg.get_book_metadata(gutenberg_id)
+    return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
 
 
 @router.get("/{gutenberg_id}/epub-url")
-async def epub_url(gutenberg_id: int, user_id: str = Depends(get_current_user_id)):
+async def epub_url(gutenberg_id: int):
     return {"url": gutenberg.get_epub_url(gutenberg_id)}
 
 
 @router.get("/{gutenberg_id}/reading-info")
-async def reading_info(
-    gutenberg_id: int,
-    user_id: str = Depends(get_current_user_id),
-):
+async def reading_info(gutenberg_id: int):
     """Reading-ease score + approximate CEFR level. Cached in DB."""
-    return await gutenberg.get_reading_info(gutenberg_id)
+    data = await gutenberg.get_reading_info(gutenberg_id)
+    return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
 
 
 @router.get("/reading-info/batch")
-async def reading_info_batch(
-    ids: str,
-    user_id: str = Depends(get_current_user_id),
-):
-    """Bulk lookup of cached reading info. Cache-only (no scrape). Returns
-    {gutenberg_id: info} for ids that are already cached. Use this to
-    prefetch existing data; trigger /reading-info/{id} per-book to scrape.
-
-    `ids` is a comma-separated list (e.g. ?ids=1342,1661,84).
-    """
+async def reading_info_batch(ids: str):
+    """Bulk lookup of cached reading info (cache-only, no scrape).
+    `ids` is a comma-separated list (e.g. ?ids=1342,1661,84). Max 100."""
     try:
         id_list = [int(x) for x in ids.split(",") if x.strip()]
     except ValueError as e:
         raise HTTPException(422, "ids must be comma-separated integers") from e
     if len(id_list) > 100:
         raise HTTPException(422, "max 100 ids per batch")
-    return gutenberg.get_reading_info_batch_cached(id_list)
+    data = gutenberg.get_reading_info_batch_cached(id_list)
+    return JSONResponse(content=data, headers=_PUBLIC_CACHE_HEADERS)
 
 
 @router.get("/{gutenberg_id}/epub")

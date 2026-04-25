@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.core.http import get_client
+
 FREE_DICT_URL = "https://api.dictionaryapi.dev/api/v2/entries/{language}/{word}"
 
 
@@ -23,11 +25,11 @@ async def fetch_definition(word: str, language: str = "en") -> DictEntry:
     fallback can be added later — Free Dictionary already mirrors Wiktionary
     data for English.)"""
     url = FREE_DICT_URL.format(language=language, word=word)
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            r = await client.get(url)
-        except httpx.HTTPError:
-            return DictEntry(word=word, ipa=None, audio_url=None, definition=None, examples=[], source="none")
+    client = get_client()
+    try:
+        r = await client.get(url)
+    except httpx.HTTPError:
+        return DictEntry(word=word, ipa=None, audio_url=None, definition=None, examples=[], source="none")
 
     if r.status_code == 404:
         return DictEntry(word=word, ipa=None, audio_url=None, definition=None, examples=[], source="none")

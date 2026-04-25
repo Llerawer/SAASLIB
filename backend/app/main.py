@@ -1,11 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import books, captures, cards, dictionary, reviews, stats
 from app.core.auth import get_current_user_id
 from app.core.config import settings
+from app.core.http import close_client
 
-app = FastAPI(title="LinguaReader API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # Close shared httpx pool — releases connections back to the OS instead
+    # of leaving them in TIME_WAIT.
+    await close_client()
+
+
+app = FastAPI(title="LinguaReader API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

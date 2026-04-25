@@ -149,6 +149,24 @@ export default function LibraryPage() {
     });
   }, [cachedQuery.data]);
 
+  // Cap memory: drop entries whose IDs aren't in the current results window.
+  // The TanStack Query cache for ["search", ...] keeps the underlying response
+  // for staleTime — re-entering a previous category re-prefetches its CEFRs
+  // from DB (cheap, batch endpoint).
+  useEffect(() => {
+    if (results.length === 0) return;
+    setReadingMap((prev) => {
+      const visible = new Set(results.map((b) => b.id));
+      const next: Record<number, ReadingInfo> = {};
+      let changed = false;
+      for (const [k, v] of Object.entries(prev)) {
+        if (visible.has(Number(k))) next[Number(k)] = v;
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [results]);
+
   // For ids without cached info, scrape on-demand. Cancel & ignore stale
   // results when search target changes via activeKeyId.
   useEffect(() => {
