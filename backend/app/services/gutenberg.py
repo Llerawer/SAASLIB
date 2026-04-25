@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import httpx
@@ -80,6 +81,52 @@ async def search_books(
 
 async def get_book_metadata(gutenberg_id: int):
     return await _get(f"{GUTENDEX_API}{gutenberg_id}")
+
+
+_READING_EASE_RE = re.compile(
+    r"Reading\s*ease\s*score[:\s]*([\d.]+)", re.IGNORECASE
+)
+_GRADE_RE = re.compile(r"\(([0-9]+)(?:st|nd|rd|th)?\s*grade\)", re.IGNORECASE)
+
+
+def _flesch_to_cefr(score: float) -> str:
+    """Approximate CEFR mapping from Flesch reading-ease score."""
+    if score >= 90:
+        return "A1"
+    if score >= 80:
+        return "A2"
+    if score >= 70:
+        return "B1"
+    if score >= 60:
+        return "B2"
+    if score >= 50:
+        return "B2-C1"
+    if score >= 30:
+        return "C1"
+    return "C2"
+
+
+async def get_reading_info(gutenberg_id: int) -> dict:
+    """Fetch the gutenberg.org HTML page and extract reading-ease score.
+
+    Returns: {reading_ease: float|None, grade: int|None, cefr: str|None}.
+    Cached at the function level since the score doesn't change.
+    """
+    url = f"https://www.gutenberg.org/ebooks/{gutenberg_id}"
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as c:
+            r = await c.get(url)
+        if r.status_code != 200:
+            return {"reading_ease": None, "grade": None, "cefr": None}
+        html = r.text
+        m_score = _READING_EASE_RE.search(html)
+        m_grade = _GRADE_RE.search(html)
+        score = float(m_score.group(1)) if m_score else None
+        grade = int(m_grade.group(1)) if m_grade else None
+        cefr = _flesch_to_cefr(score) if score is not None else None
+        return {"reading_ease": score, "grade": grade, "cefr": cefr}
+    except (httpx.TimeoutException, httpx.NetworkError):
+        return {"reading_ease": None, "grade": None, "cefr": None}
 
 
 def get_epub_url(gutenberg_id: int) -> str:

@@ -31,6 +31,15 @@ async def epub_url(gutenberg_id: int, user_id: str = Depends(get_current_user_id
     return {"url": gutenberg.get_epub_url(gutenberg_id)}
 
 
+@router.get("/{gutenberg_id}/reading-info")
+async def reading_info(
+    gutenberg_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Reading-ease score + approximate CEFR level scraped from gutenberg.org."""
+    return await gutenberg.get_reading_info(gutenberg_id)
+
+
 @router.get("/{gutenberg_id}/epub")
 async def epub_proxy(gutenberg_id: int):
     """Stream the EPUB binary through our backend so the browser can load it.
