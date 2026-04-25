@@ -133,6 +133,56 @@ async def update_progress(
     return {"ok": True}
 
 
+@router.get("/me/library")
+async def my_library(user_id: str = Depends(get_current_user_id)):
+    """Books the user has opened, with progress + last_read_at, sorted by
+    most recently read first. Used for 'Continue reading' on the home page."""
+    client = get_admin_client()
+    user_books = (
+        client.table("user_books")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("last_read_at", desc=True, nullsfirst=False)
+        .order("added_at", desc=True)
+        .execute()
+        .data
+        or []
+    )
+    if not user_books:
+        return []
+    book_ids = [ub["book_id"] for ub in user_books]
+    books_rows = (
+        client.table("books")
+        .select("*")
+        .in_("id", book_ids)
+        .execute()
+        .data
+        or []
+    )
+    by_id = {b["id"]: b for b in books_rows}
+    out = []
+    for ub in user_books:
+        b = by_id.get(ub["book_id"])
+        if not b:
+            continue
+        out.append(
+            {
+                "book_id": b["id"],
+                "source_type": b["source_type"],
+                "source_ref": b["source_ref"],
+                "title": b["title"],
+                "author": b.get("author"),
+                "language": b.get("language"),
+                "cover_url": b.get("cover_url"),
+                "progress_percent": float(ub.get("progress_percent") or 0),
+                "current_location": ub.get("current_location"),
+                "status": ub.get("status"),
+                "last_read_at": ub.get("last_read_at"),
+            }
+        )
+    return out
+
+
 @router.get("/{book_id}/captured-words", response_model=list[CapturedWord])
 async def list_captured_words(
     book_id: str,

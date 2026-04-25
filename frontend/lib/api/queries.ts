@@ -337,3 +337,25 @@ export function useStats() {
     staleTime: 60_000,
   });
 }
+
+export type MyLibraryBook = {
+  book_id: string;
+  source_type: string;
+  source_ref: string;
+  title: string;
+  author: string | null;
+  language: string | null;
+  cover_url: string | null;
+  progress_percent: number;
+  current_location: string | null;
+  status: string | null;
+  last_read_at: string | null;
+};
+
+export function useMyLibrary() {
+  return useQuery({
+    queryKey: ["my-library"] as const,
+    queryFn: () => api.get<MyLibraryBook[]>("/api/v1/books/me/library"),
+    staleTime: 30_000,
+  });
+}
