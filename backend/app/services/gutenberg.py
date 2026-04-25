@@ -154,15 +154,30 @@ async def _fetch_search(query: str, topic: str | None, page: int) -> dict:
 
 
 async def _refresh_search(key: str, query: str, topic: str | None, page: int) -> None:
-    """Background refresh after a stale-hit. Errors swallowed — stale stays valid."""
+    """Background refresh after a stale-hit. Errors swallowed — stale stays valid.
+    Topic-only queries also write through to the persistent DB cache."""
     try:
         data = await _fetch_search(query, topic, page)
         _search_fresh[key] = data
         _search_stale[key] = data
+        if _is_topic_only(query, topic, page):
+            try:
+                await upsert_search_cache(topic, data)  # type: ignore[arg-type]
+            except Exception:
+                logger.exception("search-cache upsert failed", extra={"topic": topic})
     except Exception:
         pass
     finally:
         _search_refresh.discard(key)
+
+
+# Persistent cache scope: topic-only, page=1, no free-text. Free-text queries
+# can be unbounded and would bloat the DB; pagination is rarely re-requested.
+_DB_CACHE_FRESH_SECONDS = 86400.0  # 1 day — matches user spec
+
+
+def _is_topic_only(query: str | None, topic: str | None, page: int) -> bool:
+    return not query and topic is not None and page == 1
 
 
 async def search_books(
@@ -172,15 +187,20 @@ async def search_books(
 ) -> dict:
     """Layered cache for Gutendex search.
 
-      1. Fresh hit (TTL 5 min) → instant return.
-      2. Stale hit → return immediately + background refresh.
-      3. Cold miss → distributed stampede lock + fetch + populate fresh+stale.
+      1. In-memory fresh (5 min) → instant.
+      2. In-memory stale (24 h) → return + bg refresh.
+      3. DB cache (topic-only, ≤ 1 day old) → hydrate in-memory + return.
+      4. DB cache (topic-only, > 1 day) → return stale + bg refresh.
+      5. Cold miss → distributed stampede lock + Gutendex fetch + persist.
 
-    Net effect: a category seen at least once never blocks the user again,
-    even after the 5-min fresh window expires. Only the FIRST visitor in
-    history pays the Gutendex latency.
+    Persistent layer (3-4) only applies to topic-only page-1 queries —
+    these are the warmup targets. Free-text and paginated queries skip DB.
+
+    Net effect: a topic seen at least once in the deployment's history
+    never blocks the user again. Pod restart ≠ cold cache.
     """
     key = f"{query or ''}|{topic or ''}|{page}"
+    topic_only = _is_topic_only(query, topic, page)
 
     fresh = _search_fresh.get(key)
     if fresh is not None:
@@ -188,7 +208,6 @@ async def search_books(
 
     stale = _search_stale.get(key)
     if stale is not None:
-        # Return stale immediately + dispatch refresh (deduped).
         if key not in _search_refresh:
             _search_refresh.add(key)
             asyncio.create_task(
@@ -196,33 +215,53 @@ async def search_books(
             )
         return stale
 
+    if topic_only:
+        try:
+            db_hit = await select_search_cache(topic)  # type: ignore[arg-type]
+        except Exception:
+            logger.exception("search-cache read failed", extra={"topic": topic})
+            db_hit = None
+        if db_hit is not None:
+            data, age = db_hit
+            _search_fresh[key] = data  # promote to in-memory regardless
+            _search_stale[key] = data
+            if age >= _DB_CACHE_FRESH_SECONDS and key not in _search_refresh:
+                _search_refresh.add(key)
+                asyncio.create_task(
+                    _refresh_search(key, query or "", topic, page)
+                )
+            return data
+
     lock_key = f"gutendex:search:{key}"
     async with stampede_lock(lock_key, ttl=60) as (is_owner, fut):
         if not is_owner:
             try:
                 return await fut
             except Exception:
-                # Owner failed and we have no stale → fall through to retry.
                 pass
-            # Re-check fresh/stale that the owner may have populated.
             fresh = _search_fresh.get(key)
             if fresh is not None:
                 return fresh
             stale = _search_stale.get(key)
             if stale is not None:
                 return stale
-            # Last resort: re-enter to attempt as a fresh caller.
             return await search_books(query=query, page=page, topic=topic)
 
         try:
             data = await _fetch_search(query or "", topic, page)
             _search_fresh[key] = data
             _search_stale[key] = data
+            if topic_only:
+                try:
+                    await upsert_search_cache(topic, data)  # type: ignore[arg-type]
+                except Exception:
+                    logger.exception(
+                        "search-cache upsert failed", extra={"topic": topic}
+                    )
             await stampede_publish(lock_key, data)
             return data
         except Exception as e:
             await stampede_publish_error(lock_key, e)
-            # No stale to fall back on → propagate.
             raise
 
 
@@ -357,7 +396,12 @@ async def _scrape_reading_info(gutenberg_id: int) -> dict:
 # DB cache layer — uses asyncpg directly (real async, no threadpool wrapping).
 # ============================================================================
 
-from app.core.db import select_reading_info_many, upsert_reading_info_many
+from app.core.db import (
+    select_reading_info_many,
+    select_search_cache,
+    upsert_reading_info_many,
+    upsert_search_cache,
+)
 
 
 def _info_to_row(gutenberg_id: int, info: dict) -> dict:
@@ -648,40 +692,76 @@ async def background_scrape_ids(ids: list[int]) -> None:
         )
 
 
-POPULAR_TOPICS = (
-    "adventure",
-    "mystery",
-    "science fiction",
-    "love",
-    "children",
-    "drama",
-    "poetry",
-    "philosophy",
-    "history",
+# Full sidebar coverage. Mirrors frontend/lib/library/topics.ts —
+# keep these in sync. Adding a topic here means it gets warmed at boot;
+# the persistent DB cache means after the first deployment, subsequent
+# restarts read from Postgres without hitting Gutendex.
+SIDEBAR_TOPICS: tuple[str, ...] = (
+    # Literatura
+    "adventure", "american literature", "british literature", "french literature",
+    "german literature", "russian literature", "classics", "biography", "novels",
+    "short stories", "poetry", "drama", "love", "science fiction", "fantasy",
+    "mystery", "mythology", "humor", "children",
+    # Historia
+    "american history", "british history", "european history",
+    "classical antiquity", "medieval", "religious history", "royalty", "war",
+    "archaeology",
+    # Ciencia y Tecnología
+    "physics", "chemistry", "biology", "mathematics", "engineering",
+    "environment", "earth science",
+    # Sociedad
+    "politics", "economics", "sociology", "psychology", "law", "business",
+    "family",
+    # Filosofía y religión
+    "philosophy", "ethics", "religion", "spirituality",
+    # Arte y cultura
+    "art", "music", "architecture", "language", "essays",
+    # Estilo de vida
+    "cooking", "travel", "nature", "animals", "sports", "how to",
+    # Salud y educación
+    "health", "medicine", "nutrition", "education", "dictionaries",
 )
 
 
 async def warmup_popular() -> None:
     """Background warmup. Two phases:
 
-    1. Sequentially pre-fetch top categories so the search itself is instant.
-    2. For each category, pre-batch the reading-info of the first N books
-       so the user's first click delivers cards WITH CEFR badges already.
+    1. Walk every sidebar topic. Topics already in the DB cache (≤1 day)
+       hydrate without touching Gutendex — typical case after the first
+       deployment. Cold topics fetch + persist.
+    2. For the first warmed batch of topics, pre-fetch reading-info for
+       the top books so first-click delivers cards WITH CEFR badges.
 
     Errors swallowed; if Gutendex is down the cache stays empty and the
     live request path takes over.
     """
     import sys
 
-    BOOKS_PER_TOPIC_TO_WARM = 10  # top 10 books per category get reading-info
+    BOOKS_PER_TOPIC_TO_WARM = 10
+    # Per-topic delay only applies when we ACTUALLY hit Gutendex. Cache hits
+    # skip the sleep so warmup completes near-instantly on warm restarts.
+    GUTENDEX_COOLDOWN_SECONDS = 1.5
 
+    total = len(SIDEBAR_TOPICS)
     print(
-        f"[gutenberg] warmup phase 1: {len(POPULAR_TOPICS)} category searches",
+        f"[gutenberg] warmup phase 1: {total} topics (DB cache will skip API)",
         file=sys.stderr,
         flush=True,
     )
     warmed_book_ids: set[int] = set()
-    for i, topic in enumerate(POPULAR_TOPICS, 1):
+    cache_hits = 0
+    api_hits = 0
+    for i, topic in enumerate(SIDEBAR_TOPICS, 1):
+        # Pre-check whether this will hit DB cache or Gutendex, so we can
+        # skip the polite sleep on cache hits.
+        will_hit_api = True
+        try:
+            db_hit = await select_search_cache(topic)
+            if db_hit is not None and db_hit[1] < _DB_CACHE_FRESH_SECONDS:
+                will_hit_api = False
+        except Exception:
+            pass
+
         try:
             data = await search_books(query=None, topic=topic, page=1)
             results = data.get("results") or []
@@ -689,19 +769,32 @@ async def warmup_popular() -> None:
                 bid = b.get("id")
                 if isinstance(bid, int):
                     warmed_book_ids.add(bid)
+            if will_hit_api:
+                api_hits += 1
+            else:
+                cache_hits += 1
             print(
-                f"[gutenberg] warmup {i}/{len(POPULAR_TOPICS)}: "
-                f"{topic} ({len(results)} books)",
+                f"[gutenberg] warmup {i}/{total}: "
+                f"{topic} ({len(results)} books, "
+                f"{'API' if will_hit_api else 'DB-cache'})",
                 file=sys.stderr,
                 flush=True,
             )
         except Exception as e:
             print(
-                f"[gutenberg] warmup {i}/{len(POPULAR_TOPICS)}: {topic} FAIL: {e}",
+                f"[gutenberg] warmup {i}/{total}: {topic} FAIL: {e}",
                 file=sys.stderr,
                 flush=True,
             )
-        await asyncio.sleep(2)
+        if will_hit_api:
+            await asyncio.sleep(GUTENDEX_COOLDOWN_SECONDS)
+
+    print(
+        f"[gutenberg] warmup phase 1 done — {cache_hits} from DB cache, "
+        f"{api_hits} from Gutendex",
+        file=sys.stderr,
+        flush=True,
+    )
 
     if warmed_book_ids:
         print(

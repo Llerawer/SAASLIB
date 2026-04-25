@@ -66,7 +66,6 @@ const PAGE_SIZE = 10;
 type SearchKey = {
   q: string;
   topic: string | null;
-  page: number;
 };
 
 export default function LibraryPage() {
@@ -80,7 +79,6 @@ export default function LibraryPage() {
 
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const [activeTopicLabel, setActiveTopicLabel] = useState<string | null>(null);
-  const [gutendexPage, setGutendexPage] = useState(1);
 
   // Discriminator for the *currently displayed* search. Used for the
   // belt-and-suspenders requestIdRef pattern: even if TanStack Query +
@@ -98,7 +96,6 @@ export default function LibraryPage() {
   const searchKey: SearchKey = {
     q: debouncedQuery,
     topic: activeTopic,
-    page: gutendexPage,
   };
 
   const enabled = !!searchKey.q || !!searchKey.topic;
@@ -113,7 +110,6 @@ export default function LibraryPage() {
       const params = new URLSearchParams();
       if (searchKey.q) params.set("q", searchKey.q);
       if (searchKey.topic) params.set("topic", searchKey.topic);
-      if (searchKey.page > 1) params.set("page", String(searchKey.page));
       return api.get<GutendexResponse>(
         `/api/v1/books/search?${params.toString()}`,
         { signal },
@@ -131,7 +127,6 @@ export default function LibraryPage() {
 
   const results = search.data?.results ?? [];
   const resultsCount = search.data?.count ?? null;
-  const hasNextPage = !!search.data?.next;
 
   // --- Reading info: ONE batch call per category, NO N+1 ---
   // Backend's /reading-info/batch handles cache lookup + parallel scrape
@@ -177,7 +172,6 @@ export default function LibraryPage() {
     setActiveTopic(null);
     setActiveTopicLabel(null);
     setSubmittedQuery(queryInput);
-    setGutendexPage(1);
   }
 
   function handleTopicClick(topic: string, label: string) {
@@ -185,7 +179,26 @@ export default function LibraryPage() {
     setSubmittedQuery("");
     setActiveTopic(topic);
     setActiveTopicLabel(label);
-    setGutendexPage(1);
+  }
+
+  // Hover/focus prefetch — by the time the user clicks, Gutendex has been
+  // hit and the result is in TanStack's cache. Idempotent: prefetchQuery
+  // respects staleTime (5 min) and won't re-fire for fresh keys.
+  function prefetchTopic(topic: string) {
+    if (topic === activeTopic) return;
+    const key: SearchKey = { q: "", topic };
+    qc.prefetchQuery({
+      queryKey: ["search", key] as const,
+      staleTime: 5 * 60_000,
+      queryFn: ({ signal }) => {
+        const params = new URLSearchParams();
+        params.set("topic", topic);
+        return api.get<GutendexResponse>(
+          `/api/v1/books/search?${params.toString()}`,
+          { signal },
+        );
+      },
+    });
   }
 
   function clearTopic() {
@@ -193,13 +206,8 @@ export default function LibraryPage() {
     setActiveTopicLabel(null);
     setSubmittedQuery("");
     setQueryInput("");
-    setGutendexPage(1);
     // Drop any stale cached search to free memory.
     qc.removeQueries({ queryKey: ["search"], exact: false });
-  }
-
-  function goToPage(p: number) {
-    setGutendexPage(p);
   }
 
   // --- Filter ---
@@ -289,6 +297,7 @@ export default function LibraryPage() {
                   group={group}
                   activeTopic={activeTopic}
                   onPick={handleTopicClick}
+                  onPrefetch={prefetchTopic}
                 />
               ))}
             </div>
@@ -393,56 +402,28 @@ export default function LibraryPage() {
             )}
 
             {filteredResults.length > 0 && !isInitialLoading && (
-              <div className="flex items-center justify-between mt-6 text-sm flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={safeChunkIndex === 0}
-                    onClick={() => setChunkIndex((i) => Math.max(0, i - 1))}
-                  >
-                    ← Anterior
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    {safeChunkIndex + 1} / {totalChunks}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={safeChunkIndex >= totalChunks - 1}
-                    onClick={() =>
-                      setChunkIndex((i) => Math.min(totalChunks - 1, i + 1))
-                    }
-                  >
-                    Siguiente →
-                  </Button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    Página {gutendexPage}
-                  </span>
-                  {gutendexPage > 1 && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={isFetching}
-                      onClick={() => goToPage(gutendexPage - 1)}
-                    >
-                      ← Anteriores
-                    </Button>
-                  )}
-                  {hasNextPage && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={isFetching}
-                      onClick={() => goToPage(gutendexPage + 1)}
-                    >
-                      Siguientes →
-                    </Button>
-                  )}
-                </div>
+              <div className="flex items-center gap-2 mt-6 text-sm">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={safeChunkIndex === 0}
+                  onClick={() => setChunkIndex((i) => Math.max(0, i - 1))}
+                >
+                  ← Anterior
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {safeChunkIndex + 1} / {totalChunks}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={safeChunkIndex >= totalChunks - 1}
+                  onClick={() =>
+                    setChunkIndex((i) => Math.min(totalChunks - 1, i + 1))
+                  }
+                >
+                  Siguiente →
+                </Button>
               </div>
             )}
           </div>
@@ -475,10 +456,12 @@ function TopicGroupSection({
   group,
   activeTopic,
   onPick,
+  onPrefetch,
 }: {
   group: { name: string; topics: { label: string; topic: string }[] };
   activeTopic: string | null;
   onPick: (topic: string, label: string) => void;
+  onPrefetch?: (topic: string) => void;
 }) {
   const hasActive = group.topics.some((t) => t.topic === activeTopic);
   const [open, setOpen] = useState(hasActive);
@@ -502,6 +485,8 @@ function TopicGroupSection({
             <li key={t.topic}>
               <button
                 onClick={() => onPick(t.topic, t.label)}
+                onMouseEnter={() => onPrefetch?.(t.topic)}
+                onFocus={() => onPrefetch?.(t.topic)}
                 className={`text-xs px-2 py-1 rounded w-full text-left hover:bg-accent transition-colors ${
                   activeTopic === t.topic
                     ? "bg-primary/10 text-primary font-medium"

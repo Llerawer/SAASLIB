@@ -400,7 +400,8 @@ export function useReadingInfoBatch(ids: number[]) {
     select: (response: BatchAsyncResponse) => response.data,
     refetchInterval: (q) => {
       const data = q.state.data as BatchAsyncResponse | undefined;
-      return data && data.pending_ids.length > 0 ? 3000 : false;
+      const pending = data?.pending_ids;
+      return pending && pending.length > 0 ? 3000 : false;
     },
     enabled: sortedIds.length > 0,
     staleTime: 5 * 60_000,
