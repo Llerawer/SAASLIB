@@ -26,6 +26,7 @@ supabase/.temp
 .vscode/*
 !.vscode/settings.json
 .idea/
+.claude/
 
 # OS
 .DS_Store
