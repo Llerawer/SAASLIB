@@ -369,3 +369,31 @@ export function useRemoveFromLibrary() {
     },
   });
 }
+
+export type ReadingInfo = {
+  reading_ease: number | null;
+  grade: number | null;
+  cefr: string | null;
+};
+
+export function useReadingInfoBatch(ids: number[]) {
+  const sortedIds = [...ids].sort((a, b) => a - b);
+  return useQuery({
+    queryKey: ["reading-info-batch", sortedIds] as const,
+    queryFn: () =>
+      api.get<Record<string, ReadingInfo>>(
+        `/api/v1/books/reading-info/batch?ids=${sortedIds.join(",")}`,
+      ),
+    enabled: sortedIds.length > 0,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useReadingInfo(id: number | null) {
+  return useQuery({
+    queryKey: ["reading-info", id] as const,
+    queryFn: () => api.get<ReadingInfo>(`/api/v1/books/${id}/reading-info`),
+    enabled: id !== null,
+    staleTime: 60 * 60_000,
+  });
+}

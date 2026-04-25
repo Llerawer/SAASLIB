@@ -36,8 +36,28 @@ async def reading_info(
     gutenberg_id: int,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Reading-ease score + approximate CEFR level scraped from gutenberg.org."""
+    """Reading-ease score + approximate CEFR level. Cached in DB."""
     return await gutenberg.get_reading_info(gutenberg_id)
+
+
+@router.get("/reading-info/batch")
+async def reading_info_batch(
+    ids: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Bulk lookup of cached reading info. Cache-only (no scrape). Returns
+    {gutenberg_id: info} for ids that are already cached. Use this to
+    prefetch existing data; trigger /reading-info/{id} per-book to scrape.
+
+    `ids` is a comma-separated list (e.g. ?ids=1342,1661,84).
+    """
+    try:
+        id_list = [int(x) for x in ids.split(",") if x.strip()]
+    except ValueError as e:
+        raise HTTPException(422, "ids must be comma-separated integers") from e
+    if len(id_list) > 100:
+        raise HTTPException(422, "max 100 ids per batch")
+    return gutenberg.get_reading_info_batch_cached(id_list)
 
 
 @router.get("/{gutenberg_id}/epub")

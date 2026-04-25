@@ -1,15 +1,25 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Search, X, ChevronDown, ChevronRight, Layers } from "lucide-react";
+import {
+  BookOpen,
+  Search,
+  X,
+  ChevronDown,
+  ChevronRight,
+  Layers,
+  GraduationCap,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import {
   useMyLibrary,
+  useReadingInfoBatch,
   useRemoveFromLibrary,
   type MyLibraryBook,
+  type ReadingInfo,
 } from "@/lib/api/queries";
 import { TOPIC_GROUPS } from "@/lib/library/topics";
 import { Input } from "@/components/ui/input";
@@ -30,26 +40,95 @@ type GutendexBook = {
   bookshelves?: string[];
   download_count?: number;
 };
-type GutendexResponse = { results: GutendexBook[]; count: number };
+type GutendexResponse = { results: GutendexBook[]; count: number; next?: string | null };
+
+type LevelFilter = "all" | "easy" | "intermediate" | "advanced";
+
+const LEVEL_OPTIONS: { value: LevelFilter; label: string; cefr: string[] }[] = [
+  { value: "all", label: "Todos los niveles", cefr: [] },
+  { value: "easy", label: "Fácil (A1–B1)", cefr: ["A1", "A2", "B1"] },
+  { value: "intermediate", label: "Intermedio (B2)", cefr: ["B2", "B2-C1"] },
+  { value: "advanced", label: "Avanzado (C1–C2)", cefr: ["C1", "C2"] },
+];
+
+const PAGE_SIZE = 10;
+const PREFETCH_CONCURRENCY = 4;
 
 export default function LibraryPage() {
   const myLibrary = useMyLibrary();
   const [query, setQuery] = useState("");
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const [activeTopicLabel, setActiveTopicLabel] = useState<string | null>(null);
+  const [gutendexPage, setGutendexPage] = useState(1);
   const [results, setResults] = useState<GutendexBook[]>([]);
   const [resultsCount, setResultsCount] = useState<number | null>(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewBook, setPreviewBook] = useState<BookPreviewSeed | null>(null);
+  const [chunkIndex, setChunkIndex] = useState(0);
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
+  const [readingMap, setReadingMap] = useState<Record<number, ReadingInfo>>({});
+
+  // Prefetch cached reading info for current results.
+  const ids = useMemo(() => results.map((b) => b.id), [results]);
+  const cachedQuery = useReadingInfoBatch(ids);
+
+  // Merge cached results into local map.
+  useEffect(() => {
+    if (!cachedQuery.data) return;
+    setReadingMap((prev) => {
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(cachedQuery.data!)) {
+        next[Number(k)] = v;
+      }
+      return next;
+    });
+  }, [cachedQuery.data]);
+
+  // For ids without cached info, scrape on-demand with limited concurrency.
+  useEffect(() => {
+    if (ids.length === 0) return;
+    let cancelled = false;
+    const missing = ids.filter((id) => !readingMap[id]);
+    if (missing.length === 0) return;
+
+    let active = 0;
+    let cursor = 0;
+    const queue: number[] = [...missing];
+
+    function pump() {
+      while (active < PREFETCH_CONCURRENCY && cursor < queue.length) {
+        const id = queue[cursor++];
+        active++;
+        api
+          .get<ReadingInfo>(`/api/v1/books/${id}/reading-info`)
+          .then((info) => {
+            if (cancelled) return;
+            setReadingMap((prev) => ({ ...prev, [id]: info }));
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            active--;
+            if (!cancelled) pump();
+          });
+      }
+    }
+    pump();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids.join(",")]);
 
   async function runSearch(opts: {
     q?: string;
     topic?: string | null;
-    label?: string | null;
+    page?: number;
   }) {
     const q = opts.q?.trim() ?? "";
     const topic = opts.topic ?? null;
+    const page = opts.page ?? 1;
     if (!q && !topic) return;
     setLoading(true);
     setError(null);
@@ -57,11 +136,15 @@ export default function LibraryPage() {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (topic) params.set("topic", topic);
+      if (page > 1) params.set("page", String(page));
       const data = await api.get<GutendexResponse>(
         `/api/v1/books/search?${params.toString()}`,
       );
       setResults(data.results ?? []);
       setResultsCount(data.count ?? null);
+      setHasNextPage(!!data.next);
+      setGutendexPage(page);
+      setChunkIndex(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
     } finally {
@@ -73,14 +156,14 @@ export default function LibraryPage() {
     e.preventDefault();
     setActiveTopic(null);
     setActiveTopicLabel(null);
-    runSearch({ q: query });
+    runSearch({ q: query, page: 1 });
   }
 
   function handleTopicClick(topic: string, label: string) {
     setQuery("");
     setActiveTopic(topic);
     setActiveTopicLabel(label);
-    runSearch({ topic, label });
+    runSearch({ topic, page: 1 });
   }
 
   function clearTopic() {
@@ -88,7 +171,31 @@ export default function LibraryPage() {
     setActiveTopicLabel(null);
     setResults([]);
     setResultsCount(null);
+    setHasNextPage(false);
   }
+
+  // Filter by level.
+  const allowedCefr = useMemo(() => {
+    return LEVEL_OPTIONS.find((l) => l.value === levelFilter)?.cefr ?? [];
+  }, [levelFilter]);
+
+  const filteredResults = useMemo(() => {
+    if (levelFilter === "all") return results;
+    return results.filter((b) => {
+      const cefr = readingMap[b.id]?.cefr;
+      // Books without yet-known CEFR pass through (don't hide them while
+      // prefetch is still in flight); user sees them with "?" badge.
+      if (!cefr) return true;
+      return allowedCefr.includes(cefr);
+    });
+  }, [results, levelFilter, allowedCefr, readingMap]);
+
+  const totalChunks = Math.max(1, Math.ceil(filteredResults.length / PAGE_SIZE));
+  const safeChunkIndex = Math.min(chunkIndex, totalChunks - 1);
+  const visibleResults = filteredResults.slice(
+    safeChunkIndex * PAGE_SIZE,
+    (safeChunkIndex + 1) * PAGE_SIZE,
+  );
 
   const myBooks = myLibrary.data ?? [];
   const showResults = results.length > 0 || loading;
@@ -163,17 +270,57 @@ export default function LibraryPage() {
 
           {/* Resultados */}
           <div>
-            {activeTopicLabel && (
-              <div className="mb-3 text-sm">
-                <span className="text-muted-foreground">Categoría: </span>
-                <span className="font-semibold">{activeTopicLabel}</span>
-                {resultsCount !== null && (
-                  <span className="text-muted-foreground ml-2">
-                    · {resultsCount.toLocaleString()} libros
-                  </span>
+            <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+              <div>
+                {activeTopicLabel && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Categoría: </span>
+                    <span className="font-semibold">{activeTopicLabel}</span>
+                    {resultsCount !== null && (
+                      <span className="text-muted-foreground ml-2">
+                        · {resultsCount.toLocaleString()} libros
+                      </span>
+                    )}
+                  </div>
+                )}
+                {results.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Mostrando {filteredResults.length === 0
+                      ? 0
+                      : safeChunkIndex * PAGE_SIZE + 1}
+                    –
+                    {Math.min(
+                      (safeChunkIndex + 1) * PAGE_SIZE,
+                      filteredResults.length,
+                    )}{" "}
+                    de {filteredResults.length}
+                    {levelFilter !== "all" &&
+                      ` filtrados (${results.length} totales)`}
+                  </p>
                 )}
               </div>
-            )}
+
+              {/* Level filter */}
+              {results.length > 0 && (
+                <label className="flex items-center gap-2 text-sm">
+                  <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                  <select
+                    value={levelFilter}
+                    onChange={(e) => {
+                      setLevelFilter(e.target.value as LevelFilter);
+                      setChunkIndex(0);
+                    }}
+                    className="text-sm border rounded px-2 py-1 bg-background"
+                  >
+                    {LEVEL_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
 
             {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
@@ -187,15 +334,91 @@ export default function LibraryPage() {
               <p className="text-sm text-muted-foreground">Cargando…</p>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {results.map((book) => (
+            {!loading &&
+              filteredResults.length === 0 &&
+              results.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Ningún libro de esta categoría coincide con el nivel
+                  seleccionado. Prueba otro filtro.
+                </p>
+              )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {visibleResults.map((book) => (
                 <BookSearchCard
                   key={book.id}
                   book={book}
+                  reading={readingMap[book.id] ?? null}
                   onPick={() => setPreviewBook(book)}
                 />
               ))}
             </div>
+
+            {/* Pagination controls */}
+            {filteredResults.length > 0 && (
+              <div className="flex items-center justify-between mt-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={safeChunkIndex === 0}
+                    onClick={() => setChunkIndex((i) => Math.max(0, i - 1))}
+                  >
+                    ← Anterior
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {safeChunkIndex + 1} / {totalChunks}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={safeChunkIndex >= totalChunks - 1}
+                    onClick={() =>
+                      setChunkIndex((i) => Math.min(totalChunks - 1, i + 1))
+                    }
+                  >
+                    Siguiente →
+                  </Button>
+                </div>
+
+                {/* Gutendex page navigation */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Página {gutendexPage}
+                  </span>
+                  {gutendexPage > 1 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        runSearch({
+                          q: query,
+                          topic: activeTopic,
+                          page: gutendexPage - 1,
+                        })
+                      }
+                    >
+                      ← Anteriores
+                    </Button>
+                  )}
+                  {hasNextPage && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        runSearch({
+                          q: query,
+                          topic: activeTopic,
+                          page: gutendexPage + 1,
+                        })
+                      }
+                    >
+                      Siguientes →
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -256,23 +479,54 @@ function TopicGroupSection({
   );
 }
 
+const CEFR_COLOR: Record<string, string> = {
+  A1: "bg-emerald-100 text-emerald-700 border-emerald-300",
+  A2: "bg-emerald-100 text-emerald-700 border-emerald-300",
+  B1: "bg-amber-100 text-amber-700 border-amber-300",
+  B2: "bg-amber-100 text-amber-700 border-amber-300",
+  "B2-C1": "bg-orange-100 text-orange-700 border-orange-300",
+  C1: "bg-rose-100 text-rose-700 border-rose-300",
+  C2: "bg-rose-100 text-rose-700 border-rose-300",
+};
+
 function BookSearchCard({
   book,
+  reading,
   onPick,
 }: {
   book: GutendexBook;
+  reading: ReadingInfo | null;
   onPick: () => void;
 }) {
   const cover = book.formats?.["image/jpeg"] ?? null;
   const author = book.authors?.[0]?.name ?? "Autor desconocido";
   const downloads = book.download_count;
   const topShelf = book.bookshelves?.[0];
+  const cefr = reading?.cefr;
 
   return (
     <button
       onClick={onPick}
-      className="text-left flex gap-3 border rounded-lg p-3 hover:bg-accent transition-colors w-full"
+      className="text-left flex gap-3 border rounded-lg p-3 hover:bg-accent transition-colors w-full relative"
     >
+      {/* CEFR badge — esquina superior derecha, prominente */}
+      {cefr ? (
+        <span
+          className={`absolute top-2 right-2 text-xs font-bold px-2 py-0.5 rounded border ${CEFR_COLOR[cefr] ?? "bg-muted"}`}
+          title={
+            reading?.reading_ease !== null && reading?.reading_ease !== undefined
+              ? `Flesch: ${reading.reading_ease}${reading.grade ? ` · ${reading.grade}° grado` : ""}`
+              : ""
+          }
+        >
+          {cefr}
+        </span>
+      ) : (
+        <span className="absolute top-2 right-2 text-xs text-muted-foreground">
+          …
+        </span>
+      )}
+
       <div className="shrink-0 w-16 h-24 bg-muted rounded overflow-hidden">
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -290,7 +544,7 @@ function BookSearchCard({
           </div>
         )}
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pr-8">
         <h3 className="font-semibold text-sm line-clamp-2 leading-snug">
           {book.title}
         </h3>

@@ -106,12 +106,8 @@ def _flesch_to_cefr(score: float) -> str:
     return "C2"
 
 
-async def get_reading_info(gutenberg_id: int) -> dict:
-    """Fetch the gutenberg.org HTML page and extract reading-ease score.
-
-    Returns: {reading_ease: float|None, grade: int|None, cefr: str|None}.
-    Cached at the function level since the score doesn't change.
-    """
+async def _scrape_reading_info(gutenberg_id: int) -> dict:
+    """Hit gutenberg.org HTML and extract Flesch score + grade. Best effort."""
     url = f"https://www.gutenberg.org/ebooks/{gutenberg_id}"
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as c:
@@ -127,6 +123,83 @@ async def get_reading_info(gutenberg_id: int) -> dict:
         return {"reading_ease": score, "grade": grade, "cefr": cefr}
     except (httpx.TimeoutException, httpx.NetworkError):
         return {"reading_ease": None, "grade": None, "cefr": None}
+
+
+def _cache_lookup(gutenberg_id: int) -> dict | None:
+    """Read cached reading info from Supabase. Returns None if not cached."""
+    from app.db.supabase_client import get_admin_client
+
+    res = (
+        get_admin_client()
+        .table("gutenberg_reading_info")
+        .select("flesch_score, reading_grade, cefr")
+        .eq("gutenberg_id", gutenberg_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        return None
+    row = res.data[0]
+    return {
+        "reading_ease": float(row["flesch_score"])
+        if row.get("flesch_score") is not None
+        else None,
+        "grade": row.get("reading_grade"),
+        "cefr": row.get("cefr"),
+    }
+
+
+def _cache_write(gutenberg_id: int, info: dict) -> None:
+    from app.db.supabase_client import get_admin_client
+
+    get_admin_client().table("gutenberg_reading_info").upsert(
+        {
+            "gutenberg_id": gutenberg_id,
+            "flesch_score": info.get("reading_ease"),
+            "reading_grade": info.get("grade"),
+            "cefr": info.get("cefr"),
+        },
+        on_conflict="gutenberg_id",
+    ).execute()
+
+
+async def get_reading_info(gutenberg_id: int) -> dict:
+    """Cached reading info: hit DB first, scrape + persist on miss."""
+    cached = _cache_lookup(gutenberg_id)
+    if cached is not None:
+        return cached
+    info = await _scrape_reading_info(gutenberg_id)
+    # Persist even null results so we don't re-scrape books with no score.
+    _cache_write(gutenberg_id, info)
+    return info
+
+
+def get_reading_info_batch_cached(ids: list[int]) -> dict[int, dict]:
+    """Bulk read of cached reading info. Does NOT scrape — only returns
+    what's already in the cache. Used for prefetch on the search results."""
+    if not ids:
+        return {}
+    from app.db.supabase_client import get_admin_client
+
+    rows = (
+        get_admin_client()
+        .table("gutenberg_reading_info")
+        .select("gutenberg_id, flesch_score, reading_grade, cefr")
+        .in_("gutenberg_id", ids)
+        .execute()
+        .data
+        or []
+    )
+    out: dict[int, dict] = {}
+    for r in rows:
+        out[int(r["gutenberg_id"])] = {
+            "reading_ease": float(r["flesch_score"])
+            if r.get("flesch_score") is not None
+            else None,
+            "grade": r.get("reading_grade"),
+            "cefr": r.get("cefr"),
+        }
+    return out
 
 
 def get_epub_url(gutenberg_id: int) -> str:
