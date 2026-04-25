@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_user_id
 from app.db.supabase_client import get_admin_client
@@ -11,7 +14,36 @@ from app.schemas.cards import (
     PromoteFromCapturesInput,
     PromoteResult,
 )
-from app.services import card_factory
+from app.services import ai_response_parser, card_factory
+
+
+class ParseAiInput(BaseModel):
+    text: str = Field(..., min_length=1)
+    language: str = "en"
+
+
+class ParseAiCard(BaseModel):
+    word: str
+    translation: str | None = None
+    definition: str | None = None
+    ipa: str | None = None
+    cefr: str | None = None
+    mnemonic: str | None = None
+    examples: list[str] = []
+    tip: str | None = None
+    etymology: str | None = None
+    grammar: str | None = None
+
+
+class ParseAiError(BaseModel):
+    line: int | None
+    chunk: str
+    error: str
+
+
+class ParseAiResult(BaseModel):
+    cards: list[ParseAiCard]
+    errors: list[ParseAiError]
 
 router = APIRouter(prefix="/api/v1/cards", tags=["cards"])
 
@@ -81,6 +113,20 @@ async def list_cards(
         or []
     )
     return [_row_to_card(r) for r in rows]
+
+
+@router.post("/parse-ai", response_model=ParseAiResult)
+async def parse_ai(
+    body: ParseAiInput,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Parse YAML/markdown response from Claude/ChatGPT into preview cards.
+    Does NOT persist — used by /vocabulary/import for preview."""
+    result = ai_response_parser.parse(body.text)
+    return ParseAiResult(
+        cards=[ParseAiCard(**asdict(c)) for c in result.cards],
+        errors=[ParseAiError(**asdict(e)) for e in result.errors],
+    )
 
 
 @router.put("/{card_id}", response_model=CardOut)

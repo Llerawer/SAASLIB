@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_user_id
 from app.db.supabase_client import get_admin_client
 from app.schemas.captures import CaptureCreate, CaptureOut, CaptureUpdate
-from app.services import word_lookup
+from app.services import prompt_template, word_lookup
 from app.services.normalize import normalize
+
+
+class BatchPromptInput(BaseModel):
+    capture_ids: list[str] = Field(..., min_length=1)
+
+
+class BatchPromptOutput(BaseModel):
+    markdown: str
+    count: int
 
 router = APIRouter(prefix="/api/v1/captures", tags=["captures"])
 
@@ -135,3 +145,26 @@ async def delete_capture(
     )
     if not res.data:
         raise HTTPException(404, "Capture not found")
+
+
+@router.post("/batch-prompt", response_model=BatchPromptOutput)
+async def batch_prompt(
+    body: BatchPromptInput,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Generate the markdown prompt the user pastes into Claude/ChatGPT
+    for the selected captures. Returned ready to copy to clipboard."""
+    client = get_admin_client()
+    rows = (
+        client.table("captures")
+        .select("*")
+        .in_("id", body.capture_ids)
+        .eq("user_id", user_id)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(404, "No captures found")
+    markdown = prompt_template.build_prompt(rows)
+    return BatchPromptOutput(markdown=markdown, count=len(rows))

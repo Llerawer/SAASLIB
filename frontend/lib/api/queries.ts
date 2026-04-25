@@ -216,3 +216,42 @@ export function useCardsList() {
     staleTime: 10_000,
   });
 }
+
+export type ParsedAiCard = {
+  word: string;
+  translation: string | null;
+  definition: string | null;
+  ipa: string | null;
+  cefr: string | null;
+  mnemonic: string | null;
+  examples: string[];
+  tip: string | null;
+  etymology: string | null;
+  grammar: string | null;
+};
+
+export type ParseAiResult = {
+  cards: ParsedAiCard[];
+  errors: { line: number | null; chunk: string; error: string }[];
+};
+
+export function useParseAi() {
+  return useMutation<ParseAiResult, Error, { text: string; language?: string }>({
+    mutationFn: (input) =>
+      api.post<ParseAiResult>("/api/v1/cards/parse-ai", input),
+  });
+}
+
+export function useBatchPrompt() {
+  return useMutation<
+    { markdown: string; count: number },
+    Error,
+    { capture_ids: string[] }
+  >({
+    mutationFn: (input) =>
+      api.post<{ markdown: string; count: number }>(
+        "/api/v1/captures/batch-prompt",
+        input,
+      ),
+  });
+}
