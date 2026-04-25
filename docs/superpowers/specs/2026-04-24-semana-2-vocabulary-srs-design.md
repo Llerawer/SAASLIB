@@ -164,7 +164,7 @@ Body de respuesta:
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/api/v1/stats/me` | TTL 5 min in-memory. Ventana 90d. Returns: due/done hoy, retention 30d, streak, heatmap, totales. Heatmap usa `date_trunc('day', reviewed_at AT TIME ZONE profile.timezone)`. |
+| GET | `/api/v1/stats/me` | TTL 5 min in-memory. Ventana 90d. Returns: due/done hoy, retention 30d, streak, heatmap, totales. Heatmap usa `date_trunc('day', reviewed_at AT TIME ZONE profile.timezone)`. **Definición de retention**: `retention = count(reviews where grade IN (3,4)) / count(reviews)` en la ventana — solo `Good` y `Easy` cuentan como correctos. `Hard` (2) NO cuenta como correcto (la idea: el user batalló). `Again` (1) tampoco. |
 
 ### Reader-only
 
@@ -262,6 +262,22 @@ type ReaderStore = {
 };
 ```
 
+**Sync inicial al cargar `/read/[bookId]`:**
+
+```ts
+// fetch /api/v1/books/{bookId}/captured-words -> [{word_normalized, count, first_seen}]
+// merge con optimisticCaptures (puede haber palabras capturadas en otra sesión
+// del mismo libro que aún no llegaron al server al momento de abrir):
+const merged = new Map<string, {count, firstSeen}>();
+for (const w of serverWords) merged.set(w.word_normalized, {count: w.count, firstSeen: new Date(w.first_seen)});
+for (const w of optimisticCaptures) {
+  if (!merged.has(w)) merged.set(w, {count: 1, firstSeen: new Date()});
+}
+setCapturedSet(merged);
+```
+
+Dedupe estricto por `word_normalized` (key de Map evita duplicados por construcción).
+
 **Captura flow:**
 
 1. Doble-click → epub.js `selected` event con CFI + texto. Frontend extrae palabra (regex `\b[\w'-]+\b`), normaliza client-side (lowercase + strip), abre popup con skeleton (0ms).
@@ -309,6 +325,7 @@ Pantalla 2 paneles:
 - Textarea grande.
 - Click "Procesar" → `POST /api/v1/cards/parse-ai`. Procesamiento progresivo (chunks vía `requestIdleCallback`) — la tabla preview crece incrementalmente.
 - Tabla preview editable: word | translation | def | mnemonic | examples | ✏️ | ✓.
+- **Validación frontend pre-POST**: cada card aceptada debe tener mínimo `word` y `translation` no vacíos. Si alguna falla, marcar la fila en rojo con tooltip y deshabilitar el botón "Crear N cards" hasta corregir o desmarcar. Evita basura en DB y errores 500 server-side.
 - Botón "Crear N cards" → `POST /api/v1/cards/promote-from-captures` con `ai_data` pre-parseado.
 
 **Plantilla de prompt:**
@@ -354,7 +371,17 @@ Palabras:
 5. Invalidate `["reviews-queue"]`, `["reviews-due-count"]`, `["stats-me"]`.
 
 **Banner undo:**
+
 - Aparece tras grade. Click → `POST /reviews/undo` → invalidate queries, snackbar "Deshecho". Auto-cierra a 5s.
+
+**Estado vacío** (cola sin cards due):
+
+```text
+🎉 Sin tarjetas due hoy
+[Ver mi vocabulario] [Volver mañana]
+```
+
+`Ver mi vocabulario` linkea a `/vocabulary?promoted=false` para mostrar el inbox y poder promover más palabras inmediatamente. Mantiene el loop activo cuando el founder se queda sin reviews del día.
 
 ## Plan tier limits
 
@@ -381,7 +408,8 @@ Llamado desde `POST /captures` y `POST /cards`. Durante validation founder: `ENF
 ### Backend (`backend/tests/`)
 
 **Integration (DB real):**
-- `test_normalize.py` — lemmas: `gleaming→gleam`, `running→run`, `mother-in-law→mother-in-law`, `don't→do_not` (lemma de spaCy).
+
+- `test_normalize.py` — lemmas puros de spaCy sin transformación adicional: `gleaming→gleam`, `running→run`, `mother-in-law→mother-in-law`, `don't→do` (sí, perdemos info de negación; aceptamos por consistencia con la lib — no inventar formatos propios).
 - `test_word_lookup.py` — cache hit fresh, hit stale + bg refresh dispatched, cache miss, stampede dedupe (10 awaiters → 1 external call).
 - `test_fsrs.py` — grade flow + undo + race con 2 graders concurrentes (FOR UPDATE).
 - `test_fsrs_monotonicity.py` — `Easy.stability > Good.stability > stability_input > Again.stability`. `Hard.stability ≤ Good.stability`. Detecta regresiones de la lib FSRS.
@@ -404,7 +432,7 @@ Llamado desde `POST /captures` y `POST /cards`. Durante validation founder: `ENF
 | --- | --- | --- | --- |
 | **B1** | Migrations 004-006 + `normalize.py` + `word_lookup.py` con stampede + bg refresh + tests | 1 día | — |
 | **B2** | Endpoints captures + dictionary + `captured-words` + tests | 1 día | B1 |
-| **B3** | Reader: WordPopup + captura + coloreo + highlight cache | 1.5 días | B2 |
+| **B3** | Reader: orden interno → (a) WordPopup + captura básica con POST /captures + invalidate; (b) coloreo de capturadas con merge sync inicial; (c) highlight de apariciones múltiples con cache por chapter. Cada paso mergeable y testeable solo. | 1.5 días | B2 |
 | **B4** | Vocabulary inbox + edit drawer + marcadores + bulk + animaciones | 1 día | B2 |
 | **B5** | Copy-paste flow: prompt template + parser + import page con preview parcial | 1 día | B4 |
 | **B6** | FSRS backend (lib + endpoints + tests con races + monotonicity) | 1 día | B2 |
