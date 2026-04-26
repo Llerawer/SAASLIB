@@ -34,6 +34,7 @@ values (
 )
 on conflict (id) do nothing;
 
+drop policy if exists "cards-media: own files read" on storage.objects;
 create policy "cards-media: own files read"
     on storage.objects for select to authenticated
     using (
@@ -41,6 +42,7 @@ create policy "cards-media: own files read"
         and (storage.foldername(name))[1] = auth.uid()::text
     );
 
+drop policy if exists "cards-media: own files insert" on storage.objects;
 create policy "cards-media: own files insert"
     on storage.objects for insert to authenticated
     with check (
@@ -48,9 +50,16 @@ create policy "cards-media: own files insert"
         and (storage.foldername(name))[1] = auth.uid()::text
     );
 
+drop policy if exists "cards-media: own files delete" on storage.objects;
 create policy "cards-media: own files delete"
     on storage.objects for delete to authenticated
     using (
         bucket_id = 'cards-media'
         and (storage.foldername(name))[1] = auth.uid()::text
     );
+
+drop policy if exists "cards-media: own files update" on storage.objects;
+create policy "cards-media: own files update"
+    on storage.objects for update to authenticated
+    using  (bucket_id = 'cards-media' and (storage.foldername(name))[1] = auth.uid()::text)
+    with check (bucket_id = 'cards-media' and (storage.foldername(name))[1] = auth.uid()::text);
