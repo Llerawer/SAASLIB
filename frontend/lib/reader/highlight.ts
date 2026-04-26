@@ -2,43 +2,63 @@
  * Highlight captured words inside an epub.js rendered chapter.
  *
  * Strategy:
- *   1. Inject a CSS theme for `.lr-captured` once per rendition.
+ *   1. Inject a CSS theme for `.lr-captured` once per rendition. The CSS
+ *      uses CSS custom properties (--lr-bg / --lr-bd) with green defaults,
+ *      so per-word colour is just a matter of setting those vars inline
+ *      on the span — no extra rules per colour.
  *   2. On each chapter render: walk text nodes, replace runs of text that
  *      contain captured words with a fragment that wraps the matches in
- *      <span class="lr-captured">. The wrapping is stable across re-renders
- *      because we mark the parent with data-lr-applied="<hash>".
+ *      <span class="lr-captured" data-lemma="..." style="--lr-bg:...">.
  *   3. When the captured set changes (after a save), re-apply on the
  *      currently-displayed chapter only.
- *
- * Cache (caller-owned): Map<chapterIdx, Set<word_normalized>> of words
- * already applied — caller decides when to invalidate (e.g. on new capture).
+ *   4. When ONLY colours change (no new captures), call updateHighlightColors
+ *      to repaint existing spans without re-walking text.
  */
+
+import { DEFAULT_WORD_COLOR, WORD_COLORS, type WordColorId } from "./word-colors";
 
 const WORD_RE_GLOBAL = /\b[\w'-]+\b/gu;
 const APPLIED_ATTR = "data-lr-captured-applied";
 const SPAN_CLASS = "lr-captured";
+const LEMMA_ATTR = "data-lemma";
+
+export type GetWordColor = (lemma: string) => WordColorId | undefined;
 
 export const HIGHLIGHT_THEME = {
   [`.${SPAN_CLASS}`]: {
-    "background-color": "rgba(34, 197, 94, 0.18) !important",
-    "border-bottom": "1px solid rgba(34, 197, 94, 0.55)",
+    "background-color":
+      "var(--lr-bg, rgba(34, 197, 94, 0.18)) !important",
+    "border-bottom": "1px solid var(--lr-bd, rgba(34, 197, 94, 0.55))",
     "border-radius": "2px",
     padding: "0 1px",
   },
 };
 
+function applyColorToSpan(span: HTMLElement, colorId: WordColorId): void {
+  const c = WORD_COLORS[colorId];
+  span.style.setProperty("--lr-bg", c.bg);
+  span.style.setProperty("--lr-bd", c.border);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
  * Wrap captured words inside the given document.
- * Pure function: no side effects beyond the DOM mutation in `doc`.
+ *
+ * `getColor` is optional. If provided, each new span gets inline CSS
+ * custom properties for its colour. Without it, spans inherit the green
+ * defaults defined in HIGHLIGHT_THEME.
+ *
+ * Pure function: no side effects beyond DOM mutation in `doc`.
  */
 export function applyHighlights(
   doc: Document,
   capturedNormalized: Set<string>,
   normalizeFn: (token: string) => string,
+  getColor?: GetWordColor,
 ): void {
   if (!doc.body || capturedNormalized.size === 0) return;
 
@@ -81,6 +101,11 @@ export function applyHighlights(
       }
       const span = doc.createElement("span");
       span.className = SPAN_CLASS;
+      span.setAttribute(LEMMA_ATTR, normalized);
+      if (getColor) {
+        const color = getColor(normalized) ?? DEFAULT_WORD_COLOR;
+        applyColorToSpan(span, color);
+      }
       span.textContent = raw;
       fragment.appendChild(span);
       lastIndex = start + raw.length;
@@ -95,6 +120,26 @@ export function applyHighlights(
   }
 
   doc.body.setAttribute(APPLIED_ATTR, String(capturedNormalized.size));
+}
+
+/**
+ * Repaint already-rendered spans with current colours, without touching
+ * text or DOM structure. Cheap O(N) over visible spans.
+ *
+ * Use when the user changes a word's colour from the panel and we want
+ * the chapter to reflect it immediately.
+ */
+export function updateHighlightColors(
+  doc: Document,
+  getColor: GetWordColor,
+): void {
+  if (!doc.body) return;
+  const spans = doc.querySelectorAll<HTMLElement>(`.${SPAN_CLASS}`);
+  spans.forEach((span) => {
+    const lemma = span.getAttribute(LEMMA_ATTR);
+    if (!lemma) return;
+    applyColorToSpan(span, getColor(lemma) ?? DEFAULT_WORD_COLOR);
+  });
 }
 
 /**

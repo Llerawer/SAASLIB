@@ -34,48 +34,64 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 border rounded-lg p-6 shadow-sm"
-      >
-        <h1 className="text-2xl font-bold">Entrar</h1>
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="tu@email.com"
-            autoComplete="email"
-          />
+    <form
+      onSubmit={handleSubmit}
+      className="w-full space-y-5 border rounded-xl p-6 bg-card shadow-sm"
+    >
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Bienvenido</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Entra para continuar leyendo.
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="email">Email</Label>
+        <Input
+          id="email"
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="tu@email.com"
+          autoComplete="email"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="password">Contraseña</Label>
+        <Input
+          id="password"
+          type="password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+      </div>
+      {error && (
+        <div
+          className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-2.5 rounded-md"
+          role="alert"
+        >
+          {error}
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Contraseña</Label>
-          <Input
-            id="password"
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button type="submit" disabled={loading} className="w-full">
-          {loading ? "Entrando..." : "Entrar"}
-        </Button>
-        <div className="flex justify-between text-sm">
-          <Link href="/reset" className="underline text-muted-foreground">
-            Olvidé mi contraseña
-          </Link>
-          <Link href="/signup" className="underline">
-            Crear cuenta
-          </Link>
-        </div>
-      </form>
-    </div>
+      )}
+      <Button type="submit" disabled={loading} className="w-full">
+        {loading ? "Entrando" : "Entrar"}
+      </Button>
+      <div className="flex justify-between text-sm">
+        <Link
+          href="/reset"
+          className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+        >
+          Olvidé mi contraseña
+        </Link>
+        <Link
+          href="/signup"
+          className="text-accent underline-offset-4 hover:underline"
+        >
+          Crear cuenta
+        </Link>
+      </div>
+    </form>
   );
 }

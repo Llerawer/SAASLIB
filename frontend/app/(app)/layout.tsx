@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
-import LogoutButton from "@/components/logout-button";
+import { AppHeader } from "@/components/app-header";
 
 export default async function AppLayout({
   children,
@@ -18,29 +17,7 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b px-4 py-3 flex items-center justify-between">
-        <nav className="flex gap-4 text-sm items-center">
-          <Link href="/library" className="font-bold">
-            LinguaReader
-          </Link>
-          <Link href="/library" className="text-muted-foreground hover:text-foreground">
-            Biblioteca
-          </Link>
-          <Link href="/vocabulary" className="text-muted-foreground hover:text-foreground">
-            Vocabulario
-          </Link>
-          <Link href="/srs" className="text-muted-foreground hover:text-foreground">
-            Repaso
-          </Link>
-          <Link href="/settings" className="text-muted-foreground hover:text-foreground">
-            Stats
-          </Link>
-        </nav>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-muted-foreground">{user.email}</span>
-          <LogoutButton />
-        </div>
-      </header>
+      <AppHeader userEmail={user.email ?? ""} />
       <main className="flex-1">{children}</main>
     </div>
   );

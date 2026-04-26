@@ -3,16 +3,23 @@
 import { use, useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Settings2, BookOpen } from "lucide-react";
 
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { WordPopup } from "@/components/word-popup";
+import { ReaderSettingsSheet } from "@/components/reader-settings-sheet";
+import { ReaderWordsPanel } from "@/components/reader-words-panel";
 import { useCapturedWords } from "@/lib/api/queries";
 import {
   applyHighlights,
   clientNormalize as highlightNormalize,
-  HIGHLIGHT_THEME,
+  updateHighlightColors,
 } from "@/lib/reader/highlight";
+import { applyReaderSettings } from "@/lib/reader/apply-settings";
+import { attachGestures, type GestureMode } from "@/lib/reader/gestures";
+import { useReaderSettings } from "@/lib/reader/settings";
+import { useWordColors } from "@/lib/reader/word-colors";
 
 type BookOut = { id: string; title: string; source_ref: string };
 
@@ -63,6 +70,9 @@ export default function ReadPage({
     next: () => void;
     destroy: () => void;
     getContents: () => Array<{ document?: Document }>;
+    themes: { default: (rules: Record<string, Record<string, string>>) => void };
+    spread?: (mode: string, min?: number) => void;
+    resize?: () => void;
   } | null>(null);
   const internalBookIdRef = useRef<string | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,7 +84,49 @@ export default function ReadPage({
     new Set(),
   );
 
+  // Reader preferences (theme, font, spread, gestures) — persisted in
+  // localStorage by the hook; we just consume the live state here.
+  const {
+    settings,
+    update: updateSetting,
+    incFontSize,
+    decFontSize,
+    reset: resetSettings,
+  } = useReaderSettings();
+
+  // Live mirror so the book-load effect (deps: book id only) reads the
+  // freshest settings without retriggering on every preference change.
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  // Live mirror so gesture handlers (registered once per chapter) see the
+  // latest mode without re-attaching on every settings change.
+  const gestureModeRef = useRef<GestureMode>({
+    axis: settings.gestureAxis,
+    spread: settings.spread,
+  });
+  useEffect(() => {
+    gestureModeRef.current = {
+      axis: settings.gestureAxis,
+      spread: settings.spread,
+    };
+  }, [settings.gestureAxis, settings.spread]);
+
   const capturedWordsQuery = useCapturedWords(internalBookId);
+
+  // Per-word colour overlay (localStorage). version bumps when user picks a
+  // colour from the panel; we listen and repaint highlighted spans without
+  // re-walking text.
+  const wordColors = useWordColors(internalBookId);
+  // Stable getColor ref so the highlight callbacks don't re-create on every
+  // colour change (would cause unnecessary re-walks). Real getColor lives
+  // in wordColors.getColor and reads from a ref under the hood.
+  const getColorRef = useRef(wordColors.getColor);
+  useEffect(() => {
+    getColorRef.current = wordColors.getColor;
+  }, [wordColors.getColor]);
 
   // Build merged set: server words ∪ optimisticCaptured (lemmas).
   const mergedCaptured = useCallback((): Set<string> => {
@@ -104,7 +156,13 @@ export default function ReadPage({
     const set = buildHighlightSet();
     if (set.size === 0) return;
     for (const c of r.getContents() ?? []) {
-      if (c.document) applyHighlights(c.document, set, highlightNormalize);
+      if (c.document)
+        applyHighlights(
+          c.document,
+          set,
+          highlightNormalize,
+          getColorRef.current,
+        );
     }
   }, [buildHighlightSet]);
 
@@ -119,6 +177,25 @@ export default function ReadPage({
   useEffect(() => {
     applyToCurrentViews();
   }, [applyToCurrentViews]);
+
+  // Re-apply reader preferences when they change (theme, font, spread, etc.).
+  // Cheap call — epub.js diffs theme rules internally on .default(...).
+  useEffect(() => {
+    const r = renditionRef.current;
+    if (!r) return;
+    applyReaderSettings(r, viewerRef.current, settings);
+  }, [settings]);
+
+  // Repaint highlighted spans when the user changes a word's colour.
+  // updateHighlightColors only walks existing .lr-captured nodes — no
+  // text re-walking — so it's safe to run on every colour change.
+  useEffect(() => {
+    const r = renditionRef.current;
+    if (!r) return;
+    for (const c of r.getContents() ?? []) {
+      if (c.document) updateHighlightColors(c.document, wordColors.getColor);
+    }
+  }, [wordColors.version, wordColors.getColor]);
 
   const handleSaved = useCallback((wordNormalized: string) => {
     setOptimisticCaptured((prev) => {
@@ -160,22 +237,29 @@ export default function ReadPage({
           height: "100%",
           flow: "paginated",
           manager: "default",
-          spread: "auto",
+          // Default to single — applyReaderSettings below overrides with the
+          // user's persisted choice. Keeping this static avoids re-creating
+          // the rendition every time settings change.
+          spread: "none",
         });
-        rendition.themes.default(HIGHLIGHT_THEME);
 
-        // Try to resume from saved progress.
-        let savedCfi: string | null = null;
-        try {
-          const saved = await api.get<{ current_location: string | null }>(
-            `/api/v1/books/${registered.id}/progress`,
-          );
-          savedCfi = saved.current_location ?? null;
-        } catch {
-          // 404 first time — fine.
-        }
-        await rendition.display(savedCfi ?? undefined);
-        renditionRef.current = rendition as never;
+        // Apply persisted settings via the latest-state ref BEFORE first
+        // display so theme rules + spread are in place when the chapter
+        // mounts (avoids flash of unstyled). settingsRef is kept fresh by
+        // the effect below.
+        applyReaderSettings(rendition, viewerRef.current, settingsRef.current);
+
+        // ---------------------------------------------------------------
+        // CRITICAL ORDER: register hooks/events BEFORE await display().
+        //
+        // hooks.content.register fires every time epub.js creates a new
+        // iframe for a chapter — INCLUDING the first chapter spawned by
+        // display(). If we registered AFTER display(), the first chapter's
+        // iframe is already mounted and we silently miss it: dblclick
+        // wouldn't fire on the opening page (it'd only start working after
+        // the user navigates to chapter 2). Same logic for "rendered" /
+        // "relocated" listeners — register them up front.
+        // ---------------------------------------------------------------
 
         rendition.on("rendered", () => {
           applyRef.current();
@@ -198,9 +282,13 @@ export default function ReadPage({
           },
         );
 
-        // Register dblclick handler on every chapter iframe via epub.js hooks.
-        // The rendition.on("dblclick") API doesn't fire reliably across
-        // iframes in epub.js v0.3 — we attach directly to each chapter doc.
+        // Per-chapter handlers: dblclick (capture word) + nav gestures
+        // (touch swipe, edge click). Both are registered together so
+        // they share a single iframe document attachment per chapter.
+        // Gesture handlers read getModeRef.current so they always see the
+        // latest spread/axis without re-attaching on settings change.
+        const gestureCleanups: Array<() => void> = [];
+
         rendition.hooks.content.register(
           (contents: { document: Document; window: Window }) => {
             const doc = contents.document;
@@ -252,11 +340,41 @@ export default function ReadPage({
               });
             };
             doc.addEventListener("dblclick", handler);
+
+            // Touch swipe + edge click — see lib/reader/gestures.ts.
+            // Mode is read live so settings changes apply without re-attach.
+            const detach = attachGestures(
+              doc,
+              () => gestureModeRef.current,
+              {
+                onPrev: () => rendition.prev(),
+                onNext: () => rendition.next(),
+              },
+            );
+            gestureCleanups.push(() => {
+              doc.removeEventListener("dblclick", handler);
+              detach();
+            });
           },
         );
 
+        // Now the hooks are armed — kick off the actual rendering.
+        // Try to resume from saved progress; 404 first time is expected.
+        let savedCfi: string | null = null;
+        try {
+          const saved = await api.get<{ current_location: string | null }>(
+            `/api/v1/books/${registered.id}/progress`,
+          );
+          savedCfi = saved.current_location ?? null;
+        } catch {
+          // 404 first time — fine.
+        }
+        await rendition.display(savedCfi ?? undefined);
+        renditionRef.current = rendition as never;
+
         cleanup = () => {
           if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+          for (const fn of gestureCleanups) fn();
           rendition.destroy();
           book.destroy();
         };
@@ -280,9 +398,40 @@ export default function ReadPage({
           </Button>
         </Link>
         <h2 className="text-sm font-semibold flex-1 truncate">{title}</h2>
-        <span className="text-xs text-muted-foreground hidden sm:inline">
-          {mergedCaptured().size} capturadas
-        </span>
+        <ReaderWordsPanel
+          bookId={internalBookId}
+          getColor={wordColors.getColor}
+          setColor={wordColors.setColor}
+          trigger={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs gap-1.5"
+              aria-label="Palabras capturadas"
+              disabled={!internalBookId}
+            >
+              <BookOpen className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {mergedCaptured().size} capturadas
+              </span>
+              <span className="sm:hidden tabular-nums">
+                {mergedCaptured().size}
+              </span>
+            </Button>
+          }
+        />
+        <ReaderSettingsSheet
+          settings={settings}
+          onUpdate={updateSetting}
+          onIncFontSize={incFontSize}
+          onDecFontSize={decFontSize}
+          onReset={resetSettings}
+          trigger={
+            <Button variant="outline" size="sm" aria-label="Ajustes de lectura">
+              <Settings2 className="h-4 w-4" />
+            </Button>
+          }
+        />
         <Button
           variant="outline"
           size="sm"
@@ -301,7 +450,7 @@ export default function ReadPage({
       {error && (
         <div className="bg-red-50 text-red-700 text-sm p-3 border-b">{error}</div>
       )}
-      <div ref={viewerRef} className="flex-1 bg-white" />
+      <div ref={viewerRef} className="flex-1" />
 
       {popup ? (
         <WordPopup

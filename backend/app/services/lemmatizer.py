@@ -1,11 +1,23 @@
-"""Lemmatization with lazy-loaded language models."""
+"""Lemmatization with lazy-loaded language models.
+
+Graceful degradation: if a model isn't installed (e.g. fresh dev box without
+`python -m spacy download en_core_web_sm`), we cache `None` instead of crashing
+on every request. Callers fall back to the surface form, so capture still
+works end-to-end — it just won't normalize "gleaming" → "gleam" until the
+model is installed.
+"""
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Callable
 
+logger = logging.getLogger(__name__)
+
 # Cache loaded models — spaCy load is ~1s, we don't want to repeat it.
-_model_cache: dict[str, object] = {}
+# Value of None means "load was attempted and failed"; subsequent calls
+# skip retry instead of paying the spaCy import cost again.
+_model_cache: dict[str, object | None] = {}
 _model_lock = threading.Lock()
 
 
@@ -30,7 +42,19 @@ def _get_model(language: str):
         loader = LANGUAGE_MODELS.get(language)
         if loader is None:
             return None
-        _model_cache[language] = loader()
+        try:
+            _model_cache[language] = loader()
+        except (OSError, ImportError) as e:
+            # Model not downloaded, or spaCy missing entirely. Cache the
+            # failure so we don't retry on every request.
+            logger.warning(
+                "spaCy model for %r not available (%s). "
+                "Lemmatization disabled — install with: "
+                "python -m spacy download en_core_web_sm",
+                language,
+                e,
+            )
+            _model_cache[language] = None
         return _model_cache[language]
 
 

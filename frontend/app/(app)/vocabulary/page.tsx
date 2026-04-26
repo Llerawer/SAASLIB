@@ -1,7 +1,19 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Trash2, Tag as TagIcon, ChevronDown, ChevronRight, Sparkles, Save } from "lucide-react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  Trash2,
+  Tag as TagIcon,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
+  Save,
+  Inbox,
+  X,
+  BookOpen,
+  Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -13,8 +25,18 @@ import {
 } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
-const TAG_OPTIONS = ["MNEMO", "EJEMPLOS", "GRAMATICA", "ETIMOLOGIA"] as const;
+import { TAG_OPTIONS, tagTone, sortTags } from "@/lib/vocabulary/tags";
 
 export default function VocabularyPage() {
   const pendingQuery = useCapturesList({ promoted: false, limit: 200 });
@@ -55,7 +77,7 @@ export default function VocabularyPage() {
     try {
       const r = await promote.mutateAsync({ capture_ids: ids });
       toast.success(
-        `Promovidas: ${r.created_count} nuevas + ${r.merged_count} merged`,
+        `Promovidas: ${r.created_count} nuevas, ${r.merged_count} fusionadas`,
       );
       setBulkIds(new Set());
       if (selected && ids.includes(selected.id)) setSelected(null);
@@ -74,7 +96,9 @@ export default function VocabularyPage() {
     try {
       const r = await promote.mutateAsync({ capture_ids: [id] });
       toast.success(
-        r.created_count === 1 ? "Tarjeta creada" : "Capture añadido a tarjeta existente",
+        r.created_count === 1
+          ? "Tarjeta creada"
+          : "Captura añadida a tarjeta existente",
       );
       if (selected?.id === id) setSelected(null);
     } catch (err) {
@@ -88,47 +112,50 @@ export default function VocabularyPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <header className="flex items-center justify-between mb-6">
+    <div className="max-w-6xl mx-auto p-4 md:p-6">
+      <header className="flex items-start justify-between mb-6 gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Vocabulario</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">Vocabulario</h1>
+          <p className="text-sm text-muted-foreground tabular">
             {pendingQuery.data?.length ?? 0} pendientes ·{" "}
             {processedQuery.data?.length ?? 0} procesadas
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {bulkIds.size > 0 && (
             <Button
               size="sm"
               onClick={handlePromoteSelected}
               disabled={promote.isPending}
             >
-              <Sparkles className="h-4 w-4 mr-1" />
+              <Sparkles className="h-4 w-4 mr-1.5" aria-hidden="true" />
               Promover {bulkIds.size}
             </Button>
           )}
+          <Link href="/vocabulary/import">
+            <Button variant="outline" size="sm">
+              <Wand2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Enriquecer con IA</span>
+              <span className="sm:hidden">IA</span>
+            </Button>
+          </Link>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
         <div>
           <Input
-            placeholder="Buscar palabra o contexto…"
+            placeholder="Buscar palabra o contexto"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="mb-4"
+            aria-label="Buscar capturas"
           />
 
           {pendingQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Cargando…</p>
+            <CaptureListSkeleton />
           ) : pending.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground">
-              <p className="font-medium">Inbox vacío 🎉</p>
-              <p className="text-sm mt-1">
-                Captura palabras desde el reader para verlas aquí.
-              </p>
-            </div>
+            <EmptyInbox hasFilter={!!search.trim()} />
           ) : (
             <ul className="space-y-2">
               {pending.map((c) => {
@@ -140,11 +167,14 @@ export default function VocabularyPage() {
                     key={c.id}
                     style={{
                       opacity: isRemoving ? 0 : 1,
-                      transform: isRemoving ? "translateX(-20px)" : "translateX(0)",
-                      transition: "opacity 200ms ease-out, transform 200ms ease-out",
+                      transform: isRemoving
+                        ? "translateX(-20px)"
+                        : "translateX(0)",
+                      transition:
+                        "opacity 200ms var(--ease-out-quart), transform 200ms var(--ease-out-quart)",
                     }}
-                    className={`border rounded-lg p-3 cursor-pointer hover:bg-accent ${
-                      isSelected ? "ring-2 ring-primary border-primary" : ""
+                    className={`border rounded-lg p-3 cursor-pointer hover:bg-accent/5 transition-colors ${
+                      isSelected ? "ring-2 ring-ring border-ring" : ""
                     }`}
                     onClick={() => setSelected(c)}
                   >
@@ -154,7 +184,8 @@ export default function VocabularyPage() {
                         checked={isBulk}
                         onChange={() => toggleBulk(c.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="mt-1"
+                        className="mt-1 size-4 accent-accent"
+                        aria-label={`Seleccionar ${c.word}`}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -162,17 +193,17 @@ export default function VocabularyPage() {
                           <span className="text-xs text-muted-foreground font-mono">
                             {c.word_normalized}
                           </span>
-                          {c.tags.map((t) => (
+                          {sortTags(c.tags).map((t) => (
                             <span
                               key={t}
-                              className="text-xs bg-muted px-1.5 py-0.5 rounded"
+                              className={`text-xs px-1.5 py-0.5 rounded border ${tagTone(t)}`}
                             >
-                              [{t}]
+                              {t}
                             </span>
                           ))}
                         </div>
                         {c.context_sentence && (
-                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2 font-serif italic">
                             “{c.context_sentence}”
                           </p>
                         )}
@@ -184,11 +215,11 @@ export default function VocabularyPage() {
             </ul>
           )}
 
-          {/* Procesadas */}
           <div className="mt-8 border-t pt-6">
             <button
               onClick={() => setProcessedOpen((v) => !v)}
               className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+              aria-expanded={processedOpen}
             >
               {processedOpen ? (
                 <ChevronDown className="h-4 w-4" />
@@ -204,7 +235,9 @@ export default function VocabularyPage() {
                     key={c.id}
                     className="text-sm flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted"
                   >
-                    <span className="text-muted-foreground line-through">{c.word}</span>
+                    <span className="text-muted-foreground line-through">
+                      {c.word}
+                    </span>
                     <span className="text-xs text-muted-foreground font-mono">
                       {c.word_normalized}
                     </span>
@@ -216,6 +249,7 @@ export default function VocabularyPage() {
         </div>
 
         <CaptureDrawer
+          key={selected?.id ?? "empty"}
           capture={selected}
           onClose={() => setSelected(null)}
           onPromote={() => selected && handlePromoteOne(selected.id)}
@@ -223,6 +257,77 @@ export default function VocabularyPage() {
         />
       </div>
     </div>
+  );
+}
+
+function EmptyInbox({ hasFilter }: { hasFilter: boolean }) {
+  if (hasFilter) {
+    return (
+      <div className="border rounded-lg p-8 text-center bg-card">
+        <Inbox
+          className="h-10 w-10 mx-auto text-muted-foreground/60"
+          aria-hidden="true"
+        />
+        <p className="font-semibold mt-3 font-serif">Sin coincidencias</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Prueba con otra palabra o limpia el filtro.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="relative border rounded-xl bg-card overflow-hidden">
+      <div
+        className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(circle at 30% 20%, oklch(0.94 0.04 75 / 0.7) 0%, transparent 60%)",
+        }}
+        aria-hidden="true"
+      />
+      <div className="relative px-6 py-10 sm:px-10 sm:py-12">
+        <div className="inline-flex items-center justify-center size-12 rounded-full bg-accent/15 text-accent ring-1 ring-accent/30">
+          <Inbox className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <h2 className="mt-4 text-2xl font-bold font-serif tracking-tight">
+          Tu inbox está limpio.
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed max-w-md">
+          Aquí aparecen las palabras que captures mientras lees. Haz doble clic
+          en cualquier palabra dentro de un libro para guardarla.
+        </p>
+        <div className="mt-5">
+          <Link href="/library">
+            <Button size="sm">
+              <BookOpen className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              Ir a leer
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CaptureListSkeleton() {
+  return (
+    <ul className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <li
+          key={i}
+          className="border rounded-lg p-3 animate-pulse"
+          aria-hidden="true"
+        >
+          <div className="flex gap-2">
+            <div className="h-4 w-4 bg-muted rounded shrink-0 mt-1" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 bg-muted rounded w-1/3" />
+              <div className="h-3 bg-muted rounded w-3/4" />
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -239,20 +344,21 @@ function CaptureDrawer({
 }) {
   const update = useUpdateCapture();
   const del = useDeleteCapture();
-  const [draftContext, setDraftContext] = useState("");
-  const [draftTags, setDraftTags] = useState<Set<string>>(new Set());
-
-  // Sync drafts when capture changes.
-  useMemo(() => {
-    setDraftContext(capture?.context_sentence ?? "");
-    setDraftTags(new Set(capture?.tags ?? []));
-  }, [capture?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Initialize from prop. Parent passes a new key when capture changes, which
+  // remounts this component and resets state — no useEffect sync needed.
+  const [draftContext, setDraftContext] = useState(
+    capture?.context_sentence ?? "",
+  );
+  const [draftTags, setDraftTags] = useState<Set<string>>(
+    () => new Set(capture?.tags ?? []),
+  );
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (!capture) {
     return (
       <aside className="hidden lg:block sticky top-6 self-start">
-        <div className="border rounded-lg p-6 text-sm text-muted-foreground text-center h-fit">
-          Selecciona un capture para editarlo.
+        <div className="border rounded-lg p-6 text-sm text-muted-foreground text-center">
+          Selecciona una captura para editarla.
         </div>
       </aside>
     );
@@ -277,61 +383,73 @@ function CaptureDrawer({
   }
 
   async function handleDelete() {
-    if (!confirm("¿Borrar esta captura?")) return;
-    await del.mutateAsync(capture!.id);
-    onClose();
+    try {
+      await del.mutateAsync(capture!.id);
+      setConfirmDelete(false);
+      onClose();
+      toast.success("Captura borrada");
+    } catch (err) {
+      toast.error(`Error al borrar: ${(err as Error).message}`);
+    }
   }
 
   return (
     <aside className="lg:sticky lg:top-6 self-start">
       <div className="border rounded-lg p-4 space-y-4 bg-card">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-lg font-semibold">{capture.word}</div>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-lg font-semibold truncate">{capture.word}</div>
             <div className="text-xs text-muted-foreground font-mono">
               lema: {capture.word_normalized}
             </div>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-sm"
+            aria-label="Cerrar panel"
           >
-            ✕
-          </button>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
         <div>
-          <label className="text-xs uppercase tracking-wide text-muted-foreground">
+          <label
+            htmlFor="capture-context"
+            className="text-xs uppercase tracking-wide text-muted-foreground"
+          >
             Contexto
           </label>
           <textarea
+            id="capture-context"
             value={draftContext}
             onChange={(e) => setDraftContext(e.target.value)}
             onBlur={saveContext}
             rows={3}
-            className="w-full text-sm border rounded p-2 mt-1 resize-none"
+            className="w-full text-sm border rounded-md p-2 mt-1 resize-none bg-background font-serif italic focus-visible:ring-2 focus-visible:ring-ring outline-none"
             placeholder="(sin contexto)"
           />
         </div>
 
         <div>
-          <label className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-            <TagIcon className="h-3 w-3" /> Marcadores
-          </label>
-          <div className="flex flex-wrap gap-1 mt-1">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+            <TagIcon className="h-3 w-3" aria-hidden="true" /> Marcadores
+          </span>
+          <div className="flex flex-wrap gap-1.5 mt-1.5" role="group">
             {TAG_OPTIONS.map((t) => {
               const active = draftTags.has(t);
               return (
                 <button
                   key={t}
                   onClick={() => toggleTag(t)}
-                  className={`text-xs px-2 py-1 rounded border transition-colors ${
+                  className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
                     active
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background text-muted-foreground border-input hover:bg-accent"
+                      ? tagTone(t)
+                      : "bg-background text-muted-foreground border-input hover:bg-muted"
                   }`}
+                  aria-pressed={active}
                 >
-                  [{t}]
+                  {t}
                 </button>
               );
             })}
@@ -343,7 +461,7 @@ function CaptureDrawer({
             <div className="text-xs uppercase tracking-wide text-muted-foreground">
               Traducción
             </div>
-            {capture.translation}
+            <p className="font-serif">{capture.translation}</p>
           </div>
         )}
         {capture.definition && (
@@ -351,7 +469,7 @@ function CaptureDrawer({
             <div className="text-xs uppercase tracking-wide text-muted-foreground">
               Definición
             </div>
-            <p className="leading-snug">{capture.definition}</p>
+            <p className="leading-relaxed font-serif">{capture.definition}</p>
           </div>
         )}
 
@@ -362,7 +480,7 @@ function CaptureDrawer({
             disabled={isPromoting}
             className="flex-1"
           >
-            <Sparkles className="h-4 w-4 mr-1" />
+            <Sparkles className="h-4 w-4 mr-1.5" aria-hidden="true" />
             Promover
           </Button>
           <Button
@@ -370,18 +488,41 @@ function CaptureDrawer({
             variant="outline"
             onClick={saveContext}
             disabled={update.isPending}
+            aria-label="Guardar cambios"
           >
             <Save className="h-4 w-4" />
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={handleDelete}
+            onClick={() => setConfirmDelete(true)}
             disabled={del.isPending}
+            aria-label="Borrar captura"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
+
+        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Borrar captura?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Vas a borrar &ldquo;{capture.word}&rdquo;. Esta acción no se
+                puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={handleDelete}
+              >
+                Borrar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </aside>
   );

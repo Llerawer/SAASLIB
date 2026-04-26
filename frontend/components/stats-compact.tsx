@@ -12,23 +12,29 @@ export function StatsCompact() {
     data.retention_30d !== null ? Math.round(data.retention_30d * 100) : null;
 
   return (
-    <div className="flex items-center gap-3 text-xs">
-      <span className="flex items-center gap-1 text-muted-foreground">
-        <Flame className="h-3 w-3 text-amber-500" />
-        <span className="font-semibold text-foreground">{data.streak_days}</span> días
+    <div className="flex items-center gap-3 text-xs tabular">
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        <Flame className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
+        <span className="font-semibold text-foreground">{data.streak_days}</span>
+        <span>días</span>
       </span>
-      <span className="text-muted-foreground">·</span>
-      <span className="flex items-center gap-1 text-muted-foreground">
-        <TrendingUp className="h-3 w-3 text-emerald-500" />
+      <span className="text-muted-foreground" aria-hidden="true">
+        ·
+      </span>
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        <TrendingUp className="h-3.5 w-3.5 text-success" aria-hidden="true" />
         <span className="font-semibold text-foreground">
-          {retentionPct !== null ? `${retentionPct}%` : "—"}
-        </span>{" "}
-        retención
+          {retentionPct !== null ? `${retentionPct}%` : "·"}
+        </span>
+        <span>retención</span>
       </span>
-      <span className="text-muted-foreground">·</span>
-      <span className="flex items-center gap-1 text-muted-foreground">
-        <Layers className="h-3 w-3 text-blue-500" />
-        <span className="font-semibold text-foreground">{data.totals.cards}</span> cards
+      <span className="text-muted-foreground" aria-hidden="true">
+        ·
+      </span>
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        <Layers className="h-3.5 w-3.5 text-info" aria-hidden="true" />
+        <span className="font-semibold text-foreground">{data.totals.cards}</span>
+        <span>tarjetas</span>
       </span>
     </div>
   );
@@ -40,21 +46,28 @@ export function HeatmapStrip() {
   const max = Math.max(1, ...data.heatmap_90d.map((d) => d.reviews + d.captures));
 
   return (
-    <div className="grid gap-px" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
+    <div
+      className="grid gap-px"
+      style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+      role="img"
+      aria-label="Mapa de actividad de los últimos 90 días"
+    >
       {data.heatmap_90d.map((d) => {
         const total = d.reviews + d.captures;
-        const intensity = total === 0 ? 0 : 0.2 + (total / max) * 0.8;
+        const intensity = total === 0 ? 0 : 0.18 + (total / max) * 0.82;
         return (
           <div
             key={d.date}
-            title={`${d.date}: ${d.reviews} reviews · ${d.captures} captures`}
+            title={`${d.date}: ${d.reviews} repasos · ${d.captures} capturas`}
             className="aspect-square rounded-sm"
-            style={{
-              backgroundColor:
-                total === 0
-                  ? "rgb(229, 231, 235)"
-                  : `rgba(34, 197, 94, ${intensity})`,
-            }}
+            style={
+              total === 0
+                ? { backgroundColor: "var(--muted)" }
+                : {
+                    backgroundColor: "var(--success)",
+                    opacity: intensity,
+                  }
+            }
           />
         );
       })}

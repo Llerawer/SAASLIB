@@ -9,7 +9,8 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
-  GraduationCap,
+  Filter,
+  Trash2,
 } from "lucide-react";
 import {
   keepPreviousData,
@@ -34,6 +35,26 @@ import {
   BookPreviewDialog,
   type BookPreviewSeed,
 } from "@/components/book-preview-dialog";
+import { useBookMetadata } from "@/lib/api/queries";
+import { cleanSubjects } from "@/lib/library/subjects";
+import { OnboardingRibbon } from "@/components/onboarding-ribbon";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type GutendexAuthor = { name: string; birth_year?: number; death_year?: number };
 type GutendexBook = {
@@ -68,26 +89,31 @@ type SearchKey = {
   topic: string | null;
 };
 
+const CEFR_TONE: Record<string, string> = {
+  A1: "bg-cefr-easy/15 text-cefr-easy border-cefr-easy/40",
+  A2: "bg-cefr-easy/15 text-cefr-easy border-cefr-easy/40",
+  B1: "bg-cefr-mid/20 text-cefr-mid-foreground border-cefr-mid/50",
+  B2: "bg-cefr-mid/20 text-cefr-mid-foreground border-cefr-mid/50",
+  "B2-C1": "bg-cefr-hard/15 text-cefr-hard border-cefr-hard/40",
+  C1: "bg-cefr-hard/15 text-cefr-hard border-cefr-hard/40",
+  C2: "bg-cefr-hard/15 text-cefr-hard border-cefr-hard/40",
+};
+
 export default function LibraryPage() {
   const qc = useQueryClient();
   const myLibrary = useMyLibrary();
 
-  // --- Search input + state ---
   const [queryInput, setQueryInput] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const debouncedQuery = useDebouncedValue(submittedQuery, 300);
 
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const [activeTopicLabel, setActiveTopicLabel] = useState<string | null>(null);
+  const [topicsSheetOpen, setTopicsSheetOpen] = useState(false);
 
-  // Discriminator for the *currently displayed* search. Used for the
-  // belt-and-suspenders requestIdRef pattern: even if TanStack Query +
-  // signal misses a corner case, our setReadingMap effects only act on
-  // the latest selection.
   const requestIdRef = useRef(0);
   const [activeKeyId, setActiveKeyId] = useState(0);
 
-  // Reset chunk + filter every time search target changes.
   const [chunkIndex, setChunkIndex] = useState(0);
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
   const [previewBook, setPreviewBook] = useState<BookPreviewSeed | null>(null);
@@ -117,30 +143,29 @@ export default function LibraryPage() {
     },
   });
 
-  // Reset chunk + filter when target changes (topic or query, NOT page).
+  // Resetting derived UI state when the search target changes is intentional.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setChunkIndex(0);
     setLevelFilter("all");
     requestIdRef.current += 1;
     setActiveKeyId(requestIdRef.current);
   }, [activeTopic, debouncedQuery]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const results = search.data?.results ?? [];
+  const results = useMemo(
+    () => search.data?.results ?? [],
+    [search.data?.results],
+  );
   const resultsCount = search.data?.count ?? null;
 
-  // --- Reading info: ONE batch call per category, NO N+1 ---
-  // Backend's /reading-info/batch handles cache lookup + parallel scrape
-  // internally. Frontend just gets the final {id: info} map back.
   const ids = useMemo(() => results.map((b) => b.id), [results]);
   const batchQuery = useReadingInfoBatch(ids);
 
   useEffect(() => {
     if (!batchQuery.data) return;
-    // Discard if a newer search has started — guards against the rare case
-    // where this batch resolves AFTER the user already moved on.
     const myId = activeKeyId;
     if (myId !== requestIdRef.current) return;
-
     setReadingMap((prev) => {
       const next = { ...prev };
       for (const [k, v] of Object.entries(batchQuery.data!)) {
@@ -151,7 +176,8 @@ export default function LibraryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchQuery.data]);
 
-  // Cap memory: drop entries whose IDs aren't in the current results window.
+  // GC of stale entries when results change — intentional sync of derived state.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (results.length === 0) return;
     setReadingMap((prev) => {
@@ -165,8 +191,8 @@ export default function LibraryPage() {
       return changed ? next : prev;
     });
   }, [results]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  // --- Handlers ---
   function handleSearch(e: FormEvent) {
     e.preventDefault();
     setActiveTopic(null);
@@ -179,11 +205,9 @@ export default function LibraryPage() {
     setSubmittedQuery("");
     setActiveTopic(topic);
     setActiveTopicLabel(label);
+    setTopicsSheetOpen(false);
   }
 
-  // Hover/focus prefetch — by the time the user clicks, Gutendex has been
-  // hit and the result is in TanStack's cache. Idempotent: prefetchQuery
-  // respects staleTime (5 min) and won't re-fire for fresh keys.
   function prefetchTopic(topic: string) {
     if (topic === activeTopic) return;
     const key: SearchKey = { q: "", topic };
@@ -206,11 +230,9 @@ export default function LibraryPage() {
     setActiveTopicLabel(null);
     setSubmittedQuery("");
     setQueryInput("");
-    // Drop any stale cached search to free memory.
     qc.removeQueries({ queryKey: ["search"], exact: false });
   }
 
-  // --- Filter ---
   const allowedCefr = useMemo(
     () => LEVEL_OPTIONS.find((l) => l.value === levelFilter)?.cefr ?? [],
     [levelFilter],
@@ -220,86 +242,171 @@ export default function LibraryPage() {
     if (levelFilter === "all") return results;
     return results.filter((b) => {
       const cefr = readingMap[b.id]?.cefr;
-      if (!cefr) return true; // unknown CEFR pass through (loading)
+      if (!cefr) return true;
       return allowedCefr.includes(cefr);
     });
   }, [results, levelFilter, allowedCefr, readingMap]);
 
   const totalChunks = Math.max(1, Math.ceil(filteredResults.length / PAGE_SIZE));
   const safeChunkIndex = Math.min(chunkIndex, totalChunks - 1);
-  const visibleResults = filteredResults.slice(
+  const rawChunk = filteredResults.slice(
     safeChunkIndex * PAGE_SIZE,
     (safeChunkIndex + 1) * PAGE_SIZE,
   );
 
+  // Smart hero pick — only on the first chunk. Among the first 3 results
+  // (Gutendex already returns by popularity), prefer the one that has a
+  // cover image so the hero never renders weak. Falls back to position 0.
+  const visibleResults = useMemo(() => {
+    if (safeChunkIndex !== 0 || rawChunk.length === 0) return rawChunk;
+    const candidates = rawChunk.slice(0, 3);
+    const heroIdx = candidates.findIndex(
+      (b) => !!b.formats?.["image/jpeg"],
+    );
+    if (heroIdx <= 0) return rawChunk;
+    const reordered = [...rawChunk];
+    const [hero] = reordered.splice(heroIdx, 1);
+    reordered.unshift(hero);
+    return reordered;
+  }, [rawChunk, safeChunkIndex]);
+
   const myBooks = myLibrary.data ?? [];
   const showResults = enabled;
   const isFetching = search.isFetching;
-  // Loading state: only show full-skeleton while we have NO data yet.
-  // Once we have placeholderData, just dim it.
   const isInitialLoading = enabled && !search.data;
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      {myBooks.length > 0 && (
+    <div className="max-w-7xl mx-auto p-4 md:p-6">
+      <h1 className="sr-only">Biblioteca</h1>
+
+      <OnboardingRibbon />
+
+      {myLibrary.isLoading ? (
         <section className="mb-10">
-          <h2 className="text-xl font-bold mb-1 flex items-center gap-2">
-            <BookOpen className="h-5 w-5" /> Continuar leyendo
+          <h2 className="text-xl font-bold mb-1 flex items-center gap-2 tracking-tight">
+            <BookOpen className="h-5 w-5 text-accent" aria-hidden="true" />
+            Continuar leyendo
           </h2>
-          <p className="text-sm text-muted-foreground mb-4">
+          <div className="h-4 w-24 bg-muted rounded animate-pulse mb-4 mt-2" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <MyBookSkeleton key={i} />
+            ))}
+          </div>
+        </section>
+      ) : myBooks.length > 0 ? (
+        <section className="mb-10">
+          <h2 className="text-xl font-bold mb-1 flex items-center gap-2 tracking-tight">
+            <BookOpen className="h-5 w-5 text-accent" aria-hidden="true" />
+            Continuar leyendo
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4 tabular">
             {myBooks.length} {myBooks.length === 1 ? "libro" : "libros"} en tu
             biblioteca
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {myBooks.map((b) => (
-              <MyBookCard key={b.book_id} book={b} />
+            {myBooks.map((b, i) => (
+              <div
+                key={b.book_id}
+                style={{
+                  animation: `lr-card-in 360ms var(--ease-out-quart) ${i * 40}ms both`,
+                }}
+              >
+                <MyBookCard book={b} />
+              </div>
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
       <section>
-        <h2 className="text-xl font-bold mb-1 flex items-center gap-2">
-          <Search className="h-5 w-5" /> Explorar Gutenberg
+        <h2 className="text-xl font-bold mb-1 flex items-center gap-2 tracking-tight">
+          <Search className="h-5 w-5 text-accent" aria-hidden="true" />
+          Explorar Gutenberg
         </h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          78,000+ libros de dominio público.
+        <p className="text-sm text-muted-foreground mb-4 tabular">
+          Más de 78.000 libros de dominio público.
         </p>
 
-        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-          <Input
-            value={queryInput}
-            onChange={(e) => setQueryInput(e.target.value)}
-            placeholder="ej: Sherlock Holmes, Pride and Prejudice…"
-          />
-          <Button type="submit">Buscar</Button>
+        <form onSubmit={handleSearch} className="mb-6">
+          <div className="flex gap-2">
+            <Input
+              value={queryInput}
+              onChange={(e) => setQueryInput(e.target.value)}
+              placeholder="ej: Sherlock Holmes, Pride and Prejudice"
+              aria-label="Buscar libros"
+            />
+            <Button type="submit">Buscar</Button>
+          </div>
+          <div
+            className="h-4 mt-1.5 text-xs text-muted-foreground transition-opacity"
+            aria-live="polite"
+          >
+            {queryInput.trim().length >= 2 &&
+              queryInput.trim() !== submittedQuery.trim() && (
+                <span className="inline-flex items-center gap-1">
+                  Pulsa
+                  <kbd className="px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px] text-foreground">
+                    Enter
+                  </kbd>
+                  para buscar.
+                </span>
+              )}
+          </div>
         </form>
 
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-          <aside className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold flex items-center gap-1">
-                <Layers className="h-4 w-4" /> Categorías
-              </h3>
+          {/* Topics: sheet on mobile, sidebar on desktop */}
+          <aside className="lg:block">
+            <div className="lg:hidden mb-3 flex items-center gap-2">
+              <Sheet open={topicsSheetOpen} onOpenChange={setTopicsSheetOpen}>
+                <SheetTrigger
+                  render={
+                    <Button variant="outline" size="sm">
+                      <Layers className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                      Categorías
+                    </Button>
+                  }
+                />
+                <SheetContent side="left">
+                  <SheetHeader>
+                    <SheetTitle>Categorías</SheetTitle>
+                  </SheetHeader>
+                  <TopicsList
+                    activeTopic={activeTopic}
+                    onPick={handleTopicClick}
+                    onPrefetch={prefetchTopic}
+                  />
+                </SheetContent>
+              </Sheet>
               {(activeTopic || debouncedQuery) && (
-                <button
-                  onClick={clearTopic}
-                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                >
-                  <X className="h-3 w-3" /> Limpiar
-                </button>
+                <Button variant="ghost" size="sm" onClick={clearTopic}>
+                  <X className="h-4 w-4 mr-1" aria-hidden="true" />
+                  Limpiar
+                </Button>
               )}
             </div>
-            <div className="space-y-1">
-              {TOPIC_GROUPS.map((group) => (
-                <TopicGroupSection
-                  key={group.name}
-                  group={group}
-                  activeTopic={activeTopic}
-                  onPick={handleTopicClick}
-                  onPrefetch={prefetchTopic}
-                />
-              ))}
+
+            <div className="hidden lg:block space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Layers className="h-4 w-4" aria-hidden="true" />
+                  Categorías
+                </h3>
+                {(activeTopic || debouncedQuery) && (
+                  <button
+                    onClick={clearTopic}
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted"
+                  >
+                    <X className="h-3 w-3" aria-hidden="true" /> Limpiar
+                  </button>
+                )}
+              </div>
+              <TopicsList
+                activeTopic={activeTopic}
+                onPick={handleTopicClick}
+                onPrefetch={prefetchTopic}
+              />
             </div>
           </aside>
 
@@ -311,14 +418,14 @@ export default function LibraryPage() {
                     <span className="text-muted-foreground">Categoría: </span>
                     <span className="font-semibold">{activeTopicLabel}</span>
                     {resultsCount !== null && (
-                      <span className="text-muted-foreground ml-2">
+                      <span className="text-muted-foreground ml-2 tabular">
                         · {resultsCount.toLocaleString()} libros
                       </span>
                     )}
                   </div>
                 )}
                 {results.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1 tabular">
                     Mostrando{" "}
                     {filteredResults.length === 0
                       ? 0
@@ -337,14 +444,18 @@ export default function LibraryPage() {
 
               {results.length > 0 && (
                 <label className="flex items-center gap-2 text-sm">
-                  <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                  <Filter
+                    className="h-4 w-4 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">Filtrar por nivel CEFR</span>
                   <select
                     value={levelFilter}
                     onChange={(e) => {
                       setLevelFilter(e.target.value as LevelFilter);
                       setChunkIndex(0);
                     }}
-                    className="text-sm border rounded px-2 py-1 bg-background"
+                    className="text-sm border rounded-md px-2 py-1.5 bg-background min-h-9"
                   >
                     {LEVEL_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -357,20 +468,21 @@ export default function LibraryPage() {
             </div>
 
             {search.error && (
-              <p className="text-sm text-red-600 mb-4">
+              <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3 rounded-md mb-4">
                 {(search.error as Error).message}
-              </p>
+              </div>
             )}
 
             {!showResults && (
-              <div className="border rounded-lg p-12 text-center text-sm text-muted-foreground">
-                Selecciona una categoría a la izquierda o busca por título / autor.
-              </div>
+              <EmptyExplore onPick={handleTopicClick} onPrefetch={prefetchTopic} />
             )}
 
             {isInitialLoading && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {Array.from({ length: 6 }).map((_, i) => (
+                <div className="sm:col-span-2">
+                  <HeroSkeletonCard />
+                </div>
+                {Array.from({ length: 5 }).map((_, i) => (
                   <SkeletonCard key={i} />
                 ))}
               </div>
@@ -388,16 +500,33 @@ export default function LibraryPage() {
             {!isInitialLoading && results.length > 0 && (
               <div
                 className="grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity"
-                style={{ opacity: isFetching ? 0.5 : 1 }}
+                style={{ opacity: isFetching ? 0.55 : 1 }}
               >
-                {visibleResults.map((book) => (
-                  <BookSearchCard
-                    key={book.id}
-                    book={book}
-                    reading={readingMap[book.id] ?? null}
-                    onPick={() => setPreviewBook(book)}
-                  />
-                ))}
+                {visibleResults.map((book, i) => {
+                  const isFirstChunk = safeChunkIndex === 0;
+                  const tier: BookCardTier =
+                    isFirstChunk && i === 0
+                      ? "hero"
+                      : isFirstChunk && i <= 2
+                        ? "spotlight"
+                        : "regular";
+                  return (
+                    <div
+                      key={book.id}
+                      className={tier === "hero" ? "sm:col-span-2" : ""}
+                      style={{
+                        animation: `lr-card-in 360ms var(--ease-out-quart) ${i * 30}ms both`,
+                      }}
+                    >
+                      <BookSearchCard
+                        book={book}
+                        reading={readingMap[book.id] ?? null}
+                        onPick={() => setPreviewBook(book)}
+                        tier={tier}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -409,9 +538,9 @@ export default function LibraryPage() {
                   disabled={safeChunkIndex === 0}
                   onClick={() => setChunkIndex((i) => Math.max(0, i - 1))}
                 >
-                  ← Anterior
+                  Anterior
                 </Button>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground tabular">
                   {safeChunkIndex + 1} / {totalChunks}
                 </span>
                 <Button
@@ -422,7 +551,7 @@ export default function LibraryPage() {
                     setChunkIndex((i) => Math.min(totalChunks - 1, i + 1))
                   }
                 >
-                  Siguiente →
+                  Siguiente
                 </Button>
               </div>
             )}
@@ -439,14 +568,155 @@ export default function LibraryPage() {
   );
 }
 
+function TopicsList({
+  activeTopic,
+  onPick,
+  onPrefetch,
+}: {
+  activeTopic: string | null;
+  onPick: (topic: string, label: string) => void;
+  onPrefetch?: (topic: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      {TOPIC_GROUPS.map((group) => (
+        <TopicGroupSection
+          key={group.name}
+          group={group}
+          activeTopic={activeTopic}
+          onPick={onPick}
+          onPrefetch={onPrefetch}
+        />
+      ))}
+    </div>
+  );
+}
+
+const QUICK_TOPICS: { label: string; topic: string }[] = [
+  { label: "Clásicos", topic: "classics" },
+  { label: "Misterio y crimen", topic: "mystery" },
+  { label: "Aventura", topic: "adventure" },
+  { label: "Cuentos cortos", topic: "short stories" },
+  { label: "Romance", topic: "love" },
+  { label: "Ciencia ficción", topic: "science fiction" },
+  { label: "Lit. británica", topic: "british literature" },
+  { label: "Filosofía", topic: "philosophy" },
+];
+
+function EmptyExplore({
+  onPick,
+  onPrefetch,
+}: {
+  onPick: (topic: string, label: string) => void;
+  onPrefetch: (topic: string) => void;
+}) {
+  return (
+    <div className="relative border rounded-xl bg-card overflow-hidden">
+      {/* Warm radial backdrop, faint dotted texture */}
+      <div
+        className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(circle at 30% 20%, oklch(0.94 0.04 75 / 0.7) 0%, transparent 60%)",
+        }}
+        aria-hidden="true"
+      />
+      <div className="relative px-6 py-10 sm:px-10 sm:py-14 max-w-2xl">
+        <div className="inline-flex items-center justify-center size-12 rounded-full bg-accent/15 text-accent ring-1 ring-accent/30">
+          <BookOpen className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <h3 className="mt-4 text-2xl sm:text-3xl font-bold font-serif tracking-tight">
+          Tu próxima lectura te espera.
+        </h3>
+        <p className="mt-2 text-sm sm:text-base text-muted-foreground leading-relaxed max-w-md">
+          Más de 78.000 libros de dominio público de Project Gutenberg, listos
+          para leer en inglés con captura de palabras.
+        </p>
+
+        <div className="mt-6">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+            Empieza por algo popular
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {QUICK_TOPICS.map((t) => (
+              <button
+                key={t.topic}
+                onClick={() => onPick(t.topic, t.label)}
+                onMouseEnter={() => onPrefetch(t.topic)}
+                onFocus={() => onPrefetch(t.topic)}
+                className="text-sm px-3 py-1.5 rounded-full bg-background border border-border text-foreground hover:bg-accent/10 hover:border-accent/40 hover:text-accent transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className="mt-6 text-xs text-muted-foreground">
+          O busca por título / autor arriba.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function SkeletonCard() {
   return (
-    <div className="flex gap-3 border rounded-lg p-3 animate-pulse">
-      <div className="w-16 h-24 bg-muted rounded shrink-0" />
+    <div className="flex gap-3 border rounded-lg p-3 animate-pulse bg-card">
+      <div className="w-16 h-24 bg-muted rounded-sm shrink-0" />
       <div className="flex-1 space-y-2">
         <div className="h-3 bg-muted rounded w-3/4" />
         <div className="h-3 bg-muted rounded w-1/2" />
         <div className="h-3 bg-muted rounded w-1/3" />
+      </div>
+    </div>
+  );
+}
+
+function MyBookSkeleton() {
+  return (
+    <div
+      className="border rounded-lg overflow-hidden bg-card animate-pulse flex flex-col"
+      aria-hidden="true"
+    >
+      <div className="flex gap-3 p-4 flex-1">
+        <div className="shrink-0 w-14 h-20 bg-muted rounded-sm" />
+        <div className="flex-1 space-y-2 min-w-0">
+          <div className="h-4 bg-muted rounded w-4/5" />
+          <div className="h-3 bg-muted rounded w-1/2" />
+          <div className="h-3 bg-muted rounded w-2/3 mt-3" />
+        </div>
+      </div>
+      <div className="h-1.5 w-full bg-muted" />
+      <div className="px-4 py-1.5 h-7" />
+    </div>
+  );
+}
+
+function HeroSkeletonCard() {
+  return (
+    <div
+      className="relative border rounded-xl bg-card overflow-hidden animate-pulse"
+      aria-hidden="true"
+    >
+      <div className="absolute top-3 left-3">
+        <div className="h-5 w-24 rounded-full bg-muted" />
+      </div>
+      <div className="grid grid-cols-[auto_1fr] gap-4 sm:gap-6 p-4 sm:p-6">
+        <div className="w-24 sm:w-40 aspect-[2/3] bg-muted rounded-md ring-1 ring-foreground/5" />
+        <div className="flex flex-col">
+          <div className="h-5 sm:h-7 bg-muted rounded w-4/5 mt-5 sm:mt-7" />
+          <div className="h-3.5 sm:h-4 bg-muted rounded w-1/3 mt-2.5 sm:mt-3" />
+          <div className="space-y-2 mt-3 sm:mt-4">
+            <div className="h-3 bg-muted rounded w-full" />
+            <div className="h-3 bg-muted rounded w-11/12" />
+            <div className="h-3 bg-muted rounded w-3/4" />
+          </div>
+          <div className="flex gap-2 mt-auto pt-4">
+            <div className="h-5 w-20 rounded-full bg-muted" />
+            <div className="h-5 w-24 rounded-full bg-muted hidden sm:block" />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -470,50 +740,71 @@ function TopicGroupSection({
     <div className="border-b last:border-b-0 pb-2">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 w-full text-left text-sm font-medium py-1.5 hover:text-primary"
+        className={`flex items-center gap-1.5 w-full text-left text-sm py-2 transition-colors ${
+          hasActive
+            ? "text-accent font-semibold"
+            : "font-medium hover:text-accent"
+        }`}
+        aria-expanded={open}
       >
         {open ? (
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${
+              hasActive ? "text-accent" : ""
+            }`}
+            aria-hidden="true"
+          />
         ) : (
-          <ChevronRight className="h-3 w-3" />
+          <ChevronRight
+            className={`h-3.5 w-3.5 transition-transform ${
+              hasActive ? "text-accent" : ""
+            }`}
+            aria-hidden="true"
+          />
         )}
-        {group.name}
+        <span className="flex-1">{group.name}</span>
+        {hasActive && !open && (
+          <span
+            className="size-1.5 rounded-full bg-accent"
+            aria-hidden="true"
+          />
+        )}
       </button>
       {open && (
         <ul className="ml-4 mt-1 space-y-0.5">
-          {group.topics.map((t) => (
-            <li key={t.topic}>
-              <button
-                onClick={() => onPick(t.topic, t.label)}
-                onMouseEnter={() => onPrefetch?.(t.topic)}
-                onFocus={() => onPrefetch?.(t.topic)}
-                className={`text-xs px-2 py-1 rounded w-full text-left hover:bg-accent transition-colors ${
-                  activeTopic === t.topic
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {t.label}
-              </button>
-            </li>
-          ))}
+          {group.topics.map((t) => {
+            const isActive = activeTopic === t.topic;
+            return (
+              <li key={t.topic}>
+                <button
+                  onClick={() => onPick(t.topic, t.label)}
+                  onMouseEnter={() => onPrefetch?.(t.topic)}
+                  onFocus={() => onPrefetch?.(t.topic)}
+                  aria-current={isActive ? "true" : undefined}
+                  className={`text-xs pl-2.5 pr-2.5 py-1.5 rounded-md w-full text-left transition-colors flex items-center gap-1.5 ${
+                    isActive
+                      ? "bg-accent/15 text-accent font-semibold"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {isActive && (
+                    <span
+                      className="size-1.5 rounded-full bg-accent shrink-0"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span className={isActive ? "" : "ml-3"}>{t.label}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
 }
 
-const CEFR_COLOR: Record<string, string> = {
-  A1: "bg-emerald-100 text-emerald-700 border-emerald-300",
-  A2: "bg-emerald-100 text-emerald-700 border-emerald-300",
-  B1: "bg-amber-100 text-amber-700 border-amber-300",
-  B2: "bg-amber-100 text-amber-700 border-amber-300",
-  "B2-C1": "bg-orange-100 text-orange-700 border-orange-300",
-  C1: "bg-rose-100 text-rose-700 border-rose-300",
-  C2: "bg-rose-100 text-rose-700 border-rose-300",
-};
-
-function BookSearchCard({
+function FeaturedBookCard({
   book,
   reading,
   onPick,
@@ -522,65 +813,271 @@ function BookSearchCard({
   reading: ReadingInfo | null;
   onPick: () => void;
 }) {
+  const cardRef = useRef<HTMLButtonElement | null>(null);
+  const coverWrapRef = useRef<HTMLDivElement | null>(null);
   const cover = book.formats?.["image/jpeg"] ?? null;
   const author = book.authors?.[0]?.name ?? "Autor desconocido";
   const downloads = book.download_count;
-  const topShelf = book.bookshelves?.[0];
-  const cefr = reading?.cefr;
+  const shelves = book.bookshelves ?? [];
+  const cefr = reading?.cefr ?? null;
+
+  const meta = useBookMetadata(book.id, true);
+  const summary = meta.data?.summaries?.[0] ?? null;
+  const subjects = cleanSubjects(meta.data?.subjects ?? [], 4);
+
+  // Parallax tilt — gentle (max 6deg) — only on pointer fine + non-touch.
+  function handlePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.pointerType !== "mouse") return;
+    const card = cardRef.current;
+    const wrap = coverWrapRef.current;
+    if (!card || !wrap) return;
+    const rect = card.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) / rect.width;
+    const cy = (e.clientY - rect.top) / rect.height;
+    const rx = (cy - 0.5) * -6;
+    const ry = (cx - 0.5) * 8;
+    wrap.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.02)`;
+  }
+  function handlePointerLeave() {
+    const wrap = coverWrapRef.current;
+    if (!wrap) return;
+    wrap.style.transform = "perspective(800px) rotateX(0) rotateY(0) scale(1)";
+  }
+
+  return (
+    <button
+      ref={cardRef}
+      onClick={onPick}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      className="group text-left w-full bg-card border rounded-xl overflow-hidden relative transition-[background-color,box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      {/* Subtle warm-paper gradient backdrop, only visible in light theme */}
+      <div
+        className="absolute inset-0 opacity-60 pointer-events-none dark:opacity-30"
+        style={{
+          background:
+            "radial-gradient(circle at 18% 30%, oklch(0.95 0.03 75 / 0.6) 0%, transparent 55%)",
+        }}
+        aria-hidden="true"
+      />
+
+      <div className="absolute top-3 left-3 z-10">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30 backdrop-blur-sm">
+          <span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />
+          Destacado
+        </span>
+      </div>
+
+      <div className="relative grid grid-cols-[auto_1fr] gap-4 sm:gap-6 p-4 sm:p-6">
+        <div
+          ref={coverWrapRef}
+          className="relative w-24 sm:w-40 aspect-[2/3] bg-muted rounded-md overflow-hidden ring-1 ring-foreground/10 shadow-md will-change-transform"
+          style={{
+            transformStyle: "preserve-3d",
+            transition: "transform 280ms var(--ease-out-quart)",
+          }}
+        >
+          {cover ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={cover}
+              alt=""
+              className="w-full h-full object-cover"
+              loading="lazy"
+              width={160}
+              height={240}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-2 text-center">
+              Sin portada
+            </div>
+          )}
+          {/* Subtle inner shadow for depth */}
+          <div
+            className="absolute inset-0 ring-1 ring-inset ring-foreground/10 rounded-md pointer-events-none"
+            aria-hidden="true"
+          />
+        </div>
+
+        <div className="min-w-0 flex flex-col">
+          <div className="flex items-start gap-2 sm:gap-3 mb-1.5 mt-5 sm:mt-0">
+            <h3 className="font-bold text-base sm:text-xl leading-tight tracking-tight font-serif line-clamp-3 flex-1 min-w-0">
+              {book.title}
+            </h3>
+            <CefrBadge cefr={cefr} reading={reading} />
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground font-serif italic line-clamp-1 mb-3">
+            {author}
+          </p>
+
+          {/* Synopsis — fetched from /metadata. Falls back to subjects when null. */}
+          {summary ? (
+            <p className="text-sm leading-relaxed text-foreground/85 line-clamp-3 sm:line-clamp-4 font-serif mb-3">
+              {summary}
+            </p>
+          ) : meta.isLoading ? (
+            <div className="space-y-2 mb-3" aria-hidden="true">
+              <div className="h-3 bg-muted rounded animate-pulse w-full" />
+              <div className="h-3 bg-muted rounded animate-pulse w-11/12" />
+              <div className="h-3 bg-muted rounded animate-pulse w-2/3" />
+            </div>
+          ) : subjects.length > 0 ? (
+            <p className="text-sm text-muted-foreground line-clamp-3 mb-3">
+              {subjects.join(" · ")}
+            </p>
+          ) : null}
+
+          <div className="flex items-end justify-between gap-3 mt-auto pt-2 flex-wrap">
+            <div className="flex flex-wrap gap-1.5">
+              {shelves.slice(0, 2).map((s) => (
+                <span
+                  key={s}
+                  className="inline-block text-xs bg-info/10 text-info border border-info/30 px-2 py-0.5 rounded-full"
+                >
+                  {s}
+                </span>
+              ))}
+              {downloads !== undefined && (
+                <span className="text-xs text-muted-foreground tabular self-center">
+                  · {downloads.toLocaleString()} descargas
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-semibold text-accent inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              Ver detalles
+              <ChevronRight className="h-3 w-3" aria-hidden="true" />
+            </span>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CefrBadge({
+  cefr,
+  reading,
+}: {
+  cefr?: string | null;
+  reading: ReadingInfo | null;
+}) {
+  const title =
+    reading?.reading_ease !== null && reading?.reading_ease !== undefined
+      ? `Flesch: ${reading.reading_ease}${reading.grade ? ` · ${reading.grade}° grado` : ""}`
+      : undefined;
+  if (!cefr) {
+    return (
+      <span
+        className="shrink-0 text-xs text-muted-foreground tabular px-2"
+        aria-label="Calculando nivel"
+      >
+        ···
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded border whitespace-nowrap ${
+        CEFR_TONE[cefr] ?? "bg-muted"
+      }`}
+      title={title}
+    >
+      {cefr}
+    </span>
+  );
+}
+
+type BookCardTier = "hero" | "spotlight" | "regular";
+
+function BookSearchCard({
+  book,
+  reading,
+  onPick,
+  tier,
+}: {
+  book: GutendexBook;
+  reading: ReadingInfo | null;
+  onPick: () => void;
+  tier: BookCardTier;
+}) {
+  const cover = book.formats?.["image/jpeg"] ?? null;
+  const author = book.authors?.[0]?.name ?? "Autor desconocido";
+  const downloads = book.download_count;
+  const shelves = book.bookshelves ?? [];
+  const cefr = reading?.cefr ?? null;
+
+  if (tier === "hero") {
+    return <FeaturedBookCard book={book} reading={reading} onPick={onPick} />;
+  }
+
+  const isSpotlight = tier === "spotlight";
 
   return (
     <button
       onClick={onPick}
-      className="text-left flex gap-3 border rounded-lg p-3 hover:bg-accent transition-colors w-full relative"
+      className={`group text-left flex border rounded-lg bg-card w-full transition-[background-color,box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${
+        isSpotlight ? "gap-4 p-4" : "gap-3 p-3"
+      }`}
     >
-      {cefr ? (
-        <span
-          className={`absolute top-2 right-2 text-xs font-bold px-2 py-0.5 rounded border ${CEFR_COLOR[cefr] ?? "bg-muted"}`}
-          title={
-            reading?.reading_ease !== null && reading?.reading_ease !== undefined
-              ? `Flesch: ${reading.reading_ease}${reading.grade ? ` · ${reading.grade}° grado` : ""}`
-              : ""
-          }
-        >
-          {cefr}
-        </span>
-      ) : (
-        <span className="absolute top-2 right-2 text-xs text-muted-foreground">
-          …
-        </span>
-      )}
-
-      <div className="shrink-0 w-16 h-24 bg-muted rounded overflow-hidden">
+      <div
+        className={`shrink-0 bg-muted rounded-sm overflow-hidden ring-1 ring-foreground/5 ${
+          isSpotlight ? "w-20 h-30 sm:w-24 sm:h-36" : "w-16 h-24"
+        }`}
+        style={isSpotlight ? { aspectRatio: "2 / 3" } : undefined}
+      >
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={cover}
             alt=""
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
             loading="lazy"
+            width={isSpotlight ? 96 : 64}
+            height={isSpotlight ? 144 : 96}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground">
-            Sin
-            <br />
-            portada
+          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1 text-center">
+            Sin portada
           </div>
         )}
       </div>
-      <div className="flex-1 min-w-0 pr-8">
-        <h3 className="font-semibold text-sm line-clamp-2 leading-snug">
-          {book.title}
-        </h3>
-        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex items-start gap-2">
+          <h3
+            className={`font-semibold leading-snug line-clamp-2 flex-1 min-w-0 ${
+              isSpotlight ? "text-base" : "text-sm"
+            }`}
+          >
+            {book.title}
+          </h3>
+          <CefrBadge cefr={cefr} reading={reading} />
+        </div>
+        <p
+          className={`text-muted-foreground line-clamp-1 font-serif italic ${
+            isSpotlight ? "text-sm mt-1" : "text-xs mt-0.5"
+          }`}
+        >
           {author}
         </p>
-        {topShelf && (
-          <span className="inline-block mt-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-            {topShelf}
-          </span>
+        {shelves.length > 0 && (
+          <div
+            className={`flex flex-wrap gap-1 ${isSpotlight ? "mt-2" : "mt-2"}`}
+          >
+            {shelves.slice(0, isSpotlight ? 2 : 1).map((s) => (
+              <span
+                key={s}
+                className="inline-block text-xs bg-info/10 text-info border border-info/30 px-1.5 py-0.5 rounded"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
         )}
         {downloads !== undefined && (
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p
+            className={`text-xs text-muted-foreground tabular ${isSpotlight ? "mt-auto pt-2" : "mt-1.5"}`}
+          >
             {downloads.toLocaleString()} descargas
           </p>
         )}
@@ -591,7 +1088,11 @@ function BookSearchCard({
 
 function MyBookCard({ book }: { book: MyLibraryBook }) {
   const remove = useRemoveFromLibrary();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const gutenbergId = book.source_type === "gutenberg" ? book.source_ref : null;
+  const coverUrl = gutenbergId
+    ? `https://www.gutenberg.org/cache/epub/${gutenbergId}/pg${gutenbergId}.cover.medium.jpg`
+    : null;
   const href = gutenbergId
     ? `/read/${gutenbergId}?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author ?? "")}`
     : "#";
@@ -599,59 +1100,122 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
   const isFinished = book.status === "finished" || pct >= 99;
   const lastRead = book.last_read_at
     ? new Date(book.last_read_at).toLocaleDateString()
-    : "—";
+    : null;
 
-  async function handleRemove(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!confirm(`¿Quitar "${book.title}" de tu biblioteca?`)) return;
+  async function handleRemove() {
     try {
       await remove.mutateAsync(book.book_id);
       toast.success("Libro quitado");
+      setConfirmOpen(false);
     } catch (err) {
       toast.error(`No se pudo quitar: ${(err as Error).message}`);
     }
   }
 
   return (
-    <Link
-      href={href}
-      className="group relative border rounded-lg overflow-hidden hover:bg-accent transition-colors"
-    >
-      <button
-        onClick={handleRemove}
-        disabled={remove.isPending}
-        className="absolute top-2 right-2 p-1 rounded bg-background/80 text-muted-foreground hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-        aria-label="Quitar de la biblioteca"
-        title="Quitar"
+    <>
+      <Link
+        href={href}
+        className="group relative border rounded-lg overflow-hidden bg-card transition-[background-color,box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none flex flex-col"
       >
-        <X className="h-3.5 w-3.5" />
-      </button>
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-sm line-clamp-2 flex-1 pr-6">
-            {book.title}
-          </h3>
-          {isFinished && (
-            <span className="text-xs bg-emerald-100 text-emerald-700 rounded px-1.5 py-0.5 shrink-0">
-              ✓
-            </span>
-          )}
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setConfirmOpen(true);
+          }}
+          disabled={remove.isPending}
+          className="absolute top-2 right-2 size-8 inline-flex items-center justify-center rounded-md bg-background/85 backdrop-blur-sm text-muted-foreground hover:bg-destructive/15 hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity z-10"
+          aria-label={`Quitar ${book.title} de la biblioteca`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+
+        <div className="flex gap-3 p-4 flex-1">
+          <div className="shrink-0 w-14 h-20 bg-muted rounded-sm overflow-hidden ring-1 ring-foreground/5">
+            {coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={coverUrl}
+                alt=""
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                loading="lazy"
+                width={56}
+                height={80}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            ) : null}
+          </div>
+          <div className="min-w-0 flex-1 pr-6">
+            <div className="flex items-start gap-2">
+              <h3 className="font-semibold text-sm leading-snug line-clamp-2 flex-1">
+                {book.title}
+              </h3>
+              {isFinished && (
+                <span
+                  className="shrink-0 text-xs bg-success/15 text-success border border-success/30 rounded px-1.5 py-0.5 whitespace-nowrap"
+                  aria-label="Terminado"
+                >
+                  Terminado
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 font-serif italic line-clamp-1">
+              {book.author ?? "Autor desconocido"}
+            </p>
+            {lastRead && (
+              <p className="text-xs text-muted-foreground mt-1.5 tabular">
+                Última lectura: {lastRead}
+              </p>
+            )}
+          </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {book.author ?? "Autor desconocido"}
-        </p>
-        <p className="text-xs text-muted-foreground mt-2">
-          Última lectura: {lastRead}
-        </p>
-      </div>
-      <div className="h-1 w-full bg-muted">
+
         <div
-          className="h-full bg-primary transition-all"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="px-4 py-1 text-xs text-muted-foreground">{pct}%</div>
-    </Link>
+          className="h-1.5 w-full bg-muted"
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Progreso de ${book.title}: ${pct}%`}
+        >
+          <div
+            className="h-full bg-accent transition-[width] duration-500 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="px-4 py-1.5 flex items-center justify-between text-xs">
+          <span className="text-muted-foreground tabular">{pct}%</span>
+          <span className="text-accent font-medium opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1">
+            Continuar
+            <ChevronRight className="h-3 w-3" aria-hidden="true" />
+          </span>
+        </div>
+      </Link>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Quitar de la biblioteca?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a quitar &ldquo;{book.title}&rdquo;. Tu progreso de lectura
+              se conservará por si lo añades de nuevo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleRemove}
+              disabled={remove.isPending}
+            >
+              Quitar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

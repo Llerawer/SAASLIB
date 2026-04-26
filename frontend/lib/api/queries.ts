@@ -416,3 +416,31 @@ export function useReadingInfo(id: number | null) {
     staleTime: 60 * 60_000,
   });
 }
+
+export type GutendexAuthor = {
+  name: string;
+  birth_year?: number;
+  death_year?: number;
+};
+
+export type GutendexMetadata = {
+  id: number;
+  title: string;
+  authors: GutendexAuthor[];
+  subjects: string[];
+  bookshelves: string[];
+  languages: string[];
+  summaries: string[];
+  formats: Record<string, string>;
+  download_count?: number;
+};
+
+export function useBookMetadata(id: number | null, enabled = true) {
+  return useQuery({
+    queryKey: ["book-metadata", id] as const,
+    queryFn: () =>
+      api.get<GutendexMetadata>(`/api/v1/books/${id}/metadata`),
+    enabled: id !== null && enabled,
+    staleTime: 60 * 60_000,
+  });
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Volume2, X, Check, Save } from "lucide-react";
+import { Volume2, X, Check, Save, Quote } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,10 @@ export type WordPopupProps = {
   onSaved?: (wordNormalized: string) => void;
 };
 
+const POPUP_WIDTH = 340;
+const POPUP_GAP = 12;
+const ESTIMATED_POPUP_HEIGHT = 320;
+
 export function WordPopup({
   word,
   normalizedClient,
@@ -36,6 +40,7 @@ export function WordPopup({
   onSaved,
 }: WordPopupProps) {
   const popupRef = useRef<HTMLDivElement | null>(null);
+  const saveBtnRef = useRef<HTMLButtonElement | null>(null);
   const [saved, setSaved] = useState(alreadyCaptured);
 
   const dictQuery = useDictionary(word, language);
@@ -49,24 +54,6 @@ export function WordPopup({
       toast.error(`No se pudo guardar: ${err.message}`);
     },
   });
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    setTimeout(() => document.addEventListener("mousedown", onDown), 0);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [onClose]);
 
   function handlePlayAudio() {
     const url = dictQuery.data?.audio_url;
@@ -84,110 +71,199 @@ export function WordPopup({
     });
   }
 
+  // Keyboard: Escape closes, S/Enter saves, P plays audio.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const inEditable =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable;
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (inEditable) return;
+      if ((e.key === "s" || e.key === "S" || e.key === "Enter") && !saved) {
+        e.preventDefault();
+        if (!createCapture.isPending) handleSave();
+      } else if (e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        handlePlayAudio();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, saved, createCapture.isPending]);
+
+  // Click outside dismisses.
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [onClose]);
+
   const data = dictQuery.data;
   const loading = dictQuery.isLoading;
 
-  const style = position
-    ? {
-        position: "fixed" as const,
-        top: position.y + 8,
-        left: Math.max(8, Math.min(position.x, window.innerWidth - 360)),
-        zIndex: 1000,
-      }
-    : { display: "none" };
+  // Smart positioning: clamp to viewport edges in BOTH axes. Flip above the
+  // pointer if there isn't enough room below.
+  let style: React.CSSProperties = { display: "none" };
+  if (position) {
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    const left = Math.max(
+      8,
+      Math.min(position.x, vw - POPUP_WIDTH - 8),
+    );
+    const wouldOverflowBottom =
+      position.y + POPUP_GAP + ESTIMATED_POPUP_HEIGHT > vh - 8;
+    const top = wouldOverflowBottom
+      ? Math.max(8, position.y - POPUP_GAP - ESTIMATED_POPUP_HEIGHT)
+      : Math.min(vh - 8, position.y + POPUP_GAP);
+    style = {
+      position: "fixed",
+      top,
+      left,
+      zIndex: 1000,
+    };
+  }
+
+  const showLemma = normalizedClient !== word.toLowerCase();
 
   return (
     <div
       ref={popupRef}
       style={style}
-      className="w-[340px] rounded-lg border bg-popover text-popover-foreground shadow-lg"
+      className="w-[340px] rounded-xl border bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
       role="dialog"
       aria-label={`Definición de ${word}`}
     >
-      <div className="flex items-start justify-between p-3 pb-1">
-        <div>
-          <div className="text-base font-semibold leading-tight">{word}</div>
-          <div className="text-xs text-muted-foreground">
-            {normalizedClient !== word.toLowerCase() ? `lema: ${normalizedClient}` : null}
+      <div className="flex items-start gap-2 p-3 pb-2 border-b border-border/60">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-base font-semibold leading-tight truncate">
+              {word}
+            </span>
+            {loading ? (
+              <Skeleton className="h-3 w-16" />
+            ) : data?.ipa ? (
+              <span className="text-xs font-mono text-muted-foreground">
+                {data.ipa}
+              </span>
+            ) : null}
+            {data?.audio_url && (
+              <button
+                onClick={handlePlayAudio}
+                className="inline-flex items-center justify-center size-6 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                aria-label={`Reproducir pronunciación de ${word}`}
+                title="Reproducir (P)"
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
+          {showLemma && (
+            <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+              lema: <span className="font-mono">{normalizedClient}</span>
+            </div>
+          )}
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
           aria-label="Cerrar"
+          title="Cerrar (Esc)"
         >
-          <X className="h-4 w-4" />
-        </button>
+          <X className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
-      <div className="px-3 pb-3 space-y-2">
-        <div className="flex items-center gap-2 text-sm">
-          {loading ? (
-            <Skeleton className="h-4 w-24" />
-          ) : data?.ipa ? (
-            <span className="font-mono text-muted-foreground">{data.ipa}</span>
-          ) : null}
-          {data?.audio_url ? (
-            <button
-              onClick={handlePlayAudio}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Escuchar"
-            >
-              <Volume2 className="h-4 w-4" />
-            </button>
-          ) : null}
-        </div>
-
-        <div className="text-sm">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-0.5">
+      <div className="p-3 space-y-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
             Traducción
           </div>
           {loading ? (
-            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-5 w-44" />
           ) : data?.translation ? (
-            <span>{data.translation}</span>
+            <p className="text-base font-serif leading-snug">
+              {data.translation}
+            </p>
           ) : (
-            <span className="text-muted-foreground italic">
-              (sin traducción — DeepL no configurada)
-            </span>
+            <p className="text-sm text-muted-foreground italic">
+              Sin traducción disponible.
+            </p>
           )}
         </div>
 
-        <div className="text-sm">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-0.5">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
             Definición
           </div>
           {loading ? (
-            <Skeleton className="h-12 w-full" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-5/6" />
+            </div>
           ) : data?.definition ? (
-            <p className="leading-snug">{data.definition}</p>
+            <p className="text-sm leading-relaxed font-serif text-foreground/90">
+              {data.definition}
+            </p>
           ) : (
-            <span className="text-muted-foreground italic">Sin definición.</span>
+            <p className="text-sm text-muted-foreground italic">
+              Sin definición.
+            </p>
           )}
         </div>
 
-        {data?.examples?.[0] ? (
-          <div className="text-xs italic text-muted-foreground border-l-2 border-muted pl-2">
-            “{data.examples[0]}”
+        {data?.examples?.[0] && (
+          <div className="relative bg-muted/40 rounded-md px-3 py-2 pl-7">
+            <Quote
+              className="absolute top-2 left-2 h-3 w-3 text-accent/70"
+              aria-hidden="true"
+            />
+            <p className="text-xs italic font-serif text-foreground/80 leading-relaxed">
+              {data.examples[0]}
+            </p>
           </div>
-        ) : null}
+        )}
 
-        <div className="pt-2">
+        <div className="pt-1">
           {saved ? (
-            <Button variant="secondary" size="sm" disabled className="w-full">
-              <Check className="h-4 w-4 mr-1" /> Guardado
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled
+              className="w-full"
+            >
+              <Check className="h-4 w-4 mr-1.5" aria-hidden="true" /> Guardado
             </Button>
           ) : (
             <Button
+              ref={saveBtnRef}
               size="sm"
               className="w-full"
               onClick={handleSave}
               disabled={createCapture.isPending}
+              title="Guardar (S)"
             >
-              <Save className="h-4 w-4 mr-1" />
-              {createCapture.isPending ? "Guardando…" : "Guardar palabra"}
+              <Save className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              {createCapture.isPending ? "Guardando" : "Guardar palabra"}
             </Button>
           )}
+          <p className="text-[10px] text-muted-foreground text-center mt-2">
+            S guardar · P audio · Esc cerrar
+          </p>
         </div>
       </div>
     </div>
@@ -196,6 +272,9 @@ export function WordPopup({
 
 function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={`animate-pulse rounded bg-muted ${className ?? ""}`} />
+    <div
+      className={`animate-pulse rounded bg-muted ${className ?? ""}`}
+      aria-hidden="true"
+    />
   );
 }

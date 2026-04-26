@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { cleanSubjects } from "@/lib/library/subjects";
 
 type GutendexAuthor = { name: string; birth_year?: number; death_year?: number };
 type GutendexMetadata = {
@@ -65,6 +66,9 @@ export function BookPreviewDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetching external metadata when dialog opens — setState is the
+  // intended sync mechanism between TanStack-less fetch and React state.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!open || !book) {
       setMeta(null);
@@ -77,7 +81,6 @@ export function BookPreviewDialog({
     setError(null);
     (async () => {
       try {
-        // Metadata is the critical info; reading-info is best-effort.
         const [metaRes, readingRes] = await Promise.allSettled([
           api.get<GutendexMetadata>(`/api/v1/books/${book.id}/metadata`),
           api.get<ReadingInfo>(`/api/v1/books/${book.id}/reading-info`),
@@ -99,6 +102,7 @@ export function BookPreviewDialog({
       cancelled = true;
     };
   }, [open, book]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!book) return null;
 
@@ -111,7 +115,7 @@ export function BookPreviewDialog({
       ? ` (${authorObj?.birth_year ?? "?"}–${authorObj?.death_year ?? "?"})`
       : "";
   const summary = meta?.summaries?.[0] ?? null;
-  const subjects = meta?.subjects ?? [];
+  const subjects = cleanSubjects(meta?.subjects ?? [], 8);
   const shelves = meta?.bookshelves ?? [];
   const downloadCount = meta?.download_count;
   const lang = meta?.languages?.[0]?.toUpperCase();
@@ -126,10 +130,12 @@ export function BookPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl line-clamp-2">{book.title}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-xl line-clamp-2 font-serif">
+            {book.title}
+          </DialogTitle>
+          <DialogDescription className="font-serif italic">
             {author}
             {authorYears}
           </DialogDescription>
@@ -137,13 +143,15 @@ export function BookPreviewDialog({
 
         <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-5">
           <div className="space-y-3">
-            <div className="aspect-[2/3] bg-muted rounded overflow-hidden shrink-0">
+            <div className="aspect-[2/3] bg-muted rounded-md overflow-hidden shrink-0">
               {cover ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={cover}
                   alt={`Portada de ${book.title}`}
                   className="w-full h-full object-cover"
+                  width={160}
+                  height={240}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-xs text-center p-2">
@@ -152,23 +160,31 @@ export function BookPreviewDialog({
               )}
             </div>
 
-            {/* Quick stats */}
             <div className="space-y-1.5 text-xs">
               {lang && (
-                <div className="flex items-center gap-1.5">
-                  <Globe className="h-3 w-3 text-muted-foreground" />
+                <div className="flex items-center gap-1.5 tabular">
+                  <Globe
+                    className="h-3.5 w-3.5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
                   <span>{lang}</span>
                 </div>
               )}
               {downloadCount !== undefined && (
-                <div className="flex items-center gap-1.5">
-                  <Download className="h-3 w-3 text-muted-foreground" />
+                <div className="flex items-center gap-1.5 tabular">
+                  <Download
+                    className="h-3.5 w-3.5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
                   <span>{downloadCount.toLocaleString()} descargas</span>
                 </div>
               )}
               {reading?.cefr && (
                 <div className="flex items-start gap-1.5">
-                  <GraduationCap className="h-3 w-3 text-muted-foreground mt-0.5" />
+                  <GraduationCap
+                    className="h-3.5 w-3.5 text-muted-foreground mt-0.5"
+                    aria-hidden="true"
+                  />
                   <div>
                     <div>
                       <span className="font-semibold">{reading.cefr}</span>
@@ -177,7 +193,7 @@ export function BookPreviewDialog({
                       </span>
                     </div>
                     {reading.reading_ease !== null && (
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-xs text-muted-foreground tabular">
                         Flesch: {reading.reading_ease}
                         {reading.grade ? ` · ${reading.grade}° grado` : ""}
                       </div>
@@ -191,19 +207,24 @@ export function BookPreviewDialog({
           <div className="space-y-4 text-sm">
             {loading && (
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Cargando información…
+                <Loader2
+                  className="h-4 w-4 animate-spin"
+                  aria-hidden="true"
+                />
+                Cargando información
               </div>
             )}
 
-            {error && <p className="text-red-600 text-sm">{error}</p>}
+            {error && (
+              <p className="text-destructive text-sm">{error}</p>
+            )}
 
             {summary && (
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">
                   Sinopsis
                 </div>
-                <p className="leading-relaxed text-sm">{summary}</p>
+                <p className="leading-relaxed text-sm font-serif">{summary}</p>
               </div>
             )}
 
@@ -215,14 +236,14 @@ export function BookPreviewDialog({
 
             {shelves.length > 0 && (
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">
                   En categorías
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {shelves.map((s) => (
                     <span
                       key={s}
-                      className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded"
+                      className="text-xs bg-info/10 text-info border border-info/30 px-2 py-0.5 rounded"
                     >
                       {s}
                     </span>
@@ -233,7 +254,7 @@ export function BookPreviewDialog({
 
             {subjects.length > 0 && (
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5">
                   Temas
                 </div>
                 <div className="flex flex-wrap gap-1">
@@ -256,7 +277,8 @@ export function BookPreviewDialog({
             Cancelar
           </Button>
           <Button onClick={handleOpen}>
-            <BookOpen className="h-4 w-4 mr-1" /> Empezar a leer
+            <BookOpen className="h-4 w-4 mr-1.5" aria-hidden="true" />
+            Empezar a leer
           </Button>
         </div>
       </DialogContent>
