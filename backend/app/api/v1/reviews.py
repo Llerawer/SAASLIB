@@ -89,8 +89,8 @@ async def queue(
                 fsrs_state=int(s["fsrs_state"]),
                 fsrs_difficulty=s.get("fsrs_difficulty"),
                 fsrs_stability=s.get("fsrs_stability"),
-                user_image_url=c.get("user_image_url"),
-                user_audio_url=c.get("user_audio_url"),
+                user_image_url=c.get("user_image_url") or None,
+                user_audio_url=c.get("user_audio_url") or None,
             )
         )
     return out
