@@ -140,11 +140,11 @@ Todos protegidos con auth Supabase (Regla 1) + RLS por `user_id` (Regla 4).
 Mutations añadidas a `lib/api/queries.ts`:
 `useUpdateCard`, `useSuspendCard`, `useUnsuspendCard`, `useResetCard`, `useFlagCard`, `useCardSource`.
 
-Componentes nuevos:
-- `components/srs-card-menu.tsx` — kebab + dropdown (desktop) o sheet (mobile)
-- `components/srs-edit-sheet.tsx` — formulario de edición + slot para `srs-media-upload`
+Componentes en `components/srs/`:
+- `card-menu.tsx` — kebab + dropdown (desktop) o sheet (mobile)
+- `edit-card-sheet.tsx` — formulario de edición + slot para `media-upload`
 
-Atajos de teclado añadidos al `useEffect` keydown ya existente en `srs/page.tsx`. Se ignoran cuando el target es input/textarea (igual que la lógica actual).
+Atajos de teclado se centralizan en `lib/srs/use-srs-keyboard.ts` (hook), no se inlinean en `page.tsx`. El hook recibe el keymap relevante según contexto (review activo / sheet abierto / break overlay) y se encarga del skip-when-input-focused.
 
 ---
 
@@ -356,20 +356,58 @@ Mutations en `lib/api/queries.ts`:
 
 ## 7. Resumen de cambios técnicos
 
-### Frontend
+### Frontend — decomposición modular
+
+`srs/page.tsx` queda como **orquestador delgado** (~80 líneas) cuya única responsabilidad es elegir qué pantalla renderizar según estado de queue + sesión. Toda la UI y lógica de dominio baja a módulos pequeños y testeables independientemente. Regla operativa: **ningún archivo >200 líneas**; si crece, se divide.
+
+```
+frontend/
+├── app/(app)/srs/
+│   └── page.tsx                          # ~80 líneas: orquestador, pantalla switch
+│
+├── components/srs/                       # nueva carpeta dedicada
+│   ├── reviewer.tsx                      # ~150 líneas: contenedor de la sesión activa
+│   ├── review-card.tsx                   # ~120 líneas: card con switch por variante
+│   ├── card-front-recognition.tsx        # ~40 líneas: frente clásico
+│   ├── card-front-production.tsx         # ~40 líneas: frente con translation/definition
+│   ├── card-front-cloze.tsx              # ~50 líneas: frente con ejemplo enmascarado
+│   ├── card-back.tsx                     # ~80 líneas: reverso compartido (con media)
+│   ├── grade-buttons.tsx                 # ~50 líneas: 4-button row + intervals
+│   ├── card-menu.tsx                     # ~80 líneas: kebab → dropdown/sheet
+│   ├── edit-card-sheet.tsx               # ~120 líneas: form de edición
+│   ├── media-upload.tsx                  # ~120 líneas: widget imagen+audio
+│   ├── session-summary.tsx               # ~80 líneas: pantalla de fin de sesión
+│   ├── empty-today.tsx                   # ~30 líneas: estado "nada due hoy"
+│   ├── break-overlay.tsx                 # ~50 líneas: countdown 5 min
+│   ├── throttle-toast.tsx                # ~30 líneas: sugerencia de pausa
+│   ├── counts-header.tsx                 # ~40 líneas: header con counts + stats
+│   └── skeleton.tsx                      # ~30 líneas: loading
+│
+├── lib/srs/
+│   ├── variants.ts                       # resolver de variante + cloze masker + FNV-1a
+│   ├── use-session-tracker.ts            # hook: array + métricas (cards, %, ms, top fails)
+│   ├── use-throttle.ts                   # hook: detector de pausa sugerida
+│   ├── use-srs-keyboard.ts               # hook: keymap + skip-when-input-focused
+│   └── intervals.ts                      # ya existe (fsrs-preview); se renombra/limpia
+│
+└── lib/media/
+    └── compress.ts                       # canvas image compress
+```
+
+### Frontend — modificaciones a archivos existentes
 
 | Archivo | Acción |
 |---|---|
-| `app/(app)/srs/page.tsx` | Reescrito: variant resolution, in-card menu integrado, session tracking, throttle, summary screen |
-| `components/srs-card-menu.tsx` | Nuevo |
-| `components/srs-edit-sheet.tsx` | Nuevo |
-| `components/srs-media-upload.tsx` | Nuevo |
-| `components/srs-session-summary.tsx` | Nuevo |
-| `components/srs-break-overlay.tsx` | Nuevo |
-| `lib/srs/variants.ts` | Nuevo (variant resolver + cloze masker + FNV-1a hash) |
-| `lib/srs/session-tracker.ts` | Nuevo (array + métricas + throttle detector) |
-| `lib/media/compress.ts` | Nuevo (canvas image compress) |
-| `lib/api/queries.ts` | Añade 9 mutations + amplía `ReviewQueueCard` y `Stats` types |
+| `app/(app)/srs/page.tsx` | Reescrito a orquestador delgado. Importa de `components/srs/*`. |
+| `lib/api/queries.ts` | Añade 9 mutations (§3.5, §6.10) + amplía `ReviewQueueCard` y `Stats` types |
+| `lib/fsrs-preview.ts` | Sin cambios (sigue siendo la fuente del preview de intervalos) |
+
+### Reglas de límite (forzar modularidad)
+
+- **Ningún componente >200 líneas**. Si crece, se extrae sub-componente.
+- **Ninguna lógica de negocio en componentes**. Toda lógica (variant selection, throttle, session metrics, keyboard mapping) vive en `lib/srs/*` como hooks o funciones puras.
+- **Ningún componente accede a TanStack Query directamente** excepto `reviewer.tsx` (orquestador interno) y `page.tsx`. El resto recibe datos por props.
+- **Tests unitarios** obligatorios para `lib/srs/variants.ts` (selector + cloze masker + fallbacks) y `lib/srs/use-session-tracker.ts` (métricas).
 
 ### Backend
 
