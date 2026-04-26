@@ -8,7 +8,10 @@ from pydantic import BaseModel, Field
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
 from app.db.supabase_client import get_user_client
+from datetime import datetime, timezone
+
 from app.schemas.cards import (
+    CardActionResult,
     CardCreate,
     CardOut,
     CardUpdate,
@@ -166,3 +169,49 @@ async def update_card(
     if not res.data:
         raise HTTPException(404, "Card not found")
     return _row_to_card(res.data[0])
+
+
+def _suspend_schedule(client, card_id: str, user_id: str) -> dict:
+    """Mark schedule as suspended. Returns the updated row (empty dict if not found)."""
+    now = datetime.now(timezone.utc).isoformat()
+    res = (
+        client.table("card_schedule")
+        .update({"suspended_at": now})
+        .eq("card_id", card_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not res.data:
+        return {}
+    return res.data[0]
+
+
+def _unsuspend_schedule(client, card_id: str, user_id: str) -> dict:
+    res = (
+        client.table("card_schedule")
+        .update({"suspended_at": None})
+        .eq("card_id", card_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not res.data:
+        return {}
+    return res.data[0]
+
+
+@router.post("/{card_id}/suspend", response_model=CardActionResult)
+@limiter.limit("60/minute")
+async def suspend(request: Request, card_id: str, auth: AuthInfo = Depends(get_auth)):
+    row = _suspend_schedule(get_user_client(auth.jwt), card_id, auth.user_id)
+    if not row:
+        raise HTTPException(404, "Card schedule not found")
+    return CardActionResult(card_id=card_id, suspended_at=row["suspended_at"])
+
+
+@router.post("/{card_id}/unsuspend", response_model=CardActionResult)
+@limiter.limit("60/minute")
+async def unsuspend(request: Request, card_id: str, auth: AuthInfo = Depends(get_auth)):
+    row = _unsuspend_schedule(get_user_client(auth.jwt), card_id, auth.user_id)
+    if not row:
+        raise HTTPException(404, "Card schedule not found")
+    return CardActionResult(card_id=card_id, suspended_at=None)

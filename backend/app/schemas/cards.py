@@ -93,3 +93,10 @@ class PromoteResult(BaseModel):
     cards: list[CardOut]
     created_count: int
     merged_count: int
+
+
+class CardActionResult(BaseModel):
+    """Generic small response for suspend/unsuspend/reset/flag."""
+    card_id: str
+    suspended_at: datetime | None = None
+    flag: int = 0
