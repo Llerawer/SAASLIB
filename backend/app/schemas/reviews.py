@@ -26,6 +26,8 @@ class ReviewQueueCard(BaseModel):
     fsrs_state: int
     fsrs_difficulty: float | None
     fsrs_stability: float | None
+    user_image_url: str | None = None
+    user_audio_url: str | None = None
 
 
 class GradeResult(BaseModel):
