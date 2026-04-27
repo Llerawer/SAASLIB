@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -8,8 +9,6 @@ from pydantic import BaseModel, Field
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
 from app.db.supabase_client import get_user_client
-from datetime import datetime, timezone
-
 from app.schemas.cards import (
     CardActionResult,
     CardCreate,
@@ -171,8 +170,8 @@ async def update_card(
     return _row_to_card(res.data[0])
 
 
-def _suspend_schedule(client, card_id: str, user_id: str) -> dict:
-    """Mark schedule as suspended. Returns the updated row (empty dict if not found)."""
+def _suspend_schedule(client, card_id: str, user_id: str) -> dict | None:
+    """Mark schedule as suspended. Returns the updated row, or None if not found."""
     now = datetime.now(timezone.utc).isoformat()
     res = (
         client.table("card_schedule")
@@ -182,11 +181,12 @@ def _suspend_schedule(client, card_id: str, user_id: str) -> dict:
         .execute()
     )
     if not res.data:
-        return {}
+        return None
     return res.data[0]
 
 
-def _unsuspend_schedule(client, card_id: str, user_id: str) -> dict:
+def _unsuspend_schedule(client, card_id: str, user_id: str) -> dict | None:
+    """Clear suspended_at on the schedule. Returns the updated row, or None if not found."""
     res = (
         client.table("card_schedule")
         .update({"suspended_at": None})
@@ -195,7 +195,7 @@ def _unsuspend_schedule(client, card_id: str, user_id: str) -> dict:
         .execute()
     )
     if not res.data:
-        return {}
+        return None
     return res.data[0]
 
 
