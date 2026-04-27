@@ -26,5 +26,6 @@ class StatsOut(BaseModel):
         ),
     )
     streak_days: int
+    cards_tomorrow_due: int = 0
     heatmap_90d: list[HeatmapDay]
     totals: StatsTotals

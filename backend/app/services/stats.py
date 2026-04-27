@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, date, timedelta, time, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -173,11 +173,31 @@ def compute(user_id: str) -> dict[str, Any]:
         else:
             break
 
+    # Cards due tomorrow (user-local window, converted to UTC for the query).
+    # due_at is timestamptz; we build explicit UTC boundaries from user-local midnight
+    # so the window is accurate regardless of the server's system timezone.
+    tomorrow_user = today_user + timedelta(days=1)
+    day_after_user = tomorrow_user + timedelta(days=1)
+    tomorrow_utc = datetime.combine(tomorrow_user, time.min, tzinfo=tz).astimezone(timezone.utc)
+    day_after_utc = datetime.combine(day_after_user, time.min, tzinfo=tz).astimezone(timezone.utc)
+    cards_tomorrow_due = (
+        client.table("card_schedule")
+        .select("card_id", count="exact")
+        .eq("user_id", user_id)
+        .is_("suspended_at", "null")
+        .gte("due_at", tomorrow_utc.isoformat())
+        .lt("due_at", day_after_utc.isoformat())
+        .execute()
+        .count
+        or 0
+    )
+
     result = {
         "cards_today_due": cards_today_due,
         "cards_today_done": cards_today_done,
         "retention_30d": retention_30d,
         "streak_days": streak,
+        "cards_tomorrow_due": cards_tomorrow_due,
         "heatmap_90d": heatmap,
         "totals": {
             "captures": total_captures,
