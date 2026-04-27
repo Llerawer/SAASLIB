@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone, timedelta
 
@@ -30,6 +32,8 @@ from app.schemas.cards import (
 )
 from app.services import ai_response_parser, card_factory
 from app.services.fsrs_scheduler import initial_snapshot
+
+logger = logging.getLogger(__name__)
 
 
 class ParseAiInput(BaseModel):
@@ -79,7 +83,7 @@ def _row_to_card(row: dict) -> CardOut:
         cefr=row.get("cefr"),
         notes=row.get("notes"),
         source_capture_ids=row.get("source_capture_ids") or [],
-        flag=row.get("flag") or 0,
+        flag=row.get("flag", 0),
         user_image_url=row.get("user_image_url") or None,
         user_audio_url=row.get("user_audio_url") or None,
         created_at=row["created_at"],
@@ -408,8 +412,11 @@ async def media_confirm(
 ):
     client = get_user_client(auth.jwt)
     # Verificar ownership: el path tiene que empezar con auth.user_id/.
-    if not body.path.startswith(f"{auth.user_id}/"):
-        raise HTTPException(403, "Path does not match user")
+    expected = re.compile(
+        rf"^{re.escape(auth.user_id)}/[a-f0-9-]{{36}}/(image|audio)\.(png|jpg|webp|webm|mp3|m4a)$"
+    )
+    if not expected.match(body.path):
+        raise HTTPException(403, "Path does not match user or canonical shape")
     # Descargar bytes para sniff.
     try:
         data = client.storage.from_("cards-media").download(body.path)
@@ -469,7 +476,7 @@ async def media_delete(
             client.storage.from_("cards-media").remove([current])
         except Exception as e:
             # Storage borrado falló → loguear pero seguir nullando la columna.
-            print(f"[media_delete] storage remove failed: {e}")
+            logger.warning("storage remove failed for path=%s: %s", current, e)
     res = (
         client.table("cards")
         .update({column: None})
