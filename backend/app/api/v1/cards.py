@@ -436,3 +436,47 @@ async def media_confirm(
     if not res.data:
         raise HTTPException(404, "Card not found")
     return _row_to_card(res.data[0])
+
+
+@router.delete("/{card_id}/media/{media_type}", response_model=CardOut)
+@limiter.limit("30/minute")
+async def media_delete(
+    request: Request,
+    card_id: str,
+    media_type: str,
+    auth: AuthInfo = Depends(get_auth),
+):
+    if media_type not in ("image", "audio"):
+        raise HTTPException(422, "Invalid media type")
+    client = get_user_client(auth.jwt)
+    column = "user_image_url" if media_type == "image" else "user_audio_url"
+    # Leer current path.
+    rows = (
+        client.table("cards")
+        .select(f"id, {column}")
+        .eq("id", card_id)
+        .eq("user_id", auth.user_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(404, "Card not found")
+    current = rows[0].get(column)
+    if current:
+        try:
+            client.storage.from_("cards-media").remove([current])
+        except Exception as e:
+            # Storage borrado falló → loguear pero seguir nullando la columna.
+            print(f"[media_delete] storage remove failed: {e}")
+    res = (
+        client.table("cards")
+        .update({column: None})
+        .eq("id", card_id)
+        .eq("user_id", auth.user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Card not found")
+    return _row_to_card(res.data[0])
