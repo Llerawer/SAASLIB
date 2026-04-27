@@ -107,3 +107,10 @@ class CardActionResult(BaseModel):
     card_id: str
     suspended_at: datetime | None = None
     flag: int = 0
+
+
+class CardSource(BaseModel):
+    capture_id: str
+    book_id: str | None
+    page_or_location: str | None
+    context_sentence: str | None

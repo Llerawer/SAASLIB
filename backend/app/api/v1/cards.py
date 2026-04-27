@@ -14,6 +14,7 @@ from app.schemas.cards import (
     CardCreate,
     CardFlagInput,
     CardOut,
+    CardSource,
     CardUpdate,
     PromoteFromCapturesInput,
     PromoteResult,
@@ -270,3 +271,52 @@ async def flag_card(
     if not res.data:
         raise HTTPException(404, "Card not found")
     return CardActionResult(card_id=card_id, flag=body.flag)
+
+
+@router.get("/{card_id}/source", response_model=CardSource | None)
+@limiter.limit("60/minute")
+async def card_source(
+    request: Request,
+    card_id: str,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Returns the most recent source capture for a card, or None.
+
+    Cards may have multiple source_capture_ids if user promoted duplicates;
+    we pick the most recent (largest captured_at). Frontend uses this for
+    'ir al libro' navigation."""
+    client = get_user_client(auth.jwt)
+    rows = (
+        client.table("cards")
+        .select("source_capture_ids")
+        .eq("id", card_id)
+        .eq("user_id", auth.user_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(404, "Card not found")
+    ids = rows[0].get("source_capture_ids") or []
+    if not ids:
+        return None
+    cap = (
+        client.table("captures")
+        .select("id, book_id, page_or_location, context_sentence, captured_at")
+        .in_("id", ids)
+        .order("captured_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not cap:
+        return None
+    c = cap[0]
+    return CardSource(
+        capture_id=c["id"],
+        book_id=c.get("book_id"),
+        page_or_location=c.get("page_or_location"),
+        context_sentence=c.get("context_sentence"),
+    )
