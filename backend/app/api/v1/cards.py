@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import datetime, timezone, timedelta
 
+import magic
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
@@ -16,6 +18,7 @@ from app.schemas.cards import (
     CardOut,
     CardSource,
     CardUpdate,
+    MediaConfirmInput,
     MediaUploadUrlInput,
     MediaUploadUrlResult,
     PromoteFromCapturesInput,
@@ -352,6 +355,11 @@ def _ext_from_mime(mime: str) -> str:
     return mapping.get(mime, "bin")
 
 
+def _sniff_mime(data: bytes) -> str:
+    """Real MIME from file bytes, not from header. Uses libmagic."""
+    return magic.from_buffer(data, mime=True)
+
+
 @router.post("/{card_id}/media/upload-url", response_model=MediaUploadUrlResult)
 @limiter.limit("30/minute")
 async def media_upload_url(
@@ -388,3 +396,43 @@ async def media_upload_url(
         path=path,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
+
+
+@router.post("/{card_id}/media/confirm", response_model=CardOut)
+@limiter.limit("30/minute")
+async def media_confirm(
+    request: Request,
+    card_id: str,
+    body: MediaConfirmInput,
+    auth: AuthInfo = Depends(get_auth),
+):
+    client = get_user_client(auth.jwt)
+    # Verificar ownership: el path tiene que empezar con auth.user_id/.
+    if not body.path.startswith(f"{auth.user_id}/"):
+        raise HTTPException(403, "Path does not match user")
+    # Descargar bytes para sniff.
+    try:
+        data = client.storage.from_("cards-media").download(body.path)
+    except Exception as e:
+        raise HTTPException(404, f"Storage object not found: {e}") from e
+    sniffed = _sniff_mime(data)
+    allowed = _ALLOWED_MIME_IMAGE if body.type == "image" else _ALLOWED_MIME_AUDIO
+    if sniffed not in allowed:
+        # Borra el archivo subido y rechaza.
+        try:
+            client.storage.from_("cards-media").remove([body.path])
+        except Exception:
+            pass
+        raise HTTPException(422, f"detected mime not allowed: {sniffed}")
+    # Persistir en cards.
+    column = "user_image_url" if body.type == "image" else "user_audio_url"
+    res = (
+        client.table("cards")
+        .update({column: body.path})
+        .eq("id", card_id)
+        .eq("user_id", auth.user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Card not found")
+    return _row_to_card(res.data[0])

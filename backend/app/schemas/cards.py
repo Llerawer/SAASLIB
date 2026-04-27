@@ -141,3 +141,8 @@ class MediaUploadUrlResult(BaseModel):
     upload_url: str
     path: str
     expires_at: datetime
+
+
+class MediaConfirmInput(BaseModel):
+    type: MediaType
+    path: str = Field(..., min_length=1, max_length=500)
