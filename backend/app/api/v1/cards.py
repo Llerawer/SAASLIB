@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -16,8 +16,14 @@ from app.schemas.cards import (
     CardOut,
     CardSource,
     CardUpdate,
+    MediaUploadUrlInput,
+    MediaUploadUrlResult,
     PromoteFromCapturesInput,
     PromoteResult,
+    _ALLOWED_MIME_AUDIO,
+    _ALLOWED_MIME_IMAGE,
+    _MAX_SIZE_AUDIO,
+    _MAX_SIZE_IMAGE,
 )
 from app.services import ai_response_parser, card_factory
 from app.services.fsrs_scheduler import initial_snapshot
@@ -319,4 +325,66 @@ async def card_source(
         book_id=c.get("book_id"),
         page_or_location=c.get("page_or_location"),
         context_sentence=c.get("context_sentence"),
+    )
+
+
+def _validate_media_request(media_type: str, mime: str, size: int) -> None:
+    if media_type == "image":
+        if mime not in _ALLOWED_MIME_IMAGE:
+            raise ValueError(f"mime not allowed for image: {mime}")
+        if size > _MAX_SIZE_IMAGE:
+            raise ValueError(f"size {size} exceeds image max")
+    elif media_type == "audio":
+        if mime not in _ALLOWED_MIME_AUDIO:
+            raise ValueError(f"mime not allowed for audio: {mime}")
+        if size > _MAX_SIZE_AUDIO:
+            raise ValueError(f"size {size} exceeds audio max")
+    else:
+        raise ValueError(f"invalid media type: {media_type}")
+
+
+def _ext_from_mime(mime: str) -> str:
+    mapping = {
+        "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+        "audio/webm": "webm", "audio/mpeg": "mp3",
+        "audio/mp4": "m4a", "audio/x-m4a": "m4a",
+    }
+    return mapping.get(mime, "bin")
+
+
+@router.post("/{card_id}/media/upload-url", response_model=MediaUploadUrlResult)
+@limiter.limit("30/minute")
+async def media_upload_url(
+    request: Request,
+    card_id: str,
+    body: MediaUploadUrlInput,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """TODO: gate when Lemonsqueezy lands - block free tier from upload."""
+    try:
+        _validate_media_request(body.type, body.mime, body.size)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    client = get_user_client(auth.jwt)
+    # Verificar que la card pertenece al usuario.
+    card_rows = (
+        client.table("cards")
+        .select("id")
+        .eq("id", card_id)
+        .eq("user_id", auth.user_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not card_rows:
+        raise HTTPException(404, "Card not found")
+    ext = _ext_from_mime(body.mime)
+    path = f"{auth.user_id}/{card_id}/{body.type}.{ext}"
+    # Supabase signed upload URL: returns {"signedUrl": ..., "path": ..., "token": ...}
+    signed = client.storage.from_("cards-media").create_signed_upload_url(path)
+    return MediaUploadUrlResult(
+        upload_url=signed["signedUrl"],
+        path=path,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )

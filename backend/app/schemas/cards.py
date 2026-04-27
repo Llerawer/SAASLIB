@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -114,3 +115,29 @@ class CardSource(BaseModel):
     book_id: str | None
     page_or_location: str | None
     context_sentence: str | None
+
+
+MediaType = Literal["image", "audio"]
+_ALLOWED_MIME_IMAGE = {"image/png", "image/jpeg", "image/webp"}
+_ALLOWED_MIME_AUDIO = {"audio/webm", "audio/mpeg", "audio/mp4", "audio/x-m4a"}
+_MAX_SIZE_IMAGE = 5 * 1024 * 1024
+_MAX_SIZE_AUDIO = 1 * 1024 * 1024
+
+
+class MediaUploadUrlInput(BaseModel):
+    type: MediaType
+    mime: str
+    size: int
+
+    @field_validator("size")
+    @classmethod
+    def _v_size(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("size must be positive")
+        return v
+
+
+class MediaUploadUrlResult(BaseModel):
+    upload_url: str
+    path: str
+    expires_at: datetime
