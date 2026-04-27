@@ -12,6 +12,7 @@ from app.db.supabase_client import get_user_client
 from app.schemas.cards import (
     CardActionResult,
     CardCreate,
+    CardFlagInput,
     CardOut,
     CardUpdate,
     PromoteFromCapturesInput,
@@ -68,6 +69,9 @@ def _row_to_card(row: dict) -> CardOut:
         cefr=row.get("cefr"),
         notes=row.get("notes"),
         source_capture_ids=row.get("source_capture_ids") or [],
+        flag=row.get("flag") or 0,
+        user_image_url=row.get("user_image_url") or None,
+        user_audio_url=row.get("user_audio_url") or None,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -245,3 +249,24 @@ async def reset_card(
     if not res.data:
         raise HTTPException(404, "Card schedule not found")
     return CardActionResult(card_id=card_id)
+
+
+@router.post("/{card_id}/flag", response_model=CardActionResult)
+@limiter.limit("60/minute")
+async def flag_card(
+    request: Request,
+    card_id: str,
+    body: CardFlagInput,
+    auth: AuthInfo = Depends(get_auth),
+):
+    client = get_user_client(auth.jwt)
+    res = (
+        client.table("cards")
+        .update({"flag": body.flag})
+        .eq("id", card_id)
+        .eq("user_id", auth.user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Card not found")
+    return CardActionResult(card_id=card_id, flag=body.flag)

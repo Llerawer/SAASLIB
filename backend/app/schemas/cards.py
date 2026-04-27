@@ -77,6 +77,9 @@ class CardOut(BaseModel):
     cefr: str | None
     notes: str | None
     source_capture_ids: list[str]
+    flag: int = 0
+    user_image_url: str | None = None
+    user_audio_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -93,6 +96,10 @@ class PromoteResult(BaseModel):
     cards: list[CardOut]
     created_count: int
     merged_count: int
+
+
+class CardFlagInput(BaseModel):
+    flag: int = Field(..., ge=0, le=4)
 
 
 class CardActionResult(BaseModel):
