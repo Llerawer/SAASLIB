@@ -18,6 +18,7 @@ from app.schemas.cards import (
     PromoteResult,
 )
 from app.services import ai_response_parser, card_factory
+from app.services.fsrs_scheduler import initial_snapshot
 
 
 class ParseAiInput(BaseModel):
@@ -199,6 +200,14 @@ def _unsuspend_schedule(client, card_id: str, user_id: str) -> dict | None:
     return res.data[0]
 
 
+def _reset_payload() -> dict:
+    """Return the dict to upsert into card_schedule to reset a card to initial."""
+    snap = initial_snapshot()
+    d = snap.to_dict()
+    d["last_reviewed_at"] = None
+    return d
+
+
 @router.post("/{card_id}/suspend", response_model=CardActionResult)
 @limiter.limit("60/minute")
 async def suspend(request: Request, card_id: str, auth: AuthInfo = Depends(get_auth)):
@@ -215,3 +224,24 @@ async def unsuspend(request: Request, card_id: str, auth: AuthInfo = Depends(get
     if not row:
         raise HTTPException(404, "Card schedule not found")
     return CardActionResult(card_id=card_id, suspended_at=None)
+
+
+@router.post("/{card_id}/reset", response_model=CardActionResult)
+@limiter.limit("30/minute")
+async def reset_card(
+    request: Request,
+    card_id: str,
+    auth: AuthInfo = Depends(get_auth),
+):
+    client = get_user_client(auth.jwt)
+    payload = _reset_payload()
+    res = (
+        client.table("card_schedule")
+        .update(payload)
+        .eq("card_id", card_id)
+        .eq("user_id", auth.user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Card schedule not found")
+    return CardActionResult(card_id=card_id)
