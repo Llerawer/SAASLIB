@@ -2,7 +2,8 @@
 
 **Fecha**: 2026-04-25
 **Branch origen**: `feature/semana-2-core-loop`
-**Status**: Aprobado por founder, pendiente plan de implementación
+**Branch implementación**: `feature/repaso-v2` (worktree `c:/Users/GERARDO/saas-repaso-v2/`)
+**Status**: Implementado — pendiente smoke test manual del founder y merge a `feature/semana-2-core-loop`
 **Alcance**: Mejora integral del módulo SRS (`/srs`) — variantes de recall, acciones in-card, resumen de sesión, cognitive throttling, carga de imagen y audio.
 
 ---
