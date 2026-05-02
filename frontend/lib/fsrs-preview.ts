@@ -4,6 +4,7 @@
  * "Again ~5min  Hard ~1h  Good ~2d  Easy ~5d" labels under the grade buttons.
  */
 import { fsrs, generatorParameters, Rating, type Card, State } from "ts-fsrs";
+import { Sparkles, Sprout, Layers, type LucideIcon } from "lucide-react";
 
 const f = fsrs(generatorParameters({ enable_fuzz: false }));
 
@@ -95,5 +96,19 @@ export function stateColorClass(state: number): string {
       return "bg-orange-100 text-orange-700 border-orange-300";
     default:
       return "bg-muted text-muted-foreground border-input";
+  }
+}
+
+export function stateIcon(state: number): LucideIcon {
+  switch (state) {
+    case 0:
+      return Sparkles;
+    case 1:
+    case 3:
+      return Sprout;
+    case 2:
+      return Layers;
+    default:
+      return Sparkles;
   }
 }
