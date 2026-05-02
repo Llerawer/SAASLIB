@@ -17,3 +17,9 @@ alter table public.captures
 
 -- The existing idx_bookmarks_user_book covers (user_id, book_id) — fine
 -- for "list bookmarks for this book." No new index needed.
+
+-- The `label` column lets users name a bookmark explicitly (e.g. "Where
+-- Govinda parts ways"). Distinct from `note` (a longer free-form note)
+-- and `context_snippet` (auto-extracted page excerpt at create time).
+alter table public.bookmarks
+    add column if not exists label text;
