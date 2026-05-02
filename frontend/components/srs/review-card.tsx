@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Volume2, MoreVertical } from "lucide-react";
+import { Volume2, MoreVertical, Eye, PenLine, SquareDot, Sparkles, Sprout, Layers } from "lucide-react";
 import type { ReviewQueueCard } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
 import { stateLabel, stateColorClass } from "@/lib/fsrs-preview";
@@ -81,12 +81,8 @@ export function ReviewCard({
     >
       <div className="px-6 pt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-0.5 rounded-full border ${stateColorClass(card.fsrs_state)}`}>
-            {stateLabel(card.fsrs_state)}
-          </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-            {VARIANT_LABEL[variant]}
-          </span>
+          <StateChip state={card.fsrs_state} />
+          <VariantChip variant={variant} />
           {card.cefr && (
             <span className="text-xs text-muted-foreground tabular ml-1">{card.cefr}</span>
           )}
@@ -96,6 +92,8 @@ export function ReviewCard({
           size="icon-sm"
           onClick={(e) => { e.stopPropagation(); onOpenMenu(); }}
           aria-label="Más acciones"
+          title="Acciones (E, S, R, F, B)"
+          className="bg-muted/50 hover:bg-muted"
         >
           <MoreVertical className="h-4 w-4" />
         </Button>
@@ -145,5 +143,52 @@ export function ReviewCard({
         )}
       </div>
     </div>
+  );
+}
+
+function StateChip({ state }: { state: number }) {
+  const getStateIcon = () => {
+    switch (state) {
+      case 0:
+        return <Sparkles className="h-3 w-3" aria-hidden="true" />;
+      case 1:
+      case 3:
+        return <Sprout className="h-3 w-3" aria-hidden="true" />;
+      case 2:
+        return <Layers className="h-3 w-3" aria-hidden="true" />;
+      default:
+        return <Sparkles className="h-3 w-3" aria-hidden="true" />;
+    }
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${stateColorClass(state)}`}
+    >
+      {getStateIcon()}
+      <span>{stateLabel(state)}</span>
+    </span>
+  );
+}
+
+function VariantChip({ variant }: { variant: Variant }) {
+  const getVariantIcon = () => {
+    switch (variant) {
+      case "recognition":
+        return <Eye className="h-3 w-3" aria-hidden="true" />;
+      case "production":
+        return <PenLine className="h-3 w-3" aria-hidden="true" />;
+      case "cloze":
+        return <SquareDot className="h-3 w-3" aria-hidden="true" />;
+      default:
+        return <Eye className="h-3 w-3" aria-hidden="true" />;
+    }
+  };
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed text-muted-foreground">
+      {getVariantIcon()}
+      <span>{VARIANT_LABEL[variant]}</span>
+    </span>
   );
 }
