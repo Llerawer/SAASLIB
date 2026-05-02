@@ -277,6 +277,7 @@ export type ReviewQueueCard = {
   fsrs_stability: number | null;
   user_image_url: string | null;
   user_audio_url: string | null;
+  flag: number;
 };
 
 export type GradeResult = {

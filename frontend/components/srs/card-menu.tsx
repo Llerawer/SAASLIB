@@ -138,6 +138,8 @@ export function CardMenu({
     },
   ];
 
+  const visibleSafeRows = safeRows.filter((r) => r.visible !== false);
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -150,11 +152,9 @@ export function CardMenu({
             </SheetTitle>
           </SheetHeader>
           <div className="flex flex-col py-4">
-            {safeRows
-              .filter((r) => r.visible !== false)
-              .map((r, i) => (
-                <MenuRow key={r.shortcut} row={r} index={i} />
-              ))}
+            {visibleSafeRows.map((r, i) => (
+              <MenuRow key={r.shortcut} row={r} index={i} />
+            ))}
             <div className="my-2 border-t" />
             <MenuRow
               row={{
@@ -165,7 +165,7 @@ export function CardMenu({
                 shortcut: "R",
                 onClick: () => setConfirmReset(true),
               }}
-              index={safeRows.length + 1}
+              index={visibleSafeRows.length + 1}
               destructive
             />
           </div>

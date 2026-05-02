@@ -28,6 +28,7 @@ class ReviewQueueCard(BaseModel):
     fsrs_stability: float | None
     user_image_url: str | None = None
     user_audio_url: str | None = None
+    flag: int = 0
 
 
 class GradeResult(BaseModel):

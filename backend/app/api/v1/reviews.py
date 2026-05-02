@@ -91,6 +91,7 @@ async def queue(
                 fsrs_stability=s.get("fsrs_stability"),
                 user_image_url=c.get("user_image_url") or None,
                 user_audio_url=c.get("user_audio_url") or None,
+                flag=int(c.get("flag") or 0),
             )
         )
     return out

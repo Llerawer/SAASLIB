@@ -1,4 +1,7 @@
+"use client";
+
 import { type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Kbd } from "./kbd";
 
 export type MenuRowSpec = {
@@ -26,7 +29,7 @@ export function MenuRow({
       onClick={row.onClick}
       style={{ animationDelay: `${index * 30}ms` }}
       className={`group flex items-center gap-3 px-2 py-2.5 rounded-lg text-left transition-colors animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-backwards ${
-        destructive ? "hover:bg-destructive/10" : "hover:bg-muted"
+        destructive ? "hover:bg-destructive/15" : "hover:bg-muted"
       }`}
     >
       <span
@@ -35,7 +38,7 @@ export function MenuRow({
           destructive ? "bg-destructive/10" : "bg-muted"
         }`}
       >
-        <Icon className={`h-4 w-4 ${row.iconClassName ?? ""}`} />
+        <Icon className={cn("h-4 w-4", row.iconClassName)} />
       </span>
       <span className="flex-1 min-w-0">
         <span
