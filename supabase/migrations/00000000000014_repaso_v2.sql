@@ -1,6 +1,10 @@
--- supabase/migrations/00000000000011_repaso_v2.sql
+-- supabase/migrations/00000000000014_repaso_v2.sql
 -- =========================================================================
--- Repaso v2: suspend, flag, user media, storage bucket
+-- Repaso v2: suspend, flag, user media, storage bucket.
+-- Renamed from 11 to 14 to leave room for the Pronunciation module
+-- (migrations 11/12/13) that landed in feature/semana-2-core-loop in
+-- parallel. Idempotent — safe to re-apply on Supabases where the SQL
+-- was already executed under the old filename.
 -- =========================================================================
 
 -- 1. card_schedule.suspended_at (suspende = no aparece en queue)
