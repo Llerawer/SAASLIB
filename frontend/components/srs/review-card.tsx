@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { Volume2, MoreVertical, Eye, PenLine, SquareDot, Sparkles, Sprout, Layers } from "lucide-react";
+import { Volume2, MoreVertical, Eye, PenLine, SquareDot, type LucideIcon } from "lucide-react";
 import type { ReviewQueueCard } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
-import { stateLabel, stateColorClass } from "@/lib/fsrs-preview";
+import { stateLabel, stateColorClass, stateIcon } from "@/lib/fsrs-preview";
 import {
   resolveVariant,
   maskCloze,
@@ -20,6 +20,12 @@ const VARIANT_LABEL: Record<Variant, string> = {
   recognition: "Reconocer",
   production: "Producir",
   cloze: "Completar",
+};
+
+const VARIANT_ICON: Record<Variant, LucideIcon> = {
+  recognition: Eye,
+  production: PenLine,
+  cloze: SquareDot,
 };
 
 export function ReviewCard({
@@ -147,47 +153,22 @@ export function ReviewCard({
 }
 
 function StateChip({ state }: { state: number }) {
-  const getStateIcon = () => {
-    switch (state) {
-      case 0:
-        return <Sparkles className="h-3 w-3" aria-hidden="true" />;
-      case 1:
-      case 3:
-        return <Sprout className="h-3 w-3" aria-hidden="true" />;
-      case 2:
-        return <Layers className="h-3 w-3" aria-hidden="true" />;
-      default:
-        return <Sparkles className="h-3 w-3" aria-hidden="true" />;
-    }
-  };
-
+  const Icon = stateIcon(state);
   return (
     <span
       className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${stateColorClass(state)}`}
     >
-      {getStateIcon()}
+      <Icon className="h-3 w-3" aria-hidden="true" />
       <span>{stateLabel(state)}</span>
     </span>
   );
 }
 
 function VariantChip({ variant }: { variant: Variant }) {
-  const getVariantIcon = () => {
-    switch (variant) {
-      case "recognition":
-        return <Eye className="h-3 w-3" aria-hidden="true" />;
-      case "production":
-        return <PenLine className="h-3 w-3" aria-hidden="true" />;
-      case "cloze":
-        return <SquareDot className="h-3 w-3" aria-hidden="true" />;
-      default:
-        return <Eye className="h-3 w-3" aria-hidden="true" />;
-    }
-  };
-
+  const Icon = VARIANT_ICON[variant];
   return (
     <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed text-muted-foreground">
-      {getVariantIcon()}
+      <Icon className="h-3 w-3" aria-hidden="true" />
       <span>{VARIANT_LABEL[variant]}</span>
     </span>
   );
