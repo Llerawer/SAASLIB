@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { usePronounce } from "@/lib/api/queries";
+import { PronounceDeckPlayer } from "@/components/pronounce-deck-player";
 
 function withQuery(path: string, sp: URLSearchParams): string {
   const qs = sp.toString();
@@ -75,13 +76,7 @@ export default function PronounceDeckPage({
         clip {idx + 1} / {data.clips.length} · {clip.channel}
         {clip.accent ? ` · ${clip.accent}` : ""}
       </p>
-      <div className="border rounded-lg p-6 bg-card">
-        <p className="text-sm font-mono break-all">id: {clip.id}</p>
-        <p className="text-sm">sentence: {clip.sentence_text}</p>
-        <p className="text-xs text-muted-foreground mt-4">
-          (Player UI — coming in Task 5)
-        </p>
-      </div>
+      <PronounceDeckPlayer clip={clip} speed={1} />
     </div>
   );
 }
