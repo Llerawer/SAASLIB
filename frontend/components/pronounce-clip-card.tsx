@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 
 import { Highlighted } from "@/lib/reader/pronounce-highlight";
 import type { PronounceClip } from "@/lib/api/queries";
@@ -48,9 +49,13 @@ export function PronounceClipCard({ clip, word, priority = false }: Props) {
   );
 
   return (
+    // `group` enables hover effects on children that key off the card-level
+    // hover (the "Ver clip" CTA arrow lights up + slides). Card itself
+    // gets a subtle lift + ring on hover so users can FEEL the affordance
+    // before they read the CTA — affordance B.
     <div
       ref={containerRef}
-      className="border rounded-lg overflow-hidden bg-card"
+      className="group border rounded-lg overflow-hidden bg-card transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-accent/60 focus-within:ring-2 focus-within:ring-ring"
     >
       <div className="aspect-video bg-muted">
         {shouldLoad ? (
@@ -74,7 +79,9 @@ export function PronounceClipCard({ clip, word, priority = false }: Props) {
       </div>
       <Link
         href={deckHref}
-        className="block p-3 hover:bg-accent/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-b-lg"
+        // Stronger hover (10% accent vs 5%) — clearly says "I'm clickable".
+        // Affordance A: explicit "Ver clip →" CTA at the bottom-right.
+        className="block p-3 hover:bg-accent/10 transition-colors focus-visible:outline-none rounded-b-lg"
         aria-label={`Abrir deck para este clip de ${word}`}
       >
         <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
@@ -87,6 +94,13 @@ export function PronounceClipCard({ clip, word, priority = false }: Props) {
         <p className="text-sm leading-snug line-clamp-3">
           <Highlighted text={clip.sentence_text} word={word} />
         </p>
+        <div className="mt-2 flex items-center justify-end gap-1 text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors">
+          <span>Ver clip</span>
+          <ArrowRight
+            className="h-3 w-3 transition-transform group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
+        </div>
       </Link>
     </div>
   );
