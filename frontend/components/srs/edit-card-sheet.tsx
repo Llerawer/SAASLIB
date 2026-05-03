@@ -3,11 +3,17 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
+  Languages,
+  BookOpen,
+  Lightbulb,
+  StickyNote,
+  type LucideIcon,
+} from "lucide-react";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetFooter,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,10 +37,9 @@ export function EditCardSheet({
   const [mnemonic, setMnemonic] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Re-seed local state when the card identity changes (e.g. user opens edit
-  // on a different card). Intentional: this is local UI state derived from
-  // the latest `card` prop.
-  /* eslint-disable react-hooks/set-state-in-effect */
+  // Re-seed local state when the card identity changes (user opens edit on a
+  // different card). Set-state-in-effect intentional here.
+  /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
   useEffect(() => {
     if (card) {
       setTranslation(card.translation ?? "");
@@ -43,7 +48,7 @@ export function EditCardSheet({
       setNotes(card.notes ?? "");
     }
   }, [card?.card_id]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  /* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
   async function save() {
     if (!card) return;
@@ -66,62 +71,105 @@ export function EditCardSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Editar tarjeta {card ? `· ${card.word}` : ""}</SheetTitle>
+      <SheetContent
+        side="bottom"
+        className="max-h-[90vh] flex flex-col p-0"
+      >
+        <SheetHeader className="px-6 pt-6">
+          <SheetTitle className="flex items-baseline justify-between gap-3 flex-wrap">
+            <span>Editar tarjeta</span>
+            {card && (
+              <span className="flex items-baseline gap-2 text-sm text-muted-foreground">
+                <span className="font-serif font-semibold text-foreground">
+                  {card.word}
+                </span>
+                {card.ipa && <span className="font-mono">{card.ipa}</span>}
+                {card.cefr && (
+                  <span className="text-xs px-1.5 py-0.5 rounded border tabular">
+                    {card.cefr}
+                  </span>
+                )}
+              </span>
+            )}
+          </SheetTitle>
         </SheetHeader>
-        <div className="grid gap-4 py-4">
-          <Field label="Traducción" value={translation} onChange={setTranslation} />
-          <Field label="Definición" value={definition} onChange={setDefinition} multi />
-          <Field label="Mnemotecnia" value={mnemonic} onChange={setMnemonic} multi />
-          <Field label="Notas" value={notes} onChange={setNotes} multi />
+
+        <div className="px-6 pb-4 grid gap-4 overflow-y-auto flex-1">
+          <Field icon={Languages} label="Traducción">
+            <input
+              value={translation}
+              onChange={(e) => setTranslation(e.target.value)}
+              className="border rounded-md px-3 py-2 bg-background font-serif text-base"
+            />
+          </Field>
+          <Field icon={BookOpen} label="Definición">
+            <textarea
+              value={definition}
+              onChange={(e) => setDefinition(e.target.value)}
+              rows={3}
+              className="border rounded-md px-3 py-2 bg-background font-serif"
+            />
+          </Field>
+          <Field icon={Lightbulb} label="Mnemotecnia">
+            <textarea
+              value={mnemonic}
+              onChange={(e) => setMnemonic(e.target.value)}
+              rows={2}
+              className="border rounded-md px-3 py-2 bg-background font-serif"
+            />
+          </Field>
+          <Field icon={StickyNote} label="Notas">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="border rounded-md px-3 py-2 bg-background font-serif"
+            />
+          </Field>
+
           {card && (
-            <div className="border-t pt-4">
+            <section className="border-t pt-4">
+              <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">
+                Multimedia
+              </h3>
               <MediaUpload
                 cardId={card.card_id}
                 imageUrl={card.user_image_url}
                 audioUrl={card.user_audio_url}
               />
-            </div>
+            </section>
           )}
         </div>
-        <SheetFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={save} disabled={update.isPending}>Guardar</Button>
-        </SheetFooter>
+
+        <div className="sticky bottom-0 px-6 py-3 bg-card border-t flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={save} disabled={update.isPending}>
+            Guardar
+          </Button>
+        </div>
       </SheetContent>
     </Sheet>
   );
 }
 
 function Field({
+  icon: Icon,
   label,
-  value,
-  onChange,
-  multi,
+  children,
 }: {
+  icon: LucideIcon;
   label: string;
-  value: string;
-  onChange: (v: string) => void;
-  multi?: boolean;
+  children: React.ReactNode;
 }) {
   return (
     <label className="grid gap-1">
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-      {multi ? (
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={3}
-          className="border rounded-md px-3 py-2 bg-background font-serif"
-        />
-      ) : (
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="border rounded-md px-3 py-2 bg-background font-serif"
-        />
-      )}
+      <span className="text-xs uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
+        <Icon className="h-3 w-3" aria-hidden="true" />
+        {label}
+      </span>
+      {children}
     </label>
   );
 }
