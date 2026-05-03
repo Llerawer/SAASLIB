@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { Highlighted } from "@/lib/reader/pronounce-highlight";
 import type { PronounceClip } from "@/lib/api/queries";
@@ -12,6 +14,14 @@ type Props = {
 };
 
 export function PronounceClipCard({ clip, word, priority = false }: Props) {
+  const sp = useSearchParams();
+  const qs = sp.toString();
+  const wordEnc = encodeURIComponent(word.trim().toLowerCase());
+  const clipEnc = encodeURIComponent(clip.id);
+  const deckHref = qs
+    ? `/pronounce/${wordEnc}/play/${clipEnc}?${qs}`
+    : `/pronounce/${wordEnc}/play/${clipEnc}`;
+
   const [shouldLoad, setShouldLoad] = useState(priority);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -62,7 +72,11 @@ export function PronounceClipCard({ clip, word, priority = false }: Props) {
           </div>
         )}
       </div>
-      <div className="p-3">
+      <Link
+        href={deckHref}
+        className="block p-3 hover:bg-accent/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-b-lg"
+        aria-label={`Abrir deck para este clip de ${word}`}
+      >
         <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
           <span className="truncate">
             {clip.channel}
@@ -73,7 +87,7 @@ export function PronounceClipCard({ clip, word, priority = false }: Props) {
         <p className="text-sm leading-snug line-clamp-3">
           <Highlighted text={clip.sentence_text} word={word} />
         </p>
-      </div>
+      </Link>
     </div>
   );
 }
