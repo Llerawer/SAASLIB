@@ -266,6 +266,10 @@
   }
 }
 
+/* CSS Color Module Level 5 relative-color syntax — supported in
+   Chrome/Edge 119+ (Oct 2023), Safari 16.4+ (Mar 2023), Firefox 128+
+   (Jul 2024). On older browsers the color modulation is ignored, but
+   the scale animation still plays so the pulse remains visible. */
 @keyframes pulse-once {
   0%   { background-color: oklch(from var(--primary) l c h / 0.20); transform: scale(1); }
   35%  { background-color: oklch(from var(--primary) l c h / 0.55); transform: scale(1.05); }
