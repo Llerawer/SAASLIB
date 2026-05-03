@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Bookmark, BookmarkCheck } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,6 +35,12 @@ export function ReaderBookmarkButton({
   const createBookmark = useCreateBookmark();
   const deleteBookmark = useDeleteBookmark(bookId);
 
+  // Re-entry guard: covers the await getSnippet() window (when the snippet
+  // helper is slow, the create mutation has not yet been called and
+  // isPending is still false, so a rapid second click could create a
+  // duplicate). Cleared in the finally below.
+  const inFlight = useRef(false);
+
   const existing =
     currentCfi && bookmarksQuery.data
       ? bookmarksQuery.data.find((b) => b.location === currentCfi)
@@ -42,30 +49,36 @@ export function ReaderBookmarkButton({
   const disabled =
     !bookId ||
     !currentCfi ||
+    bookmarksQuery.isPending ||
     createBookmark.isPending ||
     deleteBookmark.isPending;
 
   async function handleClick() {
-    if (!bookId || !currentCfi) return;
-    if (existing) {
+    if (!bookId || !currentCfi || inFlight.current) return;
+    inFlight.current = true;
+    try {
+      if (existing) {
+        try {
+          await deleteBookmark.mutateAsync(existing.id);
+          toast.success("Marcador eliminado");
+        } catch (err) {
+          toast.error(`Error: ${(err as Error).message}`);
+        }
+        return;
+      }
+      const snippet = await getSnippet();
       try {
-        await deleteBookmark.mutateAsync(existing.id);
-        toast.success("Marcador eliminado");
+        await createBookmark.mutateAsync({
+          book_id: bookId,
+          location: currentCfi,
+          context_snippet: snippet || null,
+        });
+        toast.success("Marcador guardado");
       } catch (err) {
         toast.error(`Error: ${(err as Error).message}`);
       }
-      return;
-    }
-    const snippet = await getSnippet();
-    try {
-      await createBookmark.mutateAsync({
-        book_id: bookId,
-        location: currentCfi,
-        context_snippet: snippet || null,
-      });
-      toast.success("Marcador guardado");
-    } catch (err) {
-      toast.error(`Error: ${(err as Error).message}`);
+    } finally {
+      inFlight.current = false;
     }
   }
 
