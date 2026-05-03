@@ -9,6 +9,7 @@ _MAX_TAGS = 20
 _MAX_TAG_LEN = 50
 _MAX_LOCATION_LEN = 200
 _MAX_BOOK_ID_LEN = 64
+_MAX_NOTE_LEN = 2000
 
 
 class CaptureCreate(BaseModel):
@@ -18,6 +19,7 @@ class CaptureCreate(BaseModel):
     book_id: str | None = Field(default=None, max_length=_MAX_BOOK_ID_LEN)
     language: str = Field(default="en", min_length=2, max_length=5)
     tags: list[str] = Field(default_factory=list, max_length=_MAX_TAGS)
+    note: str | None = Field(default=None, max_length=_MAX_NOTE_LEN)
 
     @field_validator("tags")
     @classmethod
@@ -32,6 +34,7 @@ class CaptureUpdate(BaseModel):
     context_sentence: str | None = Field(default=None, max_length=600)
     page_or_location: str | None = Field(default=None, max_length=_MAX_LOCATION_LEN)
     tags: list[str] | None = Field(default=None, max_length=_MAX_TAGS)
+    note: str | None = Field(default=None, max_length=_MAX_NOTE_LEN)
 
     @field_validator("tags")
     @classmethod
@@ -53,6 +56,7 @@ class CaptureOut(BaseModel):
     page_or_location: str | None
     book_id: str | None
     tags: list[str]
+    note: str | None = None
     promoted_to_card: bool
     captured_at: datetime
     # Enriched from word_lookup at creation time, returned for instant UI:
