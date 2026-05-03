@@ -33,6 +33,7 @@ def _row_to_capture(row: dict, enrichment: dict | None = None) -> CaptureOut:
         "page_or_location": row.get("page_or_location"),
         "book_id": row.get("book_id"),
         "tags": row.get("tags") or [],
+        "note": row.get("note"),
         "promoted_to_card": row.get("promoted_to_card", False),
         "captured_at": row["captured_at"],
     }
@@ -71,6 +72,7 @@ async def create_capture(
         "page_or_location": body.page_or_location,
         "book_id": body.book_id,
         "tags": body.tags,
+        "note": body.note,
     }
     # User-scoped client → RLS enforces user_id = auth.uid() on insert.
     client = get_user_client(auth.jwt)
@@ -124,7 +126,7 @@ async def update_capture(
     body: CaptureUpdate,
     auth: AuthInfo = Depends(get_auth),
 ):
-    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    update = body.model_dump(exclude_unset=True)
     if not update:
         raise HTTPException(422, "No fields to update")
     client = get_user_client(auth.jwt)
