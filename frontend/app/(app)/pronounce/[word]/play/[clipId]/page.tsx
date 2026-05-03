@@ -10,17 +10,18 @@ import {
   type DeckPlayerHandle,
 } from "@/components/pronounce-deck-player";
 import { PronounceDeckControls } from "@/components/pronounce-deck-controls";
-import {
-  AUTO_PLAYS_PER_CLIP,
-  VALID_SPEEDS,
-  type Mode,
-  type Speed,
-} from "@/lib/pronounce/deck-types";
 
 // ---------------------------------------------------------------------------
-// localStorage helpers (defined outside component to keep
+// Constants + localStorage helpers (defined outside component to keep
 // SSR-safe with typeof window guard and avoid re-creation on render).
 // ---------------------------------------------------------------------------
+
+const AUTO_PLAYS_PER_CLIP = 3;
+
+type Speed = 0.5 | 0.75 | 1 | 1.25;
+const VALID_SPEEDS: ReadonlyArray<Speed> = [0.5, 0.75, 1, 1.25];
+
+type Mode = "repeat" | "auto";
 
 function readSpeedFromLS(): Speed {
   if (typeof window === "undefined") return 1;
