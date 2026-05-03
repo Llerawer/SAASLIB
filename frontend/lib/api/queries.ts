@@ -444,3 +444,64 @@ export function useBookMetadata(id: number | null, enabled = true) {
     staleTime: 60 * 60_000,
   });
 }
+
+export type PronounceClip = {
+  id: string;
+  video_id: string;
+  channel: string;
+  accent: string | null;
+  language: string;
+  sentence_text: string;
+  sentence_start_ms: number;
+  sentence_end_ms: number;
+  embed_url: string;
+  license: string;
+  confidence: number;
+};
+
+export type PronounceSuggestion = {
+  word: string;
+  similarity: number;
+};
+
+export type PronounceResponse = {
+  word: string;
+  lemma: string;
+  total: number;
+  clips: PronounceClip[];
+  suggestions: PronounceSuggestion[];
+};
+
+export type PronounceFilters = {
+  accent?: string;
+  channel?: string;
+  limit?: number;
+  offset?: number;
+  min_confidence?: number;
+};
+
+export function usePronounce(word: string | null, filters: PronounceFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.accent && filters.accent !== "all") params.set("accent", filters.accent);
+  if (filters.channel) params.set("channel", filters.channel);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.offset) params.set("offset", String(filters.offset));
+  if (filters.min_confidence !== undefined)
+    params.set("min_confidence", String(filters.min_confidence));
+  const qs = params.toString();
+  // queryKey is the normalized querystring (the actual fetch identity).
+  // Two callers with semantically-equivalent filter objects (e.g.,
+  // gallery's {accent:"all", channel:"", limit:12} vs deck's
+  // {accent:undefined, channel:undefined, limit:12}) produce the same
+  // qs and therefore share the same cache entry.
+  return useQuery({
+    queryKey: ["pronounce", word ?? "", qs] as const,
+    queryFn: () =>
+      api.get<PronounceResponse>(
+        `/api/v1/pronounce/${encodeURIComponent(word!)}${qs ? `?${qs}` : ""}`,
+      ),
+    enabled: !!word,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+  });
+}
