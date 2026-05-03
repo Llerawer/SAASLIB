@@ -2,6 +2,8 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft, ChevronLeft, ChevronRight, Pause } from "lucide-react";
 import { toast } from "sonner";
 
 import { usePronounce } from "@/lib/api/queries";
@@ -10,6 +12,7 @@ import {
   type DeckPlayerHandle,
 } from "@/components/pronounce-deck-player";
 import { PronounceDeckControls } from "@/components/pronounce-deck-controls";
+import { Highlighted } from "@/lib/reader/pronounce-highlight";
 
 // ---------------------------------------------------------------------------
 // Constants + localStorage helpers (defined outside component to keep
@@ -85,8 +88,7 @@ export default function PronounceDeckPage({
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [repCount, setRepCount] = useState(0);
-  // pulseKey drives sentence-pulse animation wired in Task 6.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // pulseKey drives sentence-pulse animation; incremented on each loop.
   const [pulseKey, setPulseKey] = useState(0);
 
   const playerRef = useRef<DeckPlayerHandle | null>(null);
@@ -203,39 +205,125 @@ export default function PronounceDeckPage({
   // Render
   // ---------------------------------------------------------------------------
 
+  const filterChip = [accent, channel].filter(Boolean).join(" · ");
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-xl font-semibold mb-2">{word}</h1>
-      <p className="text-sm text-muted-foreground mb-4">
-        clip {idx + 1} / {total} · {clip.channel}
-        {clip.accent ? ` · ${clip.accent}` : ""}
+    <div className="max-w-5xl mx-auto p-4 sm:p-6">
+      {/* Header: back link + word + filter chip + counter */}
+      <header className="flex items-center gap-3 mb-6 flex-wrap">
+        <Link
+          href={withQuery(`/pronounce/${wordEnc}`, sp)}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={`Volver a la galería de ${word}`}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>{word}</span>
+        </Link>
+        {filterChip && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+            {filterChip}
+          </span>
+        )}
+        <div className="flex-1" />
+        <span
+          className="text-sm text-muted-foreground tabular-nums"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {idx + 1} / {total}
+        </span>
+      </header>
+
+      {/* Player + side arrows (desktop) */}
+      <div className="grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-4 items-center">
+        <button
+          type="button"
+          onClick={goPrev}
+          aria-label="Clip anterior"
+          title="Anterior (←)"
+          className="hidden lg:inline-flex items-center justify-center w-12 h-32 rounded-md bg-muted hover:bg-accent text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+
+        <div className="relative col-span-3 lg:col-span-1">
+          <PronounceDeckPlayer
+            ref={playerRef}
+            clip={clip}
+            speed={speed}
+            onReady={() => setIsReady(true)}
+            onPlayingChange={setIsPlaying}
+            onSegmentEnd={handleSegmentEnd}
+          />
+          {/* Pause overlay — visible only when not playing AND ready */}
+          {isReady && !isPlaying && (
+            <div
+              className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg"
+              aria-hidden="true"
+            >
+              <Pause className="h-10 w-10 text-white/80" />
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={goNext}
+          aria-label="Clip siguiente"
+          title="Siguiente (→)"
+          className="hidden lg:inline-flex items-center justify-center w-12 h-32 rounded-md bg-muted hover:bg-accent text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronRight className="h-6 w-6" />
+        </button>
+      </div>
+
+      {/* Sentence with pulsing highlight */}
+      <p className="text-2xl font-serif text-center leading-snug mt-6 max-w-3xl mx-auto">
+        <Highlighted text={clip.sentence_text} word={word} pulseKey={pulseKey} />
       </p>
-      <PronounceDeckPlayer
-        ref={playerRef}
-        clip={clip}
-        speed={speed}
-        onReady={() => setIsReady(true)}
-        onPlayingChange={setIsPlaying}
-        onSegmentEnd={handleSegmentEnd}
-      />
+
+      {/* Mobile prev/next row (above controls) */}
+      <div className="flex justify-center gap-2 mt-4 lg:hidden">
+        <button
+          type="button"
+          onClick={goPrev}
+          aria-label="Clip anterior"
+          className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-md bg-muted hover:bg-accent text-foreground"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={goNext}
+          aria-label="Clip siguiente"
+          className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-md bg-muted hover:bg-accent text-foreground"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Controls: mode toggle, speed chips, repeat */}
       <PronounceDeckControls
         mode={mode}
         onModeChange={(m) => {
           setMode(m);
-          setRepCount(0); // changing mode resets progress
+          setRepCount(0);
         }}
         repCount={repCount}
         autoPlaysPerClip={AUTO_PLAYS_PER_CLIP}
         speed={speed}
         onSpeedChange={(s) => {
           setSpeed(s);
-          // Live propagation to player happens in Task 7 (DeckPlayerHandle.setSpeed
-          // is added then). For now, the speed will apply to the NEXT clip mount
-          // because the player re-applies speedRef on onReady.
+          playerRef.current?.setSpeed(s);
         }}
         onRepeat={handleRepeatManual}
         meta={`${clip.channel}${clip.accent ? ` · ${clip.accent}` : ""}`}
       />
+
+      {/* Footer: keyboard hints */}
+      <footer className="mt-6 text-xs text-muted-foreground text-center">
+        ← →: navegar · R: repetir · M: modo · 1-4: velocidad · Esc: volver
+      </footer>
     </div>
   );
 }

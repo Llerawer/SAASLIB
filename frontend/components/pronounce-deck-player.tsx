@@ -23,6 +23,9 @@ export type DeckPlayerHandle = {
   /** Force the segment to restart from sentence_start_ms. Same effect
    *  as the auto-loop, but invokable from a button or keyboard. */
   repeat: () => void;
+  /** Propagate a playback-rate change to the iframe via postMessage
+   *  setPlaybackRate. No-op if the iframe contentWindow is not yet ready. */
+  setSpeed: (s: number) => void;
 };
 
 /** iOS Safari: the first playVideo() may be ignored because there is no
@@ -178,6 +181,9 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
           const startSec = clipRef.current.sentence_start_ms / 1000;
           send("seekTo", [startSec, true]);
           send("playVideo");
+        },
+        setSpeed: (s: number) => {
+          send("setPlaybackRate", [s]);
         },
       }),
       [],
