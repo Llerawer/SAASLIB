@@ -25,6 +25,10 @@ export type DeckPlayerHandle = {
   repeat: () => void;
 };
 
+/** iOS Safari: the first playVideo() may be ignored because there is no
+ *  user gesture on the same page. Recovery is the manual Repeat button
+ *  (DeckPlayerHandle.repeat) or the keyboard `R` shortcut. See spec §6. */
+
 type Props = {
   clip: PronounceClip;
   speed: number;            // current playback rate; reapplied on (re)mount
@@ -43,14 +47,34 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
     const clipRef = useRef(clip);
     const playbackTimeRef = useRef(0);
     const isPlayingRef = useRef(false);
+    const onReadyRef = useRef(onReady);
+    const onPlayingChangeRef = useRef(onPlayingChange);
     const onSegmentEndRef = useRef(onSegmentEnd);
     const loopLockRef = useRef(false);
 
     // Keep refs synced with latest props (so the mount-only listener
-    // never reads a stale closure).
+    // never reads a stale closure). All callback props go through refs
+    // so the listener can stay mount-only with deps `[]` — without this,
+    // a parent that passes inline arrow callbacks would re-register the
+    // listener on every render, opening a one-frame window where YT
+    // messages (onReady, onStateChange) could be dropped.
     useEffect(() => { speedRef.current = speed; }, [speed]);
-    useEffect(() => { clipRef.current = clip; }, [clip]);
+    useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+    useEffect(() => { onPlayingChangeRef.current = onPlayingChange; }, [onPlayingChange]);
     useEffect(() => { onSegmentEndRef.current = onSegmentEnd; }, [onSegmentEnd]);
+
+    // When clip.id changes the iframe key changes → React remounts the
+    // <iframe>. The polling interval and message listener persist, so
+    // we must reset transient state that belongs to the old iframe;
+    // otherwise the polling tick can fire safeFireSegmentEnd against
+    // the new iframe (using the old clip's stale playbackTime + the new
+    // clip's sentence_end_ms). Reset everything that's iframe-specific.
+    useEffect(() => {
+      clipRef.current = clip;
+      isPlayingRef.current = false;
+      playbackTimeRef.current = 0;
+      loopLockRef.current = false;
+    }, [clip]);
 
     // Build enhanced src. NOTE: origin must be raw (no encodeURIComponent) —
     // YouTube's internal validation rejects encoded values silently.
@@ -111,14 +135,14 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
         if (data.event === "onReady") {
           send("setPlaybackRate", [speedRef.current]);
           send("playVideo");
-          onReady?.();
+          onReadyRef.current?.();
         }
 
         if (data.event === "onStateChange") {
           // 1=PLAYING, 2=PAUSED, 3=BUFFERING, 5=CUED, 0=ENDED, -1=UNSTARTED
           const playing = data.info === 1;
           isPlayingRef.current = playing;
-          onPlayingChange?.(playing);
+          onPlayingChangeRef.current?.(playing);
           if (data.info === 0) safeFireSegmentEnd();
         }
 
@@ -134,7 +158,7 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
       }
       window.addEventListener("message", onMsg);
       return () => window.removeEventListener("message", onMsg);
-    }, [onReady, onPlayingChange]);
+    }, []);
 
     // Polling loop — primary loop trigger; ENDED is backup.
     useEffect(() => {
