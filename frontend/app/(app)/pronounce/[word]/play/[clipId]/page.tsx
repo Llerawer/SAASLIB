@@ -182,6 +182,77 @@ export default function PronounceDeckPage({
     playerRef.current?.repeat();
   }, [mode]);
 
+  // Keyboard shortcuts (spec §7).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.repeat) return; // hold ≠ N navegaciones
+      if (e.metaKey || e.ctrlKey || e.altKey) return; // no pisar atajos del browser
+      const t = e.target as HTMLElement | null;
+      if (
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        t?.isContentEditable
+      ) {
+        return;
+      }
+
+      switch (e.key) {
+        case "ArrowLeft":
+        case "j":
+        case "J":
+          e.preventDefault();
+          goPrev();
+          break;
+        case "ArrowRight":
+        case "l":
+        case "L":
+          e.preventDefault();
+          goNext();
+          break;
+        case " ":
+        case "r":
+        case "R":
+          e.preventDefault(); // Space NO debe scrollear
+          handleRepeatManual();
+          break;
+        case "1":
+          e.preventDefault();
+          setSpeed(0.5);
+          playerRef.current?.setSpeed(0.5);
+          break;
+        case "2":
+          e.preventDefault();
+          setSpeed(0.75);
+          playerRef.current?.setSpeed(0.75);
+          break;
+        case "3":
+          e.preventDefault();
+          setSpeed(1);
+          playerRef.current?.setSpeed(1);
+          break;
+        case "4":
+          e.preventDefault();
+          setSpeed(1.25);
+          playerRef.current?.setSpeed(1.25);
+          break;
+        case "m":
+        case "M":
+          e.preventDefault();
+          setMode((m) => {
+            setRepCount(0);
+            return m === "repeat" ? "auto" : "repeat";
+          });
+          break;
+        case "Escape":
+          e.preventDefault();
+          router.replace(withQuery(`/pronounce/${wordEnc}`, sp));
+          break;
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [goPrev, goNext, handleRepeatManual, router, wordEnc, sp]);
+
   // ---------------------------------------------------------------------------
   // Early returns (after all hooks)
   // ---------------------------------------------------------------------------
