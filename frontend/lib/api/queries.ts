@@ -24,6 +24,7 @@ export type Capture = {
   page_or_location: string | null;
   book_id: string | null;
   tags: string[];
+  note: string | null;
   promoted_to_card: boolean;
   captured_at: string;
   translation?: string | null;
@@ -47,6 +48,7 @@ export type CaptureCreateInput = {
   book_id?: string | null;
   language?: string;
   tags?: string[];
+  note?: string | null;
 };
 
 export const queryKeys = {
@@ -55,6 +57,7 @@ export const queryKeys = {
   captures: (filters?: Record<string, unknown>) =>
     ["captures", filters ?? {}] as const,
   capturesPendingCount: () => ["captures", "pending-count"] as const,
+  bookmarks: (bookId: string) => ["bookmarks", bookId] as const,
 };
 
 export function useDictionary(word: string | null, language = "en") {
@@ -132,6 +135,7 @@ type CaptureUpdateInput = {
   context_sentence?: string | null;
   page_or_location?: string | null;
   tags?: string[];
+  note?: string | null;
 };
 
 export function useUpdateCapture() {
@@ -151,6 +155,82 @@ export function useDeleteCapture() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.captures() });
       qc.invalidateQueries({ queryKey: queryKeys.capturesPendingCount() });
+    },
+  });
+}
+
+export type Bookmark = {
+  id: string;
+  user_id: string;
+  book_id: string;
+  location: string;
+  label: string | null;
+  note: string | null;
+  color: string;
+  context_snippet: string | null;
+  created_at: string;
+};
+
+export type BookmarkCreateInput = {
+  book_id: string;
+  location: string;
+  label?: string | null;
+  note?: string | null;
+  color?: string;
+  context_snippet?: string | null;
+};
+
+export type BookmarkUpdateInput = {
+  label?: string | null;
+  note?: string | null;
+  color?: string | null;
+};
+
+export function useBookmarks(bookId: string | null) {
+  return useQuery({
+    queryKey: bookId ? queryKeys.bookmarks(bookId) : ["bookmarks", "none"],
+    queryFn: () =>
+      api.get<Bookmark[]>(
+        `/api/v1/bookmarks?book_id=${encodeURIComponent(bookId!)}`,
+      ),
+    enabled: !!bookId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateBookmark() {
+  const qc = useQueryClient();
+  return useMutation<Bookmark, Error, BookmarkCreateInput>({
+    mutationFn: (input) => api.post<Bookmark>("/api/v1/bookmarks", input),
+    onSuccess: (b) => {
+      qc.invalidateQueries({ queryKey: queryKeys.bookmarks(b.book_id) });
+    },
+  });
+}
+
+export function useUpdateBookmark() {
+  const qc = useQueryClient();
+  return useMutation<
+    Bookmark,
+    Error,
+    { id: string; patch: BookmarkUpdateInput }
+  >({
+    mutationFn: ({ id, patch }) =>
+      api.patch<Bookmark>(`/api/v1/bookmarks/${id}`, patch),
+    onSuccess: (b) => {
+      qc.invalidateQueries({ queryKey: queryKeys.bookmarks(b.book_id) });
+    },
+  });
+}
+
+export function useDeleteBookmark(bookId: string | null) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.del(`/api/v1/bookmarks/${id}`),
+    onSuccess: () => {
+      if (bookId) {
+        qc.invalidateQueries({ queryKey: queryKeys.bookmarks(bookId) });
+      }
     },
   });
 }
