@@ -126,6 +126,10 @@ async def update_capture(
     body: CaptureUpdate,
     auth: AuthInfo = Depends(get_auth),
 ):
+    # exclude_unset (not exclude_none): a client can clear ANY nullable
+    # column — note, context_sentence, page_or_location, tags — by sending
+    # an explicit null. Absent fields stay untouched. Don't downgrade to
+    # exclude_none without first auditing every caller for accidental nulls.
     update = body.model_dump(exclude_unset=True)
     if not update:
         raise HTTPException(422, "No fields to update")
