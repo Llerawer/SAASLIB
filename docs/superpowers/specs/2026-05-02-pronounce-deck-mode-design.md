@@ -2,7 +2,7 @@
 
 > Date: 2026-05-02
 > Owner: Gerardo
-> Status: Approved (brainstorming complete) — ready for implementation plan
+> Status: Implemented (last commit 2f2c316, deck mode v1 shipped 2026-05-02). DoD §11 covered by automated checks (typecheck + lint) + user-validated browser flow (gallery → deck → play, mode toggle, prev/next, filters preserved). Karaoke-style word-by-word progressive highlight remains out of scope (Fase 4 — needs per-word timing).
 
 ## 1. Context
 
