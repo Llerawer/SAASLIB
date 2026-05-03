@@ -1,9 +1,27 @@
+import {
+  RotateCcw,
+  TrendingDown,
+  Check,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import type { GradePreview } from "@/lib/fsrs-preview";
+import { Kbd } from "./kbd";
 
 type GradeKey = 1 | 2 | 3 | 4;
 
 const GRADE_LABEL: Record<GradeKey, string> = {
-  1: "Otra vez", 2: "Difícil", 3: "Bien", 4: "Fácil",
+  1: "Otra vez",
+  2: "Difícil",
+  3: "Bien",
+  4: "Fácil",
+};
+
+const GRADE_ICON: Record<GradeKey, LucideIcon> = {
+  1: RotateCcw,
+  2: TrendingDown,
+  3: Check,
+  4: Sparkles,
 };
 
 const GRADE_TONE: Record<GradeKey, string> = {
@@ -12,6 +30,15 @@ const GRADE_TONE: Record<GradeKey, string> = {
   3: "border-grade-good/40 bg-grade-good/10 text-grade-good hover:bg-grade-good/20",
   4: "border-grade-easy/40 bg-grade-easy/10 text-grade-easy hover:bg-grade-easy/20",
 };
+
+function intervalFor(g: GradeKey, intervals: GradePreview): string {
+  switch (g) {
+    case 1: return intervals.again;
+    case 2: return intervals.hard;
+    case 3: return intervals.good;
+    case 4: return intervals.easy;
+  }
+}
 
 export function SrsGradeButtons({
   intervals,
@@ -26,23 +53,25 @@ export function SrsGradeButtons({
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-      {[1, 2, 3, 4].map((g) => {
-        const key = g as GradeKey;
-        const interval =
-          key === 1 ? intervals.again
-          : key === 2 ? intervals.hard
-          : key === 3 ? intervals.good
-          : intervals.easy;
+      {([1, 2, 3, 4] as const).map((g) => {
+        const Icon = GRADE_ICON[g];
         return (
           <button
             key={g}
-            onClick={() => onGrade(key)}
+            onClick={() => onGrade(g)}
             disabled={disabled}
-            className={`relative border rounded-lg py-3 text-sm font-medium transition-[background-color,transform] duration-150 ${GRADE_TONE[key]} ${pulseGrade === key ? "scale-[1.02] ring-2 ring-offset-2 ring-offset-background" : ""} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            className={`relative grid grid-cols-[auto_1fr_auto] grid-rows-[auto_1fr] gap-x-2 items-center border rounded-lg px-3 py-3 text-sm font-medium transition-[background-color,transform] duration-150 ${GRADE_TONE[g]} ${pulseGrade === g ? "scale-[1.02] ring-2 ring-offset-2 ring-offset-background" : ""} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
           >
-            <div className="text-xs font-semibold opacity-90 tabular">{interval}</div>
-            <div className="font-semibold mt-0.5">{GRADE_LABEL[key]}</div>
-            <div className="text-xs font-mono opacity-60 mt-0.5 tabular">{g}</div>
+            <Icon className="h-4 w-4 row-start-1 col-start-1" aria-hidden="true" />
+            <span className="row-start-1 col-start-3 text-[10px] font-semibold tabular opacity-80 justify-self-end">
+              {intervalFor(g, intervals)}
+            </span>
+            <span className="row-start-2 col-start-1 col-span-2 font-semibold mt-1">
+              {GRADE_LABEL[g]}
+            </span>
+            <Kbd className="row-start-2 col-start-3 self-end justify-self-end">
+              {g}
+            </Kbd>
           </button>
         );
       })}
