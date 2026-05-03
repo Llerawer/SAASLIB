@@ -38,7 +38,11 @@ export function Highlighted({ text, word, pulseKey = 0 }: Props) {
           <mark
             key={`${i}-${pulseKey}`}
             className={cn(
-              "bg-primary/20 text-foreground rounded px-0.5 font-medium",
+              // Highlighter-yellow that reads in both themes:
+              // light → solid yellow-200, dark → softened yellow-300/40
+              // text-yellow-950 keeps contrast on both.
+              "bg-yellow-200 dark:bg-yellow-300/40 text-yellow-950 dark:text-yellow-50",
+              "rounded px-0.5 font-medium",
               "[box-decoration-break:clone] [-webkit-box-decoration-break:clone]",
               pulseKey > 0 && "animate-pulse-once",
             )}

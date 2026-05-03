@@ -271,9 +271,9 @@
    (Jul 2024). On older browsers the color modulation is ignored, but
    the scale animation still plays so the pulse remains visible. */
 @keyframes pulse-once {
-  0%   { background-color: oklch(from var(--primary) l c h / 0.20); transform: scale(1); }
-  35%  { background-color: oklch(from var(--primary) l c h / 0.55); transform: scale(1.05); }
-  100% { background-color: oklch(from var(--primary) l c h / 0.20); transform: scale(1); }
+  0%   { background-color: oklch(0.96 0.18 105); transform: scale(1); }
+  35%  { background-color: oklch(0.90 0.22 95);  transform: scale(1.05); }
+  100% { background-color: oklch(0.96 0.18 105); transform: scale(1); }
 }
 .animate-pulse-once {
   animation: pulse-once 280ms ease-out;
