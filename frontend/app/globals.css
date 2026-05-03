@@ -266,6 +266,15 @@
   }
 }
 
+@keyframes pulse-once {
+  0%   { background-color: oklch(from var(--primary) l c h / 0.20); transform: scale(1); }
+  35%  { background-color: oklch(from var(--primary) l c h / 0.55); transform: scale(1.05); }
+  100% { background-color: oklch(from var(--primary) l c h / 0.20); transform: scale(1); }
+}
+.animate-pulse-once {
+  animation: pulse-once 280ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
