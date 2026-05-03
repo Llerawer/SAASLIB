@@ -31,6 +31,6 @@ def test_update_allows_clearing_label():
     BookmarkUpdate(note="Anything goes here.")
 
 
-def test_update_rejects_empty_payload():
+def test_update_empty_payload_dumps_to_empty_dict():
     body = BookmarkUpdate()
     assert body.model_dump(exclude_none=True) == {}

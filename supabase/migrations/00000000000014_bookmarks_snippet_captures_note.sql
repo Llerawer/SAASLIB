@@ -23,3 +23,9 @@ alter table public.captures
 -- and `context_snippet` (auto-extracted page excerpt at create time).
 alter table public.bookmarks
     add column if not exists label text;
+
+-- BookmarkOut surfaces `color` as non-nullable. Existing rows have the
+-- 'yellow' default; new rows always get a value via the API payload. Lock
+-- the column so the schema invariant matches the DB.
+alter table public.bookmarks
+    alter column color set not null;
