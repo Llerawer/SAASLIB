@@ -12,8 +12,23 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { useCapturesList, useDeleteCapture, type Capture } from "@/lib/api/queries";
+import {
+  useCapturesList,
+  useDeleteCapture,
+  useUpdateCapture,
+  type Capture,
+} from "@/lib/api/queries";
 import {
   WORD_COLORS,
   WORD_COLOR_IDS,
@@ -34,6 +49,10 @@ type Props = {
 /**
  * One row per lemma. Aggregates multiple captures of the same word
  * (across chapters) into one entry: count + first translation seen.
+ *
+ * The note belongs to a specific capture, not the lemma. We surface the
+ * MOST RECENT capture's note and edit against that capture id — keeps
+ * the UI unambiguous when the same word was captured multiple times.
  */
 type AggregatedRow = {
   lemma: string;
@@ -41,6 +60,9 @@ type AggregatedRow = {
   translation: string | null;
   count: number;
   captureIds: string[];  // for delete-all-of-lemma
+  latestCaptureId: string;
+  note: string | null;
+  noteCapturedAt: string;
 };
 
 function aggregate(captures: Capture[]): AggregatedRow[] {
@@ -53,6 +75,12 @@ function aggregate(captures: Capture[]): AggregatedRow[] {
       if (!existing.translation && c.translation) {
         existing.translation = c.translation;
       }
+      // Newer capture wins for note ownership.
+      if (c.captured_at > existing.noteCapturedAt) {
+        existing.latestCaptureId = c.id;
+        existing.note = c.note ?? null;
+        existing.noteCapturedAt = c.captured_at;
+      }
     } else {
       map.set(c.word_normalized, {
         lemma: c.word_normalized,
@@ -60,6 +88,9 @@ function aggregate(captures: Capture[]): AggregatedRow[] {
         translation: c.translation ?? null,
         count: 1,
         captureIds: [c.id],
+        latestCaptureId: c.id,
+        note: c.note ?? null,
+        noteCapturedAt: c.captured_at,
       });
     }
   }
@@ -73,6 +104,7 @@ function aggregate(captures: Capture[]): AggregatedRow[] {
 export function ReaderWordsPanel({ bookId, trigger, getColor, setColor }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<AggregatedRow | null>(null);
 
   // Only fetch when sheet is open — avoids a query on every reader page load.
   const capturesQuery = useCapturesList(
@@ -96,16 +128,10 @@ export function ReaderWordsPanel({ bookId, trigger, getColor, setColor }: Props)
     );
   }, [aggregated, search]);
 
-  async function handleDelete(row: AggregatedRow) {
-    if (
-      !window.confirm(
-        `¿Eliminar "${row.lemma}" del libro? (${row.count} ${
-          row.count === 1 ? "captura" : "capturas"
-        })`,
-      )
-    ) {
-      return;
-    }
+  async function confirmDelete() {
+    const row = pendingDelete;
+    if (!row) return;
+    setPendingDelete(null);
     // Delete each capture serially. Error on any → stop + toast.
     for (const id of row.captureIds) {
       try {
@@ -178,13 +204,62 @@ export function ReaderWordsPanel({ bookId, trigger, getColor, setColor }: Props)
                 row={row}
                 color={getColor(row.lemma) ?? DEFAULT_WORD_COLOR}
                 onColorChange={(c) => setColor(row.lemma, c)}
-                onDelete={() => handleDelete(row)}
+                onDelete={() => setPendingDelete(row)}
                 deleting={deleteCapture.isPending}
               />
             ))}
           </ul>
         </div>
       </SheetContent>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(v) => !v && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar palabra</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete && (
+                <>
+                  Vas a eliminar{" "}
+                  <span
+                    className="font-semibold px-1.5 py-0.5 rounded border"
+                    style={{
+                      backgroundColor:
+                        WORD_COLORS[
+                          getColor(pendingDelete.lemma) ?? DEFAULT_WORD_COLOR
+                        ].bg,
+                      borderColor:
+                        WORD_COLORS[
+                          getColor(pendingDelete.lemma) ?? DEFAULT_WORD_COLOR
+                        ].border,
+                    }}
+                  >
+                    {pendingDelete.word}
+                  </span>{" "}
+                  de este libro.
+                  {pendingDelete.count > 1 && (
+                    <>
+                      {" "}
+                      Aparece <strong>{pendingDelete.count} veces</strong> —
+                      todas las capturas se borrarán.
+                    </>
+                  )}{" "}
+                  El subrayado desaparecerá del texto. Esta acción no se puede
+                  deshacer.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDelete}>
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }
@@ -203,6 +278,9 @@ function WordRow({
   deleting: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(row.note ?? "");
+  const updateCapture = useUpdateCapture();
 
   return (
     <li className="border rounded-md p-2.5 group">
@@ -246,6 +324,65 @@ function WordRow({
         <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
           {row.translation}
         </p>
+      )}
+
+      {!editing && (
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(row.note ?? "");
+            setEditing(true);
+          }}
+          className="mt-1 text-xs text-left w-full italic text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {row.note?.trim() ? `📝 ${row.note}` : "+ añadir nota"}
+        </button>
+      )}
+
+      {editing && (
+        <div className="mt-2 space-y-1.5">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            maxLength={2000}
+            autoFocus
+            className="w-full resize-none text-sm rounded-md border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="Tu nota personal…"
+          />
+          <div className="flex gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={updateCapture.isPending}
+              onClick={() => {
+                setEditing(false);
+                setDraft(row.note ?? "");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              disabled={updateCapture.isPending}
+              onClick={async () => {
+                const value = draft.trim();
+                try {
+                  await updateCapture.mutateAsync({
+                    id: row.latestCaptureId,
+                    patch: { note: value || null },
+                  });
+                  setEditing(false);
+                } catch (err) {
+                  toast.error(`Error: ${(err as Error).message}`);
+                }
+              }}
+              className="flex-1"
+            >
+              {updateCapture.isPending ? "Guardando…" : "Guardar"}
+            </Button>
+          </div>
+        </div>
       )}
 
       {pickerOpen && (
