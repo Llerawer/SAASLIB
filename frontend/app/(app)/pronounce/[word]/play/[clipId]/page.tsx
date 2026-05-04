@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ChevronLeft, ChevronRight, Pause } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { usePronounce } from "@/lib/api/queries";
@@ -82,11 +82,9 @@ export default function PronounceDeckPage({
   // Page-level state (spec §4)
   // ---------------------------------------------------------------------------
 
-  // setSpeed wired via PronounceDeckControls (Task 6) and player in Task 7.
   const [speed, setSpeed] = useState<Speed>(() => readSpeedFromLS());
   const [mode, setMode] = useState<Mode>(() => readModeFromLS());
   const [isReady, setIsReady] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [repCount, setRepCount] = useState(0);
   // pulseKey drives sentence-pulse animation; incremented on each loop.
   const [pulseKey, setPulseKey] = useState(0);
@@ -103,13 +101,10 @@ export default function PronounceDeckPage({
       window.localStorage.setItem("pronounce-deck-mode", mode);
   }, [mode]);
 
-  // Reset visual state immediately on clipId change to avoid 1-frame flash.
-  // setState in effect is intentional: isReady/isPlaying/repCount are local
-  // UI state that must zero out synchronously before the new clip renders.
+  // Reset visual state on clipId change to avoid 1-frame flash.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setIsReady(false);
-    setIsPlaying(false);
     setRepCount(0);
   }, [clipId]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -161,26 +156,48 @@ export default function PronounceDeckPage({
     router.prefetch(withQuery(`/pronounce/${wordEnc}/play/${nextId}`, sp));
   }, [data, total, clipMap, clipId, wordEnc, sp, router]);
 
-  // D7 — segment-end handler. Wrapped in useCallback so onSegmentEndRef
-  // (inside the player) gets the fresh version when mode/repCount change.
-  const handleSegmentEnd = useCallback(() => {
-    setPulseKey((k) => k + 1); // trigger sentence pulse on every loop
-    if (mode === "auto") {
-      const playsCompleted = repCount + 1;
-      if (playsCompleted >= AUTO_PLAYS_PER_CLIP) {
-        goNext();
-        return;
-      }
-      setRepCount((c) => c + 1);
-    }
-    playerRef.current?.repeat();
-  }, [mode, repCount, goNext]);
-
   const handleRepeatManual = useCallback(() => {
     setPulseKey((k) => k + 1);
     if (mode === "auto") setRepCount((c) => c + 1);
     playerRef.current?.repeat();
   }, [mode]);
+
+  // Timer-based segment-iteration driver (replaces the broken postMessage
+  // loop detection). YouTube auto-loops the segment via URL params
+  // (loop=1&playlist=<id>); we just need to KNOW when each loop boundary
+  // happens so we can pulse the highlight and, in Auto mode, count plays
+  // and advance after AUTO_PLAYS_PER_CLIP.
+  //
+  // Strategy: setInterval at the segment's natural duration / speed. Each
+  // tick = one loop iteration completed. We read mode/repCount via a ref
+  // so the interval doesn't restart on every state change (only on
+  // segment/speed change). Manual mode-change resets repCount; clip change
+  // resets the whole timer.
+  const stateRef = useRef({ mode, repCount });
+  useEffect(() => {
+    stateRef.current = { mode, repCount };
+  }, [mode, repCount]);
+
+  useEffect(() => {
+    if (!isReady || !data) return;
+    const cur = data.clips[clipMap.get(clipId) ?? 0];
+    if (!cur) return;
+    const segDurMs = (cur.sentence_end_ms - cur.sentence_start_ms) / speed;
+    if (segDurMs <= 100) return; // sanity — pathological zero-length segments
+    const tick = setInterval(() => {
+      setPulseKey((k) => k + 1);
+      const { mode: curMode, repCount: curCount } = stateRef.current;
+      if (curMode === "auto") {
+        const next = curCount + 1;
+        if (next >= AUTO_PLAYS_PER_CLIP) {
+          goNext();
+        } else {
+          setRepCount(next);
+        }
+      }
+    }, segDurMs);
+    return () => clearInterval(tick);
+  }, [isReady, data, clipMap, clipId, speed, goNext]);
 
   // Keyboard shortcuts (spec §7).
   useEffect(() => {
@@ -251,7 +268,7 @@ export default function PronounceDeckPage({
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [goPrev, goNext, handleRepeatManual, router, wordEnc, sp]);
+  }, [goPrev, goNext, handleRepeatManual, router, wordEnc, sp, mode]);
 
   // ---------------------------------------------------------------------------
   // Early returns (after all hooks)
@@ -322,19 +339,8 @@ export default function PronounceDeckPage({
             ref={playerRef}
             clip={clip}
             speed={speed}
-            onReady={() => setIsReady(true)}
-            onPlayingChange={setIsPlaying}
-            onSegmentEnd={handleSegmentEnd}
+            onLoad={() => setIsReady(true)}
           />
-          {/* Pause overlay — visible only when not playing AND ready */}
-          {isReady && !isPlaying && (
-            <div
-              className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg"
-              aria-hidden="true"
-            >
-              <Pause className="h-10 w-10 text-white/80" />
-            </div>
-          )}
         </div>
 
         <button
