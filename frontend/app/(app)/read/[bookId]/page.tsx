@@ -361,14 +361,19 @@ export default function ReadPage({
         // gray margins outside the iframe. The per-chapter attachGestures()
         // call below adds another wheel listener on the iframe document
         // itself for cursor-over-content.
+        //
+        // Callbacks read renditionRef (not the local `rendition` const) so
+        // that any stale handler left behind by HMR / strict-mode no-ops
+        // gracefully against `null` instead of throwing on a destroyed
+        // rendition closure.
         const viewerEl = viewerRef.current;
         if (viewerEl) {
           const detachHostWheel = attachWheelNav(
             viewerEl,
             () => gestureModeRef.current,
             {
-              onPrev: () => rendition.prev(),
-              onNext: () => rendition.next(),
+              onPrev: () => renditionRef.current?.prev(),
+              onNext: () => renditionRef.current?.next(),
             },
           );
           gestureCleanups.push(detachHostWheel);
@@ -512,12 +517,14 @@ export default function ReadPage({
 
             // Touch swipe + edge click + long-press — see lib/reader/gestures.ts.
             // Mode is read live so settings changes apply without re-attach.
+            // Callbacks go through renditionRef so a stale HMR handler can't
+            // reference a destroyed rendition closure.
             const detach = attachGestures(
               doc,
               () => gestureModeRef.current,
               {
-                onPrev: () => rendition.prev(),
-                onNext: () => rendition.next(),
+                onPrev: () => renditionRef.current?.prev(),
+                onNext: () => renditionRef.current?.next(),
                 onLongPress: handleLongPress,
               },
             );
