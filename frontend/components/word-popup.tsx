@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Volume2, X, Check, Save, Quote } from "lucide-react";
+import Link from "next/link";
+import { Volume2, X, Check, Save, Quote, Headphones } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
   useCreateCapture,
   useDictionary,
+  useUpdateCapture,
 } from "@/lib/api/queries";
+import { pronounceHref } from "@/lib/reader/pronounce-link";
 
 export type WordPopupProps = {
   word: string;
@@ -42,11 +45,18 @@ export function WordPopup({
   const popupRef = useRef<HTMLDivElement | null>(null);
   const saveBtnRef = useRef<HTMLButtonElement | null>(null);
   const [saved, setSaved] = useState(alreadyCaptured);
+  // Note state — only enabled after the user clicks "Guardar palabra"
+  // here (we need the capture id to PATCH). Pre-existing captures get
+  // their notes edited from the words panel (Task 12).
+  const [savedCaptureId, setSavedCaptureId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
 
   const dictQuery = useDictionary(word, language);
   const createCapture = useCreateCapture({
     onSuccess: (capture) => {
       setSaved(true);
+      setSavedCaptureId(capture.id);
       onSaved?.(capture.word_normalized);
       toast.success(`Guardado: ${capture.word_normalized}`);
     },
@@ -54,6 +64,24 @@ export function WordPopup({
       toast.error(`No se pudo guardar: ${err.message}`);
     },
   });
+  const updateCapture = useUpdateCapture();
+
+  async function handleSaveNote() {
+    if (!savedCaptureId) return;
+    const value = noteDraft.trim();
+    setNoteSaving(true);
+    try {
+      await updateCapture.mutateAsync({
+        id: savedCaptureId,
+        patch: { note: value || null },
+      });
+      toast.success("Nota guardada");
+    } catch (err) {
+      toast.error(`Error: ${(err as Error).message}`);
+    } finally {
+      setNoteSaving(false);
+    }
+  }
 
   function handlePlayAudio() {
     const url = dictQuery.data?.audio_url;
@@ -170,6 +198,14 @@ export function WordPopup({
                 <Volume2 className="h-3.5 w-3.5" />
               </button>
             )}
+            <Link
+              href={pronounceHref(normalizedClient || word)}
+              className="inline-flex items-center justify-center size-6 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              aria-label={`Escuchar a nativos pronunciar ${word}`}
+              title="Escuchar nativos en YouTube"
+            >
+              <Headphones className="h-3.5 w-3.5" />
+            </Link>
           </div>
           {showLemma && (
             <div className="text-[11px] text-muted-foreground truncate mt-0.5">
@@ -238,7 +274,7 @@ export function WordPopup({
           </div>
         )}
 
-        <div className="pt-1">
+        <div className="pt-1 space-y-2">
           {saved ? (
             <Button
               variant="secondary"
@@ -260,6 +296,34 @@ export function WordPopup({
               <Save className="h-4 w-4 mr-1.5" aria-hidden="true" />
               {createCapture.isPending ? "Guardando" : "Guardar palabra"}
             </Button>
+          )}
+          {saved && savedCaptureId && (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="word-note"
+                className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+              >
+                Nota personal
+              </label>
+              <textarea
+                id="word-note"
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                rows={2}
+                maxLength={2000}
+                placeholder="Una mnemotecnia, un contexto, lo que quieras…"
+                className="w-full resize-none text-sm rounded-md border bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={handleSaveNote}
+                disabled={noteSaving}
+              >
+                {noteSaving ? "Guardando…" : "Guardar nota"}
+              </Button>
+            </div>
           )}
           <p className="text-[10px] text-muted-foreground text-center mt-2">
             S guardar · P audio · Esc cerrar
