@@ -76,6 +76,7 @@ export function WordPopup({
         patch: { note: value || null },
       });
       toast.success("Nota guardada");
+      onClose();
     } catch (err) {
       toast.error(`Error: ${(err as Error).message}`);
     } finally {
@@ -125,17 +126,38 @@ export function WordPopup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose, saved, createCapture.isPending]);
 
-  // Click outside dismisses.
+  // Click outside dismisses. Listens on the host document AND inside every
+  // EPUB iframe — mouse events fired on iframe content don't bubble past
+  // the iframe boundary, so without this any click on the book itself
+  // wouldn't close the popup.
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
         onClose();
       }
     }
-    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+    const iframeDocs: Document[] = [];
+    const t = setTimeout(() => {
+      document.addEventListener("mousedown", onDown);
+      document.querySelectorAll("iframe").forEach((iframe) => {
+        try {
+          const doc = iframe.contentDocument;
+          if (doc) {
+            doc.addEventListener("mousedown", onDown);
+            iframeDocs.push(doc);
+          }
+        } catch {
+          // Cross-origin iframe — skip. EPUB is same-origin so this is
+          // only a defensive guard against unrelated third-party iframes.
+        }
+      });
+    }, 0);
     return () => {
       clearTimeout(t);
       document.removeEventListener("mousedown", onDown);
+      for (const doc of iframeDocs) {
+        doc.removeEventListener("mousedown", onDown);
+      }
     };
   }, [onClose]);
 
