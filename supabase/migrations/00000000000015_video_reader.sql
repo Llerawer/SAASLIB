@@ -1,7 +1,7 @@
 -- 00000000000015_video_reader.sql
 -- Video reader: cache global de videos ingestados + columnas de contexto en captures.
 
-create table if not exists videos (
+create table if not exists public.videos (
   video_id     text primary key,
   title        text,
   duration_s   int,
@@ -12,11 +12,11 @@ create table if not exists videos (
   updated_at   timestamptz not null default now()
 );
 
-create index if not exists videos_status_updated_at_idx on videos (status, updated_at);
-create index if not exists videos_created_at_idx on videos (created_at desc);
+create index if not exists videos_status_updated_at_idx on public.videos (status, updated_at);
+create index if not exists videos_created_at_idx on public.videos (created_at desc);
 
 -- Trigger: keep updated_at fresh on every UPDATE.
-create or replace function videos_set_updated_at()
+create or replace function public.videos_set_updated_at()
 returns trigger as $$
 begin
   new.updated_at := now();
@@ -24,25 +24,26 @@ begin
 end;
 $$ language plpgsql;
 
-drop trigger if exists videos_updated_at_trg on videos;
+drop trigger if exists videos_updated_at_trg on public.videos;
 create trigger videos_updated_at_trg
-  before update on videos
-  for each row execute function videos_set_updated_at();
+  before update on public.videos
+  for each row execute function public.videos_set_updated_at();
 
 -- captures: add video context columns (mutually exclusive with book_id by app convention).
-alter table captures
-  add column if not exists video_id          text references videos(video_id) on delete set null,
+alter table public.captures
+  add column if not exists video_id          text references public.videos(video_id) on delete set null,
   add column if not exists video_timestamp_s int;
 
-create index if not exists captures_video_id_idx on captures (video_id) where video_id is not null;
+create index if not exists captures_video_id_idx on public.captures (video_id) where video_id is not null;
 
 -- RLS: videos es cache global, lectura pública para autenticados, escritura sólo Service Role.
-alter table videos enable row level security;
+alter table public.videos enable row level security;
 
-drop policy if exists "videos_read_authenticated" on videos;
+drop policy if exists "videos_read_authenticated" on public.videos;
 create policy "videos_read_authenticated"
-  on videos for select
+  on public.videos for select
   to authenticated
   using (true);
 
--- captures ya tiene políticas RLS por user_id; las nuevas columnas heredan.
+-- captures ya tiene RLS por user_id; las nuevas columnas heredan automáticamente
+-- (las políticas de fila se aplican a toda la fila, no por columna).
