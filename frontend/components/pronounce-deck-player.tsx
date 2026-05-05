@@ -12,87 +12,71 @@ import {
 import type { PronounceClip } from "@/lib/api/queries";
 
 export type DeckPlayerHandle = {
-  /** Best-effort segment restart. Tries outbound postMessage seekTo first
-   *  (smooth, no remount). If that fails silently in the user's setup,
-   *  forces an iframe remount via key bump (visible ~300ms flash but
-   *  always works). */
+  /** Force iframe remount → segment restarts from the beginning.
+   *  Visible ~300ms flash but reliable across all browser/extension
+   *  contexts (does not depend on postMessage). */
   repeat: () => void;
-  /** Best-effort live speed change. Outbound postMessage; will reapply
-   *  naturally on next remount if it fails. */
-  setSpeed: (s: number) => void;
 };
 
 type Props = {
   clip: PronounceClip;
-  speed: number;
   onLoad?: () => void;
+  /** Fires each time the segment-duration timer expires (one loop
+   *  iteration completed). The page uses this to drive the pulse
+   *  animation and the Auto-mode play counter. */
+  onSegmentLoop?: () => void;
 };
 
 export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
-  function PronounceDeckPlayer({ clip, speed, onLoad }, ref) {
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
-    const speedRef = useRef(speed);
+  function PronounceDeckPlayer({ clip, onLoad, onSegmentLoop }, ref) {
     const [remountTick, setRemountTick] = useState(0);
+    const onSegmentLoopRef = useRef(onSegmentLoop);
 
     useEffect(() => {
-      speedRef.current = speed;
-    }, [speed]);
+      onSegmentLoopRef.current = onSegmentLoop;
+    }, [onSegmentLoop]);
 
-    // Loop driven by URL params (loop=1&playlist=<videoId>) — no
-    // postMessage needed for the basic loop. enablejsapi+origin are kept
-    // so that best-effort outbound commands (seekTo, setPlaybackRate)
-    // still have a chance to land. Incoming postMessage events are NOT
-    // listened to — they were unreliable in this app's context, so loop
-    // counting is done page-side via timers based on segment duration.
-    const enhancedSrc = useMemo(() => {
+    // Add buffer for YT's iframe init time. The first ~500ms after
+    // mount is loading the player chrome before the audio starts.
+    // 1.5s floor prevents pathological zero-length-segment thrash.
+    const segDurMs = useMemo(() => {
+      const raw = clip.sentence_end_ms - clip.sentence_start_ms;
+      return Math.max(1500, raw + 800);
+    }, [clip.sentence_end_ms, clip.sentence_start_ms]);
+
+    // Cache-buster (`_t=${remountTick}`) makes the src string different
+    // on every loop, which together with `key` guarantees React
+    // un-mounts and re-mounts the iframe (rather than trying to reuse it).
+    const src = useMemo(() => {
       const sep = clip.embed_url.includes("?") ? "&" : "?";
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      return (
-        `${clip.embed_url}${sep}loop=1&playlist=${encodeURIComponent(clip.video_id)}` +
-        `&enablejsapi=1&origin=${origin}`
-      );
-    }, [clip.embed_url, clip.video_id]);
+      return `${clip.embed_url}${sep}rel=0&autoplay=1&_t=${remountTick}`;
+    }, [clip.embed_url, remountTick]);
 
-    function send(func: string, args: unknown[] = []) {
-      const w = iframeRef.current?.contentWindow;
-      if (!w) return;
-      try {
-        w.postMessage(
-          JSON.stringify({ event: "command", func, args }),
-          "https://www.youtube-nocookie.com",
-        );
-      } catch {
-        // outbound may be blocked in some contexts — silent fail is OK,
-        // remount fallback covers the user-facing case (repeat button).
-      }
-    }
+    // Loop timer: fires segDurMs after each iframe mount. Each tick =
+    // one full segment play. We bump remountTick → src changes → iframe
+    // remounts → segment plays again from start. Replaces the broken
+    // postMessage-based loop detection with something deterministic.
+    useEffect(() => {
+      const t = setTimeout(() => {
+        onSegmentLoopRef.current?.();
+        setRemountTick((n) => n + 1);
+      }, segDurMs);
+      return () => clearTimeout(t);
+    }, [remountTick, segDurMs, clip.id]);
 
     useImperativeHandle(
       ref,
       () => ({
-        repeat: () => {
-          // Try outbound first (smooth path). Then bump remount key as a
-          // 200ms-deferred fallback in case postMessage was blocked.
-          send("seekTo", [clip.sentence_start_ms / 1000, true]);
-          send("playVideo");
-          setTimeout(() => setRemountTick((t) => t + 1), 200);
-        },
-        setSpeed: (s: number) => {
-          send("setPlaybackRate", [s]);
-        },
+        repeat: () => setRemountTick((n) => n + 1),
       }),
-      [clip.sentence_start_ms],
+      [],
     );
 
     return (
       <div className="aspect-video bg-black rounded-lg overflow-hidden">
         <iframe
-          // key changes on clip.id (new segment) OR remountTick bump
-          // (manual repeat fallback). Both force a fresh iframe.
           key={`${clip.id}-${remountTick}`}
-          ref={iframeRef}
-          src={enhancedSrc}
+          src={src}
           className="w-full h-full"
           allow="encrypted-media; picture-in-picture; autoplay"
           allowFullScreen

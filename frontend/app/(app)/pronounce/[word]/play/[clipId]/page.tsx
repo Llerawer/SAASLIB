@@ -84,7 +84,6 @@ export default function PronounceDeckPage({
 
   const [speed, setSpeed] = useState<Speed>(() => readSpeedFromLS());
   const [mode, setMode] = useState<Mode>(() => readModeFromLS());
-  const [isReady, setIsReady] = useState(false);
   const [repCount, setRepCount] = useState(0);
   // pulseKey drives sentence-pulse animation; incremented on each loop.
   const [pulseKey, setPulseKey] = useState(0);
@@ -104,7 +103,6 @@ export default function PronounceDeckPage({
   // Reset visual state on clipId change to avoid 1-frame flash.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    setIsReady(false);
     setRepCount(0);
   }, [clipId]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -162,42 +160,28 @@ export default function PronounceDeckPage({
     playerRef.current?.repeat();
   }, [mode]);
 
-  // Timer-based segment-iteration driver (replaces the broken postMessage
-  // loop detection). YouTube auto-loops the segment via URL params
-  // (loop=1&playlist=<id>); we just need to KNOW when each loop boundary
-  // happens so we can pulse the highlight and, in Auto mode, count plays
-  // and advance after AUTO_PLAYS_PER_CLIP.
-  //
-  // Strategy: setInterval at the segment's natural duration / speed. Each
-  // tick = one loop iteration completed. We read mode/repCount via a ref
-  // so the interval doesn't restart on every state change (only on
-  // segment/speed change). Manual mode-change resets repCount; clip change
-  // resets the whole timer.
+  // Loop-boundary handler — fired by the player on each segment-duration
+  // tick. Drives the pulse animation and the Auto-mode play counter.
+  // Reads mode/repCount via a ref so this stays a stable identity (the
+  // player's onSegmentLoopRef would still pick up changes, but stable is
+  // easier to reason about).
   const stateRef = useRef({ mode, repCount });
   useEffect(() => {
     stateRef.current = { mode, repCount };
   }, [mode, repCount]);
 
-  useEffect(() => {
-    if (!isReady || !data) return;
-    const cur = data.clips[clipMap.get(clipId) ?? 0];
-    if (!cur) return;
-    const segDurMs = (cur.sentence_end_ms - cur.sentence_start_ms) / speed;
-    if (segDurMs <= 100) return; // sanity — pathological zero-length segments
-    const tick = setInterval(() => {
-      setPulseKey((k) => k + 1);
-      const { mode: curMode, repCount: curCount } = stateRef.current;
-      if (curMode === "auto") {
-        const next = curCount + 1;
-        if (next >= AUTO_PLAYS_PER_CLIP) {
-          goNext();
-        } else {
-          setRepCount(next);
-        }
+  const handleSegmentLoop = useCallback(() => {
+    setPulseKey((k) => k + 1);
+    const { mode: curMode, repCount: curCount } = stateRef.current;
+    if (curMode === "auto") {
+      const next = curCount + 1;
+      if (next >= AUTO_PLAYS_PER_CLIP) {
+        goNext();
+      } else {
+        setRepCount(next);
       }
-    }, segDurMs);
-    return () => clearInterval(tick);
-  }, [isReady, data, clipMap, clipId, speed, goNext]);
+    }
+  }, [goNext]);
 
   // Keyboard shortcuts (spec §7).
   useEffect(() => {
@@ -235,22 +219,21 @@ export default function PronounceDeckPage({
         case "1":
           e.preventDefault();
           setSpeed(0.5);
-          playerRef.current?.setSpeed(0.5);
+          // Speed is visual-only in v1.1 (postMessage was unreliable;
+          // see commit history). Persists in localStorage; chip reflects
+          // user preference. Re-applying to audio is a follow-up task.
           break;
         case "2":
           e.preventDefault();
           setSpeed(0.75);
-          playerRef.current?.setSpeed(0.75);
           break;
         case "3":
           e.preventDefault();
           setSpeed(1);
-          playerRef.current?.setSpeed(1);
           break;
         case "4":
           e.preventDefault();
           setSpeed(1.25);
-          playerRef.current?.setSpeed(1.25);
           break;
         case "m":
         case "M":
@@ -338,8 +321,7 @@ export default function PronounceDeckPage({
           <PronounceDeckPlayer
             ref={playerRef}
             clip={clip}
-            speed={speed}
-            onLoad={() => setIsReady(true)}
+            onSegmentLoop={handleSegmentLoop}
           />
         </div>
 
@@ -390,8 +372,10 @@ export default function PronounceDeckPage({
         autoPlaysPerClip={AUTO_PLAYS_PER_CLIP}
         speed={speed}
         onSpeedChange={(s) => {
+          // Visual-only in v1.1 (player no longer exposes setSpeed —
+          // postMessage proved unreliable). Preference persists for the
+          // moment we get a working channel back.
           setSpeed(s);
-          playerRef.current?.setSpeed(s);
         }}
         onRepeat={handleRepeatManual}
         meta={`${clip.channel}${clip.accent ? ` · ${clip.accent}` : ""}`}
