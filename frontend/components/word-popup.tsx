@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Volume2, X, Check, Save, Quote, Headphones } from "lucide-react";
 import { toast } from "sonner";
@@ -142,28 +142,49 @@ export function WordPopup({
   const data = dictQuery.data;
   const loading = dictQuery.isLoading;
 
-  // Smart positioning: clamp to viewport edges in BOTH axes. Flip above the
-  // pointer if there isn't enough room below.
-  let style: React.CSSProperties = { display: "none" };
-  if (position) {
-    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
-    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-    const left = Math.max(
-      8,
-      Math.min(position.x, vw - POPUP_WIDTH - 8),
-    );
-    const wouldOverflowBottom =
-      position.y + POPUP_GAP + ESTIMATED_POPUP_HEIGHT > vh - 8;
-    const top = wouldOverflowBottom
-      ? Math.max(8, position.y - POPUP_GAP - ESTIMATED_POPUP_HEIGHT)
-      : Math.min(vh - 8, position.y + POPUP_GAP);
-    style = {
-      position: "fixed",
-      top,
-      left,
-      zIndex: 1000,
-    };
-  }
+  // Smart positioning. Initial pass uses an estimate so we render
+  // SOMEWHERE on first paint; useLayoutEffect below re-measures the
+  // actual popup height (which grows when the note textarea unfolds
+  // post-save) and reclamps within the viewport. position: fixed.
+  const [computedPos, setComputedPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!position) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const popupEl = popupRef.current;
+    const actualHeight = popupEl?.offsetHeight ?? ESTIMATED_POPUP_HEIGHT;
+
+    const left = Math.max(8, Math.min(position.x, vw - POPUP_WIDTH - 8));
+    // Prefer below the pointer; flip above when no room. If neither side
+    // fits cleanly, pin to the bottom edge so the bottom buttons stay on
+    // screen — covers the case where a tall popup (with note section)
+    // anchors near the bottom of the viewport.
+    let top: number;
+    if (position.y + POPUP_GAP + actualHeight <= vh - 8) {
+      top = position.y + POPUP_GAP;
+    } else if (position.y - POPUP_GAP - actualHeight >= 8) {
+      top = position.y - POPUP_GAP - actualHeight;
+    } else {
+      top = Math.max(8, vh - 8 - actualHeight);
+    }
+    setComputedPos({ top, left });
+    // Recompute when position changes OR when the popup grows post-save
+    // (the "Nota personal" section adds ~150 px below the save button).
+  }, [position, saved, savedCaptureId, loading]);
+
+  const style: React.CSSProperties = computedPos
+    ? {
+        position: "fixed",
+        top: computedPos.top,
+        left: computedPos.left,
+        zIndex: 1000,
+        maxHeight: "calc(100vh - 16px)",
+      }
+    : { display: "none" };
 
   const showLemma = normalizedClient !== word.toLowerCase();
 
@@ -171,7 +192,7 @@ export function WordPopup({
     <div
       ref={popupRef}
       style={style}
-      className="w-[340px] rounded-xl border bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
+      className="w-[340px] rounded-xl border bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-150"
       role="dialog"
       aria-label={`Definición de ${word}`}
     >
