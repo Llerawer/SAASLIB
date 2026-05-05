@@ -399,6 +399,29 @@ def _chunked(items: list[dict], size: int) -> Iterable[list[dict]]:
 # ============================================================================
 
 
+def fetch_video_metadata(video_id: str) -> dict:
+    """Fetch title, duration_s, thumb_url for a video via yt-dlp."""
+    import json
+
+    yt_dlp = shutil.which("yt-dlp")
+    if not yt_dlp:
+        raise FileNotFoundError("yt-dlp not on PATH")
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    result = subprocess.run(
+        [yt_dlp, "--print", "%(.{title,duration,thumbnail})j", url],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    data = json.loads(result.stdout.strip())
+    return {
+        "title": data.get("title"),
+        "duration_s": int(data["duration"]) if data.get("duration") else None,
+        "thumb_url": data.get("thumbnail"),
+    }
+
+
 def build_embed_url(
     video_id: str, start_ms: int, end_ms: int, *, lead_in_s: int = 2,
     tail_s: int = 1,
