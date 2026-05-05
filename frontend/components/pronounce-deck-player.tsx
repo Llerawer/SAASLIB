@@ -20,15 +20,20 @@ export type DeckPlayerHandle = {
 
 type Props = {
   clip: PronounceClip;
+  /** When false, no auto-loop timer is scheduled — the segment plays
+   *  once and the iframe sits paused at the end. The user re-triggers
+   *  with the manual Repeat button (which calls handle.repeat()). */
+  autoLoop?: boolean;
   onLoad?: () => void;
   /** Fires each time the segment-duration timer expires (one loop
    *  iteration completed). The page uses this to drive the pulse
-   *  animation and the Auto-mode play counter. */
+   *  animation and the Auto-mode play counter. Only fires when
+   *  autoLoop is true. */
   onSegmentLoop?: () => void;
 };
 
 export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
-  function PronounceDeckPlayer({ clip, onLoad, onSegmentLoop }, ref) {
+  function PronounceDeckPlayer({ clip, autoLoop = true, onLoad, onSegmentLoop }, ref) {
     const [remountTick, setRemountTick] = useState(0);
     const onSegmentLoopRef = useRef(onSegmentLoop);
 
@@ -56,13 +61,15 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
     // one full segment play. We bump remountTick → src changes → iframe
     // remounts → segment plays again from start. Replaces the broken
     // postMessage-based loop detection with something deterministic.
+    // Skipped entirely when autoLoop is false (manual mode).
     useEffect(() => {
+      if (!autoLoop) return;
       const t = setTimeout(() => {
         onSegmentLoopRef.current?.();
         setRemountTick((n) => n + 1);
       }, segDurMs);
       return () => clearTimeout(t);
-    }, [remountTick, segDurMs, clip.id]);
+    }, [remountTick, segDurMs, clip.id, autoLoop]);
 
     useImperativeHandle(
       ref,

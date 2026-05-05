@@ -1,11 +1,13 @@
 "use client";
 
-import { Repeat, RotateCcw, Repeat1, FastForward } from "lucide-react";
+import { Hand, Repeat, RotateCcw, Repeat1, FastForward } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { VALID_SPEEDS, type Mode, type Speed } from "@/lib/pronounce/deck-types";
 
-const SPEEDS = VALID_SPEEDS;
+type Speed = 0.5 | 0.75 | 1 | 1.25;
+type Mode = "manual" | "repeat" | "auto";
+
+const SPEEDS: Speed[] = [0.5, 0.75, 1, 1.25];
 
 type Props = {
   mode: Mode;
@@ -30,8 +32,15 @@ export function PronounceDeckControls({
 }: Props) {
   return (
     <div className="mt-4 flex flex-col items-center gap-3">
-      {/* Mode toggle — pill group, mutually exclusive */}
-      <div role="group" aria-label="Modo de reproducción" className="flex gap-1.5">
+      {/* Mode toggle — pill group, mutually exclusive (3 modes) */}
+      <div role="group" aria-label="Modo de reproducción" className="flex gap-1.5 flex-wrap justify-center">
+        <ModePill
+          active={mode === "manual"}
+          onClick={() => onModeChange("manual")}
+          icon={<Hand className="h-3.5 w-3.5" />}
+          label="Manual"
+          ariaLabel="Modo manual: reproducir una vez y parar"
+        />
         <ModePill
           active={mode === "repeat"}
           onClick={() => onModeChange("repeat")}
@@ -48,7 +57,12 @@ export function PronounceDeckControls({
         />
       </div>
 
-      {/* Microcopy under Auto */}
+      {/* Microcopy explaining current mode */}
+      {mode === "manual" && (
+        <p className="text-xs text-muted-foreground">
+          Reproduce una vez. Pulsá Repetir (R) para volver a oír.
+        </p>
+      )}
       {mode === "auto" && (
         <p className="text-xs text-muted-foreground">
           Avanza después de {autoPlaysPerClip} reproducciones
@@ -79,8 +93,8 @@ export function PronounceDeckControls({
 
         <span
           className="inline-flex items-center gap-1 text-xs text-muted-foreground"
-          aria-label="Loop activo"
-          title="Loop activo"
+          aria-label="Auto-loop activo"
+          title="Auto-loop activo"
         >
           <Repeat className="h-3 w-3" /> loop
         </span>

@@ -24,7 +24,7 @@ const AUTO_PLAYS_PER_CLIP = 3;
 type Speed = 0.5 | 0.75 | 1 | 1.25;
 const VALID_SPEEDS: ReadonlyArray<Speed> = [0.5, 0.75, 1, 1.25];
 
-type Mode = "repeat" | "auto";
+type Mode = "manual" | "repeat" | "auto";
 
 function readSpeedFromLS(): Speed {
   if (typeof window === "undefined") return 1;
@@ -36,7 +36,9 @@ function readSpeedFromLS(): Speed {
 function readModeFromLS(): Mode {
   if (typeof window === "undefined") return "repeat";
   const raw = window.localStorage.getItem("pronounce-deck-mode");
-  return raw === "auto" ? "auto" : "repeat";
+  if (raw === "auto") return "auto";
+  if (raw === "manual") return "manual";
+  return "repeat";
 }
 
 // ---------------------------------------------------------------------------
@@ -238,9 +240,12 @@ export default function PronounceDeckPage({
         case "m":
         case "M":
           e.preventDefault();
+          // Cycle through the 3 modes: manual → repeat → auto → manual.
           setMode((m) => {
             setRepCount(0);
-            return m === "repeat" ? "auto" : "repeat";
+            if (m === "manual") return "repeat";
+            if (m === "repeat") return "auto";
+            return "manual";
           });
           break;
         case "Escape":
@@ -321,6 +326,7 @@ export default function PronounceDeckPage({
           <PronounceDeckPlayer
             ref={playerRef}
             clip={clip}
+            autoLoop={mode !== "manual"}
             onSegmentLoop={handleSegmentLoop}
           />
         </div>
