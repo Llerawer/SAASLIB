@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse
 
 from app.services import pronunciation
+from app.services.pronunciation import _VideoNotFoundOrPrivate
 
 
 # ---------- URL parsing ----------
@@ -127,6 +128,8 @@ def ingest_video(
     except FileNotFoundError as e:
         # yt-dlp not installed — operational, not user-facing.
         raise IngestFailedError(f"yt-dlp missing: {e}") from e
+    except _VideoNotFoundOrPrivate as e:
+        raise NotFoundError(str(e)) from e
     except Exception as e:
         # Generic catch — log full trace, return opaque error to caller.
         raise IngestFailedError(str(e)) from e

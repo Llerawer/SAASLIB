@@ -17,6 +17,7 @@ corpus is robust against missing 5% of cues.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
@@ -399,22 +400,55 @@ def _chunked(items: list[dict], size: int) -> Iterable[list[dict]]:
 # ============================================================================
 
 
-def fetch_video_metadata(video_id: str) -> dict:
-    """Fetch title, duration_s, thumb_url for a video via yt-dlp."""
-    import json
+class _VideoNotFoundOrPrivate(RuntimeError):
+    """Sentinel: yt-dlp reports the video doesn't exist or is private. Caller
+    should map this to a typed 'not_found' error. Marked with a leading
+    underscore to flag it as internal to this module."""
 
+
+def fetch_video_metadata(video_id: str) -> dict:
+    """Fetch title, duration, thumb_url for a video via yt-dlp.
+
+    Raises:
+      FileNotFoundError if yt-dlp is not on PATH.
+      _VideoNotFoundOrPrivate if yt-dlp reports 404/private/unavailable.
+      Other exceptions for parse/transient failures (let caller bucket).
+    """
     yt_dlp = shutil.which("yt-dlp")
     if not yt_dlp:
         raise FileNotFoundError("yt-dlp not on PATH")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    result = subprocess.run(
-        [yt_dlp, "--print", "%(.{title,duration,thumbnail})j", url],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=True,
-    )
-    data = json.loads(result.stdout.strip())
+    try:
+        result = subprocess.run(
+            [yt_dlp, "--print", "%(.{title,duration,thumbnail})j", url],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,  # we inspect returncode + stderr ourselves
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"yt-dlp timeout for {video_id}") from e
+
+    if result.returncode != 0:
+        stderr = result.stderr or ""
+        # Patterns yt-dlp emits for 404/private/removed videos.
+        not_found_markers = (
+            "Video unavailable",
+            "Private video",
+            "This video has been removed",
+            "Video has been removed",
+            "video is not available",
+            "is no longer available",
+        )
+        if any(m.lower() in stderr.lower() for m in not_found_markers):
+            raise _VideoNotFoundOrPrivate(stderr.strip().splitlines()[-1] if stderr else f"video {video_id}")
+        raise RuntimeError(f"yt-dlp failed (rc={result.returncode}): {stderr[:200]}")
+
+    try:
+        data = json.loads(result.stdout.strip())
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"yt-dlp output not JSON: {result.stdout[:200]}") from e
+
     return {
         "title": data.get("title"),
         "duration_s": int(data["duration"]) if data.get("duration") else None,

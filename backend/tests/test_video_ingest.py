@@ -9,6 +9,7 @@ os.environ.setdefault("SUPABASE_ANON_KEY", "test")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test")
 
 import pytest
+from unittest.mock import patch
 
 from app.services.video_ingest import (
     InvalidUrlError,
@@ -39,3 +40,20 @@ class TestParseVideoId:
     def test_invalid_other_domain(self):
         with pytest.raises(InvalidUrlError):
             parse_video_id("https://vimeo.com/123456")
+
+
+class TestIngestVideoErrorMapping:
+    @patch("app.services.video_ingest.pronunciation")
+    def test_no_subs_raises_no_subs_error(self, mock_pron):
+        from app.services.video_ingest import NoSubsError, ingest_video
+        mock_pron.extract_captions.return_value = None
+        with pytest.raises(NoSubsError):
+            ingest_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    @patch("app.services.video_ingest.pronunciation")
+    def test_video_not_found_raises_not_found_error(self, mock_pron):
+        from app.services.video_ingest import NotFoundError, ingest_video
+        from app.services.pronunciation import _VideoNotFoundOrPrivate
+        mock_pron.extract_captions.side_effect = _VideoNotFoundOrPrivate("Video unavailable")
+        with pytest.raises(NotFoundError):
+            ingest_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
