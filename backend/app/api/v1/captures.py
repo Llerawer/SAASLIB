@@ -32,6 +32,8 @@ def _row_to_capture(row: dict, enrichment: dict | None = None) -> CaptureOut:
         "context_sentence": row.get("context_sentence"),
         "page_or_location": row.get("page_or_location"),
         "book_id": row.get("book_id"),
+        "video_id": row.get("video_id"),
+        "video_timestamp_s": row.get("video_timestamp_s"),
         "tags": row.get("tags") or [],
         "note": row.get("note"),
         "promoted_to_card": row.get("promoted_to_card", False),
@@ -71,6 +73,8 @@ async def create_capture(
         "context_sentence": body.context_sentence,
         "page_or_location": body.page_or_location,
         "book_id": body.book_id,
+        "video_id": body.video_id,
+        "video_timestamp_s": body.video_timestamp_s,
         "tags": body.tags,
         "note": body.note,
     }
