@@ -26,9 +26,18 @@ class VideoMeta(BaseModel):
 
 
 class VideoListItem(BaseModel):
-    """Compact card shape for /videos library."""
+    """Compact card shape for /videos library.
+
+    Includes `status` + `error_reason` so the UI can render in-flight
+    cards (spinner overlay) and error cards (badge + retry button)
+    without a second round-trip to /status per row. updated_at drives
+    the list sort so a just-retried row pops to the top.
+    """
     video_id: str
     title: str | None
     duration_s: int | None
     thumb_url: str | None
+    status: VideoStatus
+    error_reason: VideoErrorReason | None = None
     created_at: datetime
+    updated_at: datetime

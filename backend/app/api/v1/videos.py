@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
@@ -83,12 +83,17 @@ async def ingest_endpoint(
         logger.warning("video %s stuck in processing, retrying", video_id)
         # fall through to retry below
 
-    # upsert as processing, then run ingest.
+    # upsert as processing, then run ingest. Bump updated_at so the row
+    # surfaces at the top of the list while it's in-flight (the list
+    # sorts by updated_at desc; without this, a retry of an old error
+    # would stay buried).
+    now_iso = datetime.now(timezone.utc).isoformat()
     client.table("videos").upsert(
         {
             "video_id": video_id,
             "status": "processing",
             "error_reason": None,
+            "updated_at": now_iso,
         },
         on_conflict="video_id",
     ).execute()
@@ -161,17 +166,30 @@ async def list_cues(
     video_id: str,
     auth: AuthInfo = Depends(get_auth),
 ):
-    """Return all cues for a video, ordered by start time."""
+    """Return ALL cues for a video, ordered by start time.
+
+    Supabase has a default 1000-row hard cap on REST responses, so for long
+    videos (TED talks, podcasts) we paginate explicitly with .range() until
+    a partial page tells us we hit the end.
+    """
     client = get_admin_client()
-    rows = (
-        client.table("pronunciation_clips")
-        .select("id, sentence_start_ms, sentence_end_ms, sentence_text")
-        .eq("video_id", video_id)
-        .order("sentence_start_ms", desc=False)
-        .execute()
-        .data
-        or []
-    )
+    rows: list[dict] = []
+    PAGE = 1000
+    page = 0
+    while True:
+        res = (
+            client.table("pronunciation_clips")
+            .select("id, sentence_start_ms, sentence_end_ms, sentence_text")
+            .eq("video_id", video_id)
+            .order("sentence_start_ms", desc=False)
+            .range(page * PAGE, (page + 1) * PAGE - 1)
+            .execute()
+        )
+        chunk = res.data or []
+        rows.extend(chunk)
+        if len(chunk) < PAGE:
+            break
+        page += 1
     return [
         VideoCue(
             id=r["id"],
@@ -189,16 +207,90 @@ async def list_videos(
     request: Request,
     auth: AuthInfo = Depends(get_auth),
 ):
-    """List most recent successfully-ingested videos. Hard cap of 50."""
+    """List most recent videos in the global cache (any status). Hard cap
+    of 50. We surface processing / error rows alongside done so the UI
+    can render in-flight cards + retry-on-error without a second query.
+
+    Order by `updated_at desc`: a freshly-pasted URL goes to the top, a
+    retried error pops back to the top, and a stable done row stays
+    pinned by its last update timestamp.
+    """
     client = get_admin_client()
     rows = (
         client.table("videos")
-        .select("video_id, title, duration_s, thumb_url, created_at")
-        .eq("status", "done")
-        .order("created_at", desc=True)
+        .select(
+            "video_id, title, duration_s, thumb_url, "
+            "status, error_reason, created_at, updated_at"
+        )
+        .order("updated_at", desc=True)
         .limit(LIST_LIMIT)
         .execute()
         .data
         or []
     )
     return [VideoListItem(**r) for r in rows]
+
+
+# ---------- Per-user progress (resume from last position) ----------
+
+
+class VideoProgress(BaseModel):
+    video_id: str
+    last_position_s: int
+    updated_at: str | None = None
+
+
+class VideoProgressUpdate(BaseModel):
+    last_position_s: int = Field(..., ge=0)
+
+
+@router.get("/{video_id}/progress", response_model=VideoProgress)
+@limiter.limit("120/minute")
+async def get_progress(
+    request: Request,
+    video_id: str,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Read user's last playback position. Returns 0 if no row yet
+    (saves a round trip on first watch)."""
+    client = get_admin_client()
+    rows = (
+        client.table("video_user_progress")
+        .select("last_position_s, updated_at")
+        .eq("user_id", auth.user_id)
+        .eq("video_id", video_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        return VideoProgress(video_id=video_id, last_position_s=0, updated_at=None)
+    return VideoProgress(
+        video_id=video_id,
+        last_position_s=int(rows[0]["last_position_s"]),
+        updated_at=rows[0].get("updated_at"),
+    )
+
+
+@router.put("/{video_id}/progress", response_model=VideoProgress)
+@limiter.limit("60/minute")
+async def update_progress(
+    request: Request,
+    video_id: str,
+    body: VideoProgressUpdate,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Upsert user's playback position. Frontend debounces calls."""
+    client = get_admin_client()
+    client.table("video_user_progress").upsert(
+        {
+            "user_id": auth.user_id,
+            "video_id": video_id,
+            "last_position_s": body.last_position_s,
+        },
+        on_conflict="user_id,video_id",
+    ).execute()
+    return VideoProgress(
+        video_id=video_id, last_position_s=body.last_position_s, updated_at=None
+    )
