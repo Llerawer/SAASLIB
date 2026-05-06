@@ -184,9 +184,7 @@ export default function WatchPage({
           contextSentence={popup.cueText}
           position={popup.position}
           alreadyCaptured={capturedSet.has(popup.word.toLowerCase())}
-          // TODO Task 15: replace pageOrLocation/bookId with source={{ kind: "video", videoId, timestampSeconds }}
-          pageOrLocation={String(Math.round(popup.cueStart))}
-          bookId={null}
+          source={{ kind: "video", videoId, timestampSeconds: Math.round(popup.cueStart) }}
           onClose={handlePopupClose}
         />
       )}

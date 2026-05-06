@@ -13,12 +13,15 @@ import {
 } from "@/lib/api/queries";
 import { pronounceHref } from "@/lib/reader/pronounce-link";
 
+export type CaptureSource =
+  | { kind: "book"; bookId: string | null; pageOrLocation: string | null }
+  | { kind: "video"; videoId: string; timestampSeconds: number };
+
 export type WordPopupProps = {
   word: string;
   normalizedClient: string;
   contextSentence: string | null;
-  pageOrLocation: string | null;
-  bookId: string | null;
+  source: CaptureSource;
   language?: string;
   position: { x: number; y: number } | null;
   alreadyCaptured: boolean;
@@ -34,8 +37,7 @@ export function WordPopup({
   word,
   normalizedClient,
   contextSentence,
-  pageOrLocation,
-  bookId,
+  source,
   language = "en",
   position,
   alreadyCaptured,
@@ -95,7 +97,7 @@ export function WordPopup({
       word,
       context_sentence: contextSentence,
       language,
-      source: { kind: "book", bookId, pageOrLocation },
+      source,
     });
   }
 
@@ -365,6 +367,16 @@ export function WordPopup({
               >
                 {noteSaving ? "Guardando…" : "Guardar nota"}
               </Button>
+            </div>
+          )}
+          {source.kind === "video" && saved && (
+            <div className="border-t pt-2 mt-2">
+              <Link
+                href={`/pronounce/${encodeURIComponent(normalizedClient)}`}
+                className="inline-flex items-center text-xs text-accent hover:underline"
+              >
+                Ver más clips de &ldquo;{word}&rdquo; →
+              </Link>
             </div>
           )}
           <p className="text-[10px] text-muted-foreground text-center mt-2">
