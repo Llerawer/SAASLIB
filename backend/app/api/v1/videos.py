@@ -299,6 +299,94 @@ async def list_videos(
     return out
 
 
+@router.get("/hidden", response_model=list[VideoListItem])
+@limiter.limit("60/minute")
+async def list_hidden_videos(
+    request: Request,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Videos this user previously hid via POST /{id}/hide. Powers the
+    'Ocultos' section at the bottom of /videos so the user can restore
+    them after the toast Deshacer window has closed.
+
+    Note: declared BEFORE the /{video_id}/* routes so FastAPI matches
+    /videos/hidden as a specific path rather than shoving 'hidden'
+    into a {video_id} param.
+    """
+    client = get_admin_client()
+
+    hidden = (
+        client.table("video_user_hidden")
+        .select("video_id, hidden_at")
+        .eq("user_id", auth.user_id)
+        .order("hidden_at", desc=True)
+        .limit(LIST_LIMIT)
+        .execute()
+        .data
+        or []
+    )
+    if not hidden:
+        return []
+    hidden_ids = [h["video_id"] for h in hidden]
+
+    rows = (
+        client.table("videos")
+        .select(
+            "video_id, title, duration_s, thumb_url, "
+            "status, error_reason, created_at, updated_at"
+        )
+        .in_("video_id", hidden_ids)
+        .execute()
+        .data
+        or []
+    )
+    by_id = {r["video_id"]: r for r in rows}
+
+    progress_rows = (
+        client.table("video_user_progress")
+        .select("video_id, last_position_s, updated_at")
+        .eq("user_id", auth.user_id)
+        .in_("video_id", hidden_ids)
+        .execute()
+        .data
+        or []
+    )
+    progress_by_video = {r["video_id"]: r for r in progress_rows}
+
+    captures_rows = (
+        client.table("captures")
+        .select("video_id")
+        .eq("user_id", auth.user_id)
+        .in_("video_id", hidden_ids)
+        .execute()
+        .data
+        or []
+    )
+    captures_by_video: dict[str, int] = {}
+    for r in captures_rows:
+        vid = r.get("video_id")
+        if vid:
+            captures_by_video[vid] = captures_by_video.get(vid, 0) + 1
+
+    out: list[VideoListItem] = []
+    for h in hidden:  # preserve hidden_at desc order
+        r = by_id.get(h["video_id"])
+        if not r:
+            continue
+        prog = progress_by_video.get(h["video_id"])
+        out.append(
+            VideoListItem(
+                **r,
+                last_position_s=(
+                    int(prog["last_position_s"]) if prog else None
+                ),
+                last_viewed_at=(prog["updated_at"] if prog else None),
+                captures_count=captures_by_video.get(h["video_id"], 0),
+            )
+        )
+    return out
+
+
 # ---------- Per-user hide / unhide ----------
 
 

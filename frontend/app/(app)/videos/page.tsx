@@ -14,8 +14,18 @@ import {
 } from "@/lib/api/queries";
 import { VideoCard } from "@/components/video/video-card";
 import { VideoCardSkeleton } from "@/components/video/video-card-skeleton";
+import { HiddenVideosSection } from "@/components/video/hidden-videos-section";
 import { parseVideoId } from "@/lib/video/parse-url";
 import { videoErrorCopy } from "@/lib/video/error-messages";
+
+// "Continuar viendo" thresholds: only show videos where the user is
+// past the trailer-y first 5% but hasn't crossed the 95% "I'm done"
+// line. Outside that band the shelf would either pollute (every
+// video the user briefly opened) or stay empty (nothing left to
+// continue).
+const CONTINUE_MIN_PCT = 5;
+const CONTINUE_MAX_PCT = 95;
+const CONTINUE_MAX_ITEMS = 4;
 
 export default function VideosPage() {
   const router = useRouter();
@@ -100,6 +110,29 @@ export default function VideosPage() {
   const hasNoVideos =
     !isInitialLoading && (list.data?.length ?? 0) === 0;
 
+  // "Continuar viendo": done videos with mid-watch progress, sorted
+  // by last_viewed_at desc. Computed in-place from list.data so we
+  // don't fetch twice; the cap is small enough that the cost is
+  // a quick filter+sort each render (<50 items).
+  const continueWatching = (list.data ?? [])
+    .filter((v) => {
+      if (v.status !== "done") return false;
+      if (v.last_position_s == null) return false;
+      if (!v.duration_s) return false;
+      const pct = (v.last_position_s / v.duration_s) * 100;
+      return pct >= CONTINUE_MIN_PCT && pct < CONTINUE_MAX_PCT;
+    })
+    .sort((a, b) => {
+      const aT = a.last_viewed_at
+        ? new Date(a.last_viewed_at).getTime()
+        : 0;
+      const bT = b.last_viewed_at
+        ? new Date(b.last_viewed_at).getTime()
+        : 0;
+      return bT - aT;
+    })
+    .slice(0, CONTINUE_MAX_ITEMS);
+
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
       <header className="mb-6">
@@ -111,6 +144,28 @@ export default function VideosPage() {
           uno nuevo.
         </p>
       </header>
+
+      {/* "Continuar viendo" shelf — first block when there's anything
+          mid-watch. Above the URL form because the dominant intent on
+          /videos for returning users is "pick up where I left", not
+          "add a new video". Hidden when empty (no zero-state). */}
+      {continueWatching.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-base font-semibold mb-3">
+            Continuar viendo
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+            {continueWatching.map((v) => (
+              <VideoCard
+                key={v.video_id}
+                video={v}
+                onRetry={handleRetry}
+                onHide={handleHide}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <form
         onSubmit={handleSubmit}
@@ -156,6 +211,8 @@ export default function VideosPage() {
           ))}
         </div>
       )}
+
+      <HiddenVideosSection />
     </div>
   );
 }

@@ -773,6 +773,11 @@ export function useHideVideo() {
         qc.setQueryData(["videos"], context.snapshot);
       }
     },
+    onSuccess: () => {
+      // Refresh hidden list so the "Ocultos" section picks up the new
+      // entry without waiting for the user to close+reopen it.
+      qc.invalidateQueries({ queryKey: ["videos-hidden"] });
+    },
   });
 }
 
@@ -783,7 +788,23 @@ export function useUnhideVideo() {
       api.del<void>(`/api/v1/videos/${videoId}/hide`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["videos"] });
+      qc.invalidateQueries({ queryKey: ["videos-hidden"] });
     },
+  });
+}
+
+/**
+ * Videos this user has hidden from /videos. Used by the "Ocultos"
+ * collapsible section. Default `enabled: false` because this query
+ * fires only when the user opens the <details> — saves a round-trip
+ * for the common case where the user never expands it.
+ */
+export function useHiddenVideos(opts?: { enabled?: boolean }) {
+  return useQuery<VideoListItem[]>({
+    queryKey: ["videos-hidden"],
+    queryFn: () => api.get<VideoListItem[]>("/api/v1/videos/hidden"),
+    enabled: opts?.enabled ?? false,
+    staleTime: 30_000,
   });
 }
 
