@@ -15,16 +15,28 @@ import {
   type TocItem,
 } from "@/components/reader-toc-sheet";
 import { ReaderBookmarkButton } from "@/components/reader-bookmark-button";
+import { ReaderSelectionToolbar } from "@/components/reader-selection-toolbar";
+import { ReaderHighlightNoteDialog } from "@/components/reader-highlight-note-dialog";
 import {
   useBookmarks,
   useCapturedWords,
+  useCreateHighlight,
   useDeleteBookmark,
+  useDeleteHighlight,
+  useHighlights,
+  type HighlightColor,
 } from "@/lib/api/queries";
 import {
   applyHighlights,
   clientNormalize as highlightNormalize,
   updateHighlightColors,
 } from "@/lib/reader/highlight";
+import { rangeToCfi, type EpubContents } from "@/lib/reader/highlight-cfi";
+import {
+  applyAllHighlights,
+  removeHighlight,
+} from "@/lib/reader/highlights";
+import { DEFAULT_HIGHLIGHT_COLOR } from "@/lib/reader/highlight-colors";
 import { applyReaderSettings } from "@/lib/reader/apply-settings";
 import {
   attachGestures,
@@ -153,6 +165,28 @@ export default function ReadPage({
   const capturedWordsQuery = useCapturedWords(internalBookId);
   const bookmarksQuery = useBookmarks(internalBookId);
   const deleteBookmarkMut = useDeleteBookmark(internalBookId);
+  const highlightsQuery = useHighlights(internalBookId);
+  const createHighlight = useCreateHighlight();
+  const deleteHighlightMut = useDeleteHighlight(internalBookId);
+
+  // Selection toolbar state — anchor in host coords + the source contents
+  // + range needed for CFI generation. Cleared when the toolbar dismisses.
+  const [selectionAnchor, setSelectionAnchor] = useState<
+    { x: number; y: number } | null
+  >(null);
+  const selectionContextRef = useRef<{
+    contents: EpubContents;
+    range: Range;
+  } | null>(null);
+
+  // "+ note" flow: row gets created with default color, then dialog opens
+  // to attach the note via PATCH. Excerpt drives the dialog open state.
+  const [pendingNoteHighlightId, setPendingNoteHighlightId] = useState<
+    string | null
+  >(null);
+  const [pendingNoteExcerpt, setPendingNoteExcerpt] = useState<string | null>(
+    null,
+  );
 
   // Per-word colour overlay (localStorage). version bumps when user picks a
   // colour from the panel; we listen and repaint highlighted spans without
@@ -222,6 +256,20 @@ export default function ReadPage({
   useEffect(() => {
     applyToCurrentViews();
   }, [applyToCurrentViews]);
+
+  // Apply saved text-range highlights via epub.js annotations whenever the
+  // list changes. epub.js dedupes by (type, cfiRange) and re-injects them
+  // per-view automatically, so re-running this on every refetch is safe.
+  useEffect(() => {
+    const r = renditionRef.current;
+    if (!r) return;
+    const list = highlightsQuery.data;
+    if (!list || list.length === 0) return;
+    applyAllHighlights(
+      r as unknown as Parameters<typeof applyAllHighlights>[0],
+      list,
+    );
+  }, [highlightsQuery.data]);
 
   // Re-apply reader preferences when they change (theme, font, spread, etc.).
   // Cheap call — epub.js diffs theme rules internally on .default(...).
@@ -456,6 +504,37 @@ export default function ReadPage({
             };
             doc.addEventListener("dblclick", onDblClick);
 
+            // Selection-driven highlight toolbar. Fires when the user
+            // settles on a text selection in this chapter iframe. Closes
+            // the toolbar if the user clears the selection.
+            const onSelectionChange = () => {
+              const sel = view.getSelection?.();
+              if (!sel || sel.isCollapsed) {
+                if (selectionContextRef.current === null) return;
+                setSelectionAnchor(null);
+                selectionContextRef.current = null;
+                return;
+              }
+              const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+              if (!range || range.collapsed) return;
+              if (range.toString().trim().length < 2) return;
+
+              const rect = range.getBoundingClientRect();
+              if (rect.width === 0 && rect.height === 0) return;
+
+              const iframe = view.frameElement as HTMLIFrameElement | null;
+              const iRect = iframe?.getBoundingClientRect();
+              const x = (iRect?.left ?? 0) + rect.left + rect.width / 2;
+              const y = (iRect?.top ?? 0) + rect.top;
+
+              selectionContextRef.current = {
+                contents: contents as unknown as EpubContents,
+                range,
+              };
+              setSelectionAnchor({ x, y });
+            };
+            doc.addEventListener("selectionchange", onSelectionChange);
+
             // long-press path: derive the word from the touch coordinate
             // via caretRangeFromPoint / caretPositionFromPoint. The browser
             // doesn't auto-select on touch hold like it does on dblclick,
@@ -530,6 +609,7 @@ export default function ReadPage({
             );
             gestureCleanups.push(() => {
               doc.removeEventListener("dblclick", onDblClick);
+              doc.removeEventListener("selectionchange", onSelectionChange);
               detach();
             });
           },
@@ -659,6 +739,116 @@ export default function ReadPage({
       currentCfi,
     );
   }, [currentCfi]);
+
+  // Selection toolbar handlers: pick color → create highlight + paint.
+  const handleSelectionColor = useCallback(
+    async (color: HighlightColor) => {
+      const ctx = selectionContextRef.current;
+      const r = renditionRef.current;
+      if (!ctx || !r || !internalBookId) return;
+      const got = rangeToCfi(ctx.contents, ctx.range);
+      if (!got) {
+        setSelectionAnchor(null);
+        selectionContextRef.current = null;
+        return;
+      }
+      try {
+        const created = await createHighlight.mutateAsync({
+          book_id: internalBookId,
+          cfi_range: got.cfi,
+          text_excerpt: got.excerpt,
+          color,
+        });
+        applyAllHighlights(
+          r as unknown as Parameters<typeof applyAllHighlights>[0],
+          [created],
+        );
+        ctx.contents.window.getSelection()?.removeAllRanges();
+      } catch (err) {
+        const { toast } = await import("sonner");
+        toast.error(`Error: ${(err as Error).message}`);
+      } finally {
+        setSelectionAnchor(null);
+        selectionContextRef.current = null;
+      }
+    },
+    [internalBookId, createHighlight],
+  );
+
+  const handleSelectionAddNote = useCallback(async () => {
+    const ctx = selectionContextRef.current;
+    const r = renditionRef.current;
+    if (!ctx || !r || !internalBookId) return;
+    const got = rangeToCfi(ctx.contents, ctx.range);
+    if (!got) {
+      setSelectionAnchor(null);
+      selectionContextRef.current = null;
+      return;
+    }
+    try {
+      const created = await createHighlight.mutateAsync({
+        book_id: internalBookId,
+        cfi_range: got.cfi,
+        text_excerpt: got.excerpt,
+        color: DEFAULT_HIGHLIGHT_COLOR,
+      });
+      applyAllHighlights(
+        r as unknown as Parameters<typeof applyAllHighlights>[0],
+        [created],
+      );
+      ctx.contents.window.getSelection()?.removeAllRanges();
+      setPendingNoteHighlightId(created.id);
+      setPendingNoteExcerpt(got.excerpt);
+    } catch (err) {
+      const { toast } = await import("sonner");
+      toast.error(`Error: ${(err as Error).message}`);
+    } finally {
+      setSelectionAnchor(null);
+      selectionContextRef.current = null;
+    }
+  }, [internalBookId, createHighlight]);
+
+  const handleSaveNote = useCallback(
+    async (note: string) => {
+      const id = pendingNoteHighlightId;
+      if (!id) return;
+      setPendingNoteHighlightId(null);
+      setPendingNoteExcerpt(null);
+      if (!note) return;
+      try {
+        await api.patch(`/api/v1/highlights/${id}`, { note });
+      } catch (err) {
+        const { toast } = await import("sonner");
+        toast.error(`No se pudo guardar la nota: ${(err as Error).message}`);
+      }
+    },
+    [pendingNoteHighlightId],
+  );
+
+  const handleCancelNote = useCallback(() => {
+    setPendingNoteHighlightId(null);
+    setPendingNoteExcerpt(null);
+  }, []);
+
+  const handleDeleteHighlight = useCallback(
+    async (id: string) => {
+      const r = renditionRef.current;
+      const target = highlightsQuery.data?.find((h) => h.id === id);
+      try {
+        await deleteHighlightMut.mutateAsync(id);
+        if (r && target) {
+          removeHighlight(
+            r as unknown as Parameters<typeof removeHighlight>[0],
+            target.cfi_range,
+          );
+        }
+      } catch (err) {
+        const { toast } = await import("sonner");
+        toast.error(`Error: ${(err as Error).message}`);
+      }
+    },
+    [deleteHighlightMut, highlightsQuery.data],
+  );
 
   // Display string for the page indicator.
   const pageLabel = (() => {
@@ -790,6 +980,18 @@ export default function ReadPage({
           onSaved={handleSaved}
         />
       ) : null}
+
+      <ReaderSelectionToolbar
+        position={selectionAnchor}
+        onPickColor={handleSelectionColor}
+        onAddNote={handleSelectionAddNote}
+      />
+
+      <ReaderHighlightNoteDialog
+        excerpt={pendingNoteExcerpt}
+        onSave={handleSaveNote}
+        onCancel={handleCancelNote}
+      />
     </div>
   );
 }
