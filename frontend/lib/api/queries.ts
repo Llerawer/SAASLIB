@@ -58,6 +58,7 @@ export const queryKeys = {
     ["captures", filters ?? {}] as const,
   capturesPendingCount: () => ["captures", "pending-count"] as const,
   bookmarks: (bookId: string) => ["bookmarks", bookId] as const,
+  highlights: (bookId: string) => ["highlights", bookId] as const,
 };
 
 export function useDictionary(word: string | null, language = "en") {
@@ -230,6 +231,81 @@ export function useDeleteBookmark(bookId: string | null) {
     onSuccess: () => {
       if (bookId) {
         qc.invalidateQueries({ queryKey: queryKeys.bookmarks(bookId) });
+      }
+    },
+  });
+}
+
+export type HighlightColor = "yellow" | "green" | "blue" | "pink";
+
+export type Highlight = {
+  id: string;
+  user_id: string;
+  book_id: string;
+  cfi_range: string;
+  text_excerpt: string;
+  color: HighlightColor;
+  note: string | null;
+  created_at: string;
+};
+
+export type HighlightCreateInput = {
+  book_id: string;
+  cfi_range: string;
+  text_excerpt: string;
+  color: HighlightColor;
+  note?: string | null;
+};
+
+export type HighlightUpdateInput = {
+  color?: HighlightColor | null;
+  note?: string | null;
+};
+
+export function useHighlights(bookId: string | null) {
+  return useQuery({
+    queryKey: bookId ? queryKeys.highlights(bookId) : ["highlights", "none"],
+    queryFn: () =>
+      api.get<Highlight[]>(
+        `/api/v1/highlights?book_id=${encodeURIComponent(bookId!)}`,
+      ),
+    enabled: !!bookId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateHighlight() {
+  const qc = useQueryClient();
+  return useMutation<Highlight, Error, HighlightCreateInput>({
+    mutationFn: (input) => api.post<Highlight>("/api/v1/highlights", input),
+    onSuccess: (h) => {
+      qc.invalidateQueries({ queryKey: queryKeys.highlights(h.book_id) });
+    },
+  });
+}
+
+export function useUpdateHighlight() {
+  const qc = useQueryClient();
+  return useMutation<
+    Highlight,
+    Error,
+    { id: string; patch: HighlightUpdateInput }
+  >({
+    mutationFn: ({ id, patch }) =>
+      api.patch<Highlight>(`/api/v1/highlights/${id}`, patch),
+    onSuccess: (h) => {
+      qc.invalidateQueries({ queryKey: queryKeys.highlights(h.book_id) });
+    },
+  });
+}
+
+export function useDeleteHighlight(bookId: string | null) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.del(`/api/v1/highlights/${id}`),
+    onSuccess: () => {
+      if (bookId) {
+        qc.invalidateQueries({ queryKey: queryKeys.highlights(bookId) });
       }
     },
   });
