@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
@@ -144,6 +145,42 @@ async def status_endpoint(
     if not rows:
         raise HTTPException(status_code=404, detail={"error_reason": "not_found"})
     return _row_to_meta(rows[0])
+
+
+class VideoCue(BaseModel):
+    id: str
+    start_s: float
+    end_s: float
+    text: str
+
+
+@router.get("/{video_id}/cues", response_model=list[VideoCue])
+@limiter.limit("60/minute")
+async def list_cues(
+    request: Request,
+    video_id: str,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Return all cues for a video, ordered by start time."""
+    client = get_admin_client()
+    rows = (
+        client.table("pronunciation_clips")
+        .select("id, sentence_start_ms, sentence_end_ms, sentence_text")
+        .eq("video_id", video_id)
+        .order("sentence_start_ms", desc=False)
+        .execute()
+        .data
+        or []
+    )
+    return [
+        VideoCue(
+            id=r["id"],
+            start_s=r["sentence_start_ms"] / 1000.0,
+            end_s=r["sentence_end_ms"] / 1000.0,
+            text=r["sentence_text"],
+        )
+        for r in rows
+    ]
 
 
 @router.get("", response_model=list[VideoListItem])
