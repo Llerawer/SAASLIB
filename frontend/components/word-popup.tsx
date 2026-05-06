@@ -94,9 +94,8 @@ export function WordPopup({
     createCapture.mutate({
       word,
       context_sentence: contextSentence,
-      page_or_location: pageOrLocation,
-      book_id: bookId,
       language,
+      source: { kind: "book", bookId, pageOrLocation },
     });
   }
 

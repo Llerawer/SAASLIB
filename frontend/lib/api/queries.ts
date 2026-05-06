@@ -51,6 +51,17 @@ export type CaptureCreateInput = {
   note?: string | null;
 };
 
+type CreateCaptureSource =
+  | { kind: "book"; bookId: string | null; pageOrLocation: string | null }
+  | { kind: "video"; videoId: string; timestampSeconds: number };
+
+type CreateCaptureInput = {
+  word: string;
+  context_sentence?: string | null;
+  language?: string;
+  source: CreateCaptureSource;
+};
+
 export const queryKeys = {
   dictionary: (word: string, lang = "en") => ["dictionary", word, lang] as const,
   capturedWords: (bookId: string) => ["captured-words", bookId] as const,
@@ -84,26 +95,33 @@ export function useCapturedWords(bookId: string | null) {
 }
 
 type CreateCaptureCallbacks = {
-  onSuccess?: (capture: Capture, input: CaptureCreateInput) => void;
-  onError?: (error: Error, input: CaptureCreateInput) => void;
+  onSuccess?: (capture: Capture) => void;
+  onError?: (error: Error) => void;
 };
 
 export function useCreateCapture(callbacks?: CreateCaptureCallbacks) {
   const qc = useQueryClient();
-  return useMutation<Capture, Error, CaptureCreateInput>({
-    mutationFn: (input) => api.post<Capture>("/api/v1/captures", input),
+  return useMutation<Capture, Error, CreateCaptureInput>({
+    mutationFn: ({ word, context_sentence, language, source }) => {
+      const base = { word, context_sentence, language: language ?? "en" };
+      const payload =
+        source.kind === "book"
+          ? { ...base, book_id: source.bookId, page_or_location: source.pageOrLocation }
+          : { ...base, video_id: source.videoId, video_timestamp_s: source.timestampSeconds };
+      return api.post<Capture>("/api/v1/captures", payload);
+    },
     onSuccess: (data, variables) => {
       qc.invalidateQueries({ queryKey: queryKeys.captures() });
-      if (variables.book_id) {
+      if (variables.source.kind === "book" && variables.source.bookId) {
         qc.invalidateQueries({
-          queryKey: queryKeys.capturedWords(variables.book_id),
+          queryKey: queryKeys.capturedWords(variables.source.bookId),
         });
       }
       qc.invalidateQueries({ queryKey: queryKeys.capturesPendingCount() });
-      callbacks?.onSuccess?.(data, variables);
+      callbacks?.onSuccess?.(data);
     },
-    onError: (err, variables) => {
-      callbacks?.onError?.(err, variables);
+    onError: (err) => {
+      callbacks?.onError?.(err);
     },
   });
 }
@@ -234,6 +252,37 @@ export function useDeleteBookmark(bookId: string | null) {
     },
   });
 }
+
+export type VideoStatus = "pending" | "processing" | "done" | "error";
+export type VideoErrorReason =
+  | "invalid_url"
+  | "not_found"
+  | "no_subs"
+  | "ingest_failed";
+
+export type VideoMeta = {
+  video_id: string;
+  title: string | null;
+  duration_s: number | null;
+  thumb_url: string | null;
+  status: VideoStatus;
+  error_reason: VideoErrorReason | null;
+};
+
+export type VideoListItem = {
+  video_id: string;
+  title: string | null;
+  duration_s: number | null;
+  thumb_url: string | null;
+  created_at: string;
+};
+
+export type VideoCue = {
+  id: string;
+  start_s: number;
+  end_s: number;
+  text: string;
+};
 
 export type Card = {
   id: string;
@@ -583,5 +632,49 @@ export function usePronounce(word: string | null, filters: PronounceFilters = {}
     enabled: !!word,
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
+  });
+}
+
+// ---------- Videos ----------
+
+export function useIngestVideo() {
+  const qc = useQueryClient();
+  return useMutation<VideoMeta, Error, { url: string }>({
+    mutationFn: ({ url }) => api.post<VideoMeta>("/api/v1/videos/ingest", { url }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["videos"] });
+    },
+  });
+}
+
+export function useListVideos() {
+  return useQuery<VideoListItem[]>({
+    queryKey: ["videos"],
+    queryFn: () => api.get<VideoListItem[]>("/api/v1/videos"),
+  });
+}
+
+export function useVideoStatus(videoId: string | null, opts?: { enabled?: boolean }) {
+  return useQuery<VideoMeta>({
+    queryKey: ["video-status", videoId],
+    queryFn: () => api.get<VideoMeta>(`/api/v1/videos/${videoId}/status`),
+    enabled: opts?.enabled !== false && !!videoId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 1000;
+      if (data.status === "done" || data.status === "error") return false;
+      // Exponential backoff: 1s -> 2s -> 4s -> 5s cap.
+      const count = query.state.dataUpdateCount || 0;
+      return Math.min(5000, 1000 * 2 ** Math.min(count, 3));
+    },
+  });
+}
+
+export function useVideoCues(videoId: string | null) {
+  return useQuery<VideoCue[]>({
+    queryKey: ["video-cues", videoId],
+    queryFn: () => api.get<VideoCue[]>(`/api/v1/videos/${videoId}/cues`),
+    enabled: !!videoId,
+    staleTime: Infinity, // cues never change for a given video
   });
 }
