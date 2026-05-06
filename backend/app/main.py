@@ -18,6 +18,7 @@ from app.api.v1 import (
     internal,
     reviews,
     stats,
+    videos,
 )
 from app.core.alerts import install_default_alerts, run_periodic
 from app.core.auth import get_current_user_id
@@ -133,4 +134,5 @@ app.include_router(cards.router)
 app.include_router(dictionary.router)
 app.include_router(reviews.router)
 app.include_router(stats.router)
+app.include_router(videos.router)
 app.include_router(internal.router)
