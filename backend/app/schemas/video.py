@@ -32,6 +32,10 @@ class VideoListItem(BaseModel):
     cards (spinner overlay) and error cards (badge + retry button)
     without a second round-trip to /status per row. updated_at drives
     the list sort so a just-retried row pops to the top.
+
+    Per-user fields populated from JOINs in list_videos:
+    - last_position_s / last_viewed_at: progress bar + "visto hace X"
+    - captures_count: how many words this user captured from this video
     """
     video_id: str
     title: str | None
@@ -41,3 +45,6 @@ class VideoListItem(BaseModel):
     error_reason: VideoErrorReason | None = None
     created_at: datetime
     updated_at: datetime
+    last_position_s: int | None = None
+    last_viewed_at: datetime | None = None
+    captures_count: int = 0

@@ -207,15 +207,31 @@ async def list_videos(
     request: Request,
     auth: AuthInfo = Depends(get_auth),
 ):
-    """List most recent videos in the global cache (any status). Hard cap
-    of 50. We surface processing / error rows alongside done so the UI
-    can render in-flight cards + retry-on-error without a second query.
+    """List most recent videos in the global cache (any status), enriched
+    with per-user data: progress, captures count, hidden filter.
 
     Order by `updated_at desc`: a freshly-pasted URL goes to the top, a
-    retried error pops back to the top, and a stable done row stays
-    pinned by its last update timestamp.
+    retried error pops back to the top, a stable done row stays pinned.
+
+    Three extra round-trips beyond the videos query — small (≤50 rows
+    each), cached at the connection layer, and the alternative is a SQL
+    view or RPC. Acceptable for v1.
     """
     client = get_admin_client()
+
+    # 1. Hidden video_ids for this user — filter them OUT of the list.
+    hidden = (
+        client.table("video_user_hidden")
+        .select("video_id")
+        .eq("user_id", auth.user_id)
+        .execute()
+        .data
+        or []
+    )
+    hidden_ids = {r["video_id"] for r in hidden}
+
+    # 2. The videos themselves. Pull a few extra rows so the post-hidden
+    # filter still has LIST_LIMIT results when most rows are hidden.
     rows = (
         client.table("videos")
         .select(
@@ -223,12 +239,98 @@ async def list_videos(
             "status, error_reason, created_at, updated_at"
         )
         .order("updated_at", desc=True)
-        .limit(LIST_LIMIT)
+        .limit(LIST_LIMIT + len(hidden_ids))
         .execute()
         .data
         or []
     )
-    return [VideoListItem(**r) for r in rows]
+    rows = [r for r in rows if r["video_id"] not in hidden_ids][:LIST_LIMIT]
+    if not rows:
+        return []
+    visible_ids = [r["video_id"] for r in rows]
+
+    # 3. Progress for those videos, this user.
+    progress_rows = (
+        client.table("video_user_progress")
+        .select("video_id, last_position_s, updated_at")
+        .eq("user_id", auth.user_id)
+        .in_("video_id", visible_ids)
+        .execute()
+        .data
+        or []
+    )
+    progress_by_video = {
+        r["video_id"]: r for r in progress_rows
+    }
+
+    # 4. Captures count grouped by video_id, this user. Supabase doesn't
+    # support GROUP BY in REST, so we pull the raw rows and count in
+    # Python. Cheap — even prolific users rarely have >2k captures.
+    captures_rows = (
+        client.table("captures")
+        .select("video_id")
+        .eq("user_id", auth.user_id)
+        .in_("video_id", visible_ids)
+        .execute()
+        .data
+        or []
+    )
+    captures_by_video: dict[str, int] = {}
+    for r in captures_rows:
+        vid = r.get("video_id")
+        if vid:
+            captures_by_video[vid] = captures_by_video.get(vid, 0) + 1
+
+    out: list[VideoListItem] = []
+    for r in rows:
+        prog = progress_by_video.get(r["video_id"])
+        out.append(
+            VideoListItem(
+                **r,
+                last_position_s=(
+                    int(prog["last_position_s"]) if prog else None
+                ),
+                last_viewed_at=(
+                    prog["updated_at"] if prog else None
+                ),
+                captures_count=captures_by_video.get(r["video_id"], 0),
+            )
+        )
+    return out
+
+
+# ---------- Per-user hide / unhide ----------
+
+
+@router.post("/{video_id}/hide", status_code=204)
+@limiter.limit("60/minute")
+async def hide_video(
+    request: Request,
+    video_id: str,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Hide a video from THIS user's /videos list (the videos table is
+    a global cache; per-user hide is a row in video_user_hidden).
+    Idempotent — second call is a no-op."""
+    client = get_admin_client()
+    client.table("video_user_hidden").upsert(
+        {"user_id": auth.user_id, "video_id": video_id},
+        on_conflict="user_id,video_id",
+    ).execute()
+
+
+@router.delete("/{video_id}/hide", status_code=204)
+@limiter.limit("60/minute")
+async def unhide_video(
+    request: Request,
+    video_id: str,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Undo hide. No-op if the row doesn't exist."""
+    client = get_admin_client()
+    client.table("video_user_hidden").delete().eq(
+        "user_id", auth.user_id
+    ).eq("video_id", video_id).execute()
 
 
 # ---------- Per-user progress (resume from last position) ----------
