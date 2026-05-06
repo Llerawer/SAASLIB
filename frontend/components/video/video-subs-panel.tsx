@@ -175,20 +175,47 @@ export function VideoSubsPanel({
 
   return (
     <div
-      className="relative mt-3 max-h-[calc(100vh-9.5rem)]"
+      className="relative max-h-[calc(100vh-9.5rem)]"
       style={heightStyle}
     >
     <div
       ref={scrollContainerRef}
       onScroll={handlePanelScroll}
-      className="border rounded-2xl bg-card p-4 space-y-2 relative h-full overflow-y-auto"
+      className="border border-border/70 rounded-xl bg-card px-5 pt-3 pb-4 space-y-2 relative h-full overflow-y-auto"
     >
+      {/* Section header — small caps label + amber dot motif, timestamp +
+          AB-loop badge to the right, thin amber rule below. Sticky on a
+          solid surface (no glass) so cues scroll cleanly under it. */}
+      <div className="-mx-5 px-5 pb-2 sticky top-0 z-10 bg-card border-b border-border">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
+            <span className="size-1 rounded-full bg-accent" aria-hidden />
+            Transcripción
+          </span>
+          <div className="inline-flex items-center gap-2">
+            {abLoop && (
+              <span className="text-xs tabular bg-warning/25 text-warning-foreground rounded-full px-2 py-0.5">
+                A {formatTime(abLoop.a)} → B {formatTime(abLoop.b)}
+              </span>
+            )}
+            {currentCue && (
+              <span className="text-xs tabular text-muted-foreground">
+                {formatTime(currentCue.start_s)}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <div className="h-px w-8 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+      </div>
       {(revealedPrev < prevCues.length || revealedPrev > 1) && (
         <div className="flex items-center gap-2 -mt-1 mb-1">
           {revealedPrev < prevCues.length && (
             <button
               onClick={revealMorePrev}
-              className="flex-1 flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1.5 rounded hover:bg-muted/40"
+              className="flex-1 flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-1.5 rounded hover:bg-muted/40"
               title="Mostrar 10 cues anteriores más"
             >
               <ChevronUp className="h-3 w-3" />
@@ -198,7 +225,7 @@ export function VideoSubsPanel({
           {revealedPrev > 1 && (
             <button
               onClick={collapsePrev}
-              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded hover:bg-muted/40 shrink-0"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded hover:bg-muted/40 shrink-0"
               title="Ocultar historial y volver al cue actual"
             >
               <X className="h-3 w-3" />
@@ -231,7 +258,7 @@ export function VideoSubsPanel({
       {currentCue ? (
         <div
           ref={currentRef}
-          className={`max-h-[9rem] overflow-y-auto font-serif ${sizeClass} leading-loose tracking-wide transition-colors ${
+          className={`font-serif ${sizeClass} leading-relaxed transition-colors ${
             popupOpen ? "bg-muted/30 rounded-md px-2 -mx-2" : ""
           } ${
             hideSubs
@@ -252,18 +279,6 @@ export function VideoSubsPanel({
       ) : (
         <p className="text-muted-foreground italic">— sin cue activo —</p>
       )}
-      <div className="absolute top-1 right-2 flex items-center gap-2 pointer-events-none">
-        {abLoop && (
-          <span className="text-[10px] tabular bg-warning/30 rounded px-1.5 py-0.5">
-            A {formatTime(abLoop.a)} → B {formatTime(abLoop.b)}
-          </span>
-        )}
-        {currentCue && (
-          <span className="text-[10px] text-muted-foreground tabular">
-            {formatTime(currentCue.start_s)}
-          </span>
-        )}
-      </div>
       {nextCues.map((c) => (
         <CueRow
           key={c.id}
@@ -354,15 +369,15 @@ function CueWords({
               capturedNormalized.has(t.text.toLowerCase())
                 ? "underline decoration-accent decoration-2 underline-offset-4"
                 : knownSet && t.text.length >= 4 && !knownSet.has(t.text.toLowerCase())
-                ? "underline decoration-dotted decoration-muted-foreground/40 underline-offset-4"
+                ? "underline decoration-dotted decoration-warning/70 decoration-2 underline-offset-4"
                 : ""
             } ${
               popupWordIndex === t.index
                 ? "outline outline-2 outline-accent bg-accent/10"
                 : activeWordIndex === t.index
-                ? "bg-warning/40"
+                ? "bg-warning/25 rounded"
                 : ""
-            }`}
+            } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
           >
             {t.text}
           </button>

@@ -26,7 +26,7 @@ import {
   type WordClickPayload,
   type FontSize,
 } from "@/components/video/video-subs-panel";
-import { VideoControls } from "@/components/video/video-controls";
+import { SPEEDS, VideoControls } from "@/components/video/video-controls";
 import { VideoTocSheet } from "@/components/video/video-toc-sheet";
 import { WordPopup } from "@/components/word-popup";
 import { Button } from "@/components/ui/button";
@@ -189,6 +189,133 @@ export default function WatchPage({
     lastAutoPausedCueRef.current = null;
   }, [tracker.currentCue?.id]);
 
+  // ---- Keyboard shortcuts ----
+  //
+  // Two-effect pattern: a stable listener bound once + a ref kept fresh
+  // with the latest closures. This avoids re-binding the document
+  // listener on every cue/time change while still letting the handlers
+  // see current state. The popup owns its own keys (Esc/save) so we
+  // bail entirely when it's open.
+
+  type KbHandlers = {
+    togglePlay: () => void;
+    prevCue: () => void;
+    nextCue: () => void;
+    speedUp: () => void;
+    speedDown: () => void;
+    toggleLoop: () => void;
+    toggleHideSubs: () => void;
+    openToc: () => void;
+  };
+  const kbHandlersRef = useRef<KbHandlers>({
+    togglePlay: () => {},
+    prevCue: () => {},
+    nextCue: () => {},
+    speedUp: () => {},
+    speedDown: () => {},
+    toggleLoop: () => {},
+    toggleHideSubs: () => {},
+    openToc: () => {},
+  });
+
+  useEffect(() => {
+    kbHandlersRef.current = {
+      togglePlay: () => {
+        if (isPlaying) playerRef.current?.pause();
+        else playerRef.current?.play();
+      },
+      prevCue: () => {
+        const list = cues.data ?? [];
+        const cur = tracker.currentCue;
+        if (!cur) return;
+        const idx = list.findIndex((c) => c.id === cur.id);
+        if (idx > 0) playerRef.current?.seekTo(list[idx - 1].start_s);
+      },
+      nextCue: () => {
+        const list = cues.data ?? [];
+        const cur = tracker.currentCue;
+        if (!cur) return;
+        const idx = list.findIndex((c) => c.id === cur.id);
+        if (idx >= 0 && idx < list.length - 1) {
+          playerRef.current?.seekTo(list[idx + 1].start_s);
+        }
+      },
+      speedUp: () => {
+        const i = SPEEDS.indexOf(speed);
+        const next = i >= 0 ? SPEEDS[Math.min(SPEEDS.length - 1, i + 1)] : 1;
+        setSpeed(next);
+      },
+      speedDown: () => {
+        const i = SPEEDS.indexOf(speed);
+        const next = i >= 0 ? SPEEDS[Math.max(0, i - 1)] : 1;
+        setSpeed(next);
+      },
+      toggleLoop: () => setLoop((v) => !v),
+      toggleHideSubs: () => setHideSubs((v) => !v),
+      openToc: () => setTocOpen(true),
+    };
+  }, [isPlaying, cues.data, tracker.currentCue, speed]);
+
+  useEffect(() => {
+    if (popup) return;
+    function onKey(e: KeyboardEvent) {
+      // Don't hijack while user types in any editable surface (TOC
+      // search, popup textarea, etc.).
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      // Let modifier-combos pass through (Cmd+R reload, Ctrl+F find, etc.).
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const h = kbHandlersRef.current;
+      switch (e.key) {
+        case " ":
+          e.preventDefault();
+          h.togglePlay();
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          h.prevCue();
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          h.nextCue();
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          h.speedUp();
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          h.speedDown();
+          break;
+        case "l":
+        case "L":
+          e.preventDefault();
+          h.toggleLoop();
+          break;
+        case "h":
+        case "H":
+          e.preventDefault();
+          h.toggleHideSubs();
+          break;
+        case "/":
+          e.preventDefault();
+          h.openToc();
+          break;
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [popup]);
+
   // Loop cue: when current cue ends, seek back if loop is on.
   useEffect(() => {
     if (!loop || !tracker.currentCue) return;
@@ -329,20 +456,36 @@ export default function WatchPage({
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
-      <header className="mb-4">
-        <h1 className="text-2xl md:text-3xl font-serif font-semibold tracking-tight line-clamp-2">
+      {/* Editorial masthead — kicker + serif title + thin amber rule + metadata.
+          The amber dot/rule motif recurs in the transcript panel header, tying
+          the page together with a single recognisable mark. */}
+      <header className="mb-6">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
+          <span>Lectura en video</span>
+          <span aria-hidden className="text-muted-foreground/50">·</span>
+          <span>Inglés</span>
+        </div>
+        <h1 className="font-serif font-semibold text-3xl md:text-4xl leading-[1.15] tracking-tight line-clamp-2">
           {status.data.title ?? videoId}
         </h1>
-        <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground tabular flex-wrap">
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-px w-10 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <div className="mt-2.5 flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground tabular flex-wrap">
           {status.data.duration_s != null && (
-            <span className="inline-flex items-center gap-1">
-              <span className="size-1 rounded-full bg-muted-foreground/60" aria-hidden />
-              {formatTime(status.data.duration_s)}
-            </span>
+            <span>{formatTime(status.data.duration_s)}</span>
           )}
-          <span className="inline-flex items-center gap-1">
-            <span className="size-1 rounded-full bg-accent" aria-hidden />
-            {captureCount} {captureCount === 1 ? "palabra capturada" : "palabras capturadas"} de este video
+          {status.data.duration_s != null && (
+            <span aria-hidden className="text-muted-foreground/40">·</span>
+          )}
+          <span>
+            {captureCount}{" "}
+            <span className={captureCount > 0 ? "text-accent" : undefined}>
+              {captureCount === 1 ? "palabra" : "palabras"}
+            </span>{" "}
+            capturada{captureCount === 1 ? "" : "s"}
           </span>
           {unpromotedIds.length > 0 && (
             <Button
@@ -364,10 +507,10 @@ export default function WatchPage({
                 }
               }}
             >
-              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
               {promote.isPending
                 ? "Promoviendo…"
-                : `Estudiar ${unpromotedIds.length} ${unpromotedIds.length === 1 ? "palabra nueva" : "palabras nuevas"}`}
+                : `Estudiar ${unpromotedIds.length} ${unpromotedIds.length === 1 ? "palabra" : "palabras"} nueva${unpromotedIds.length === 1 ? "" : "s"}`}
             </Button>
           )}
         </div>
@@ -378,7 +521,7 @@ export default function WatchPage({
         <div className="lg:w-7/12 lg:h-full lg:overflow-y-auto lg:pr-1">
           <div
             ref={videoBoxRef}
-            className="lg:sticky lg:top-0 lg:z-10 rounded-2xl bg-gradient-to-b from-muted/30 to-transparent p-1"
+            className="lg:sticky lg:top-0 lg:z-10 rounded-xl overflow-hidden border border-border bg-card shadow-md"
           >
             <VideoPlayer
               ref={playerRef}

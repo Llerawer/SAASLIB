@@ -1,15 +1,26 @@
 "use client";
 
 import { List, Pause, Play, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { FontSize } from "./video-subs-panel";
 
-const SPEEDS: number[] = [0.75, 1, 1.25, 1.5];
+export const SPEEDS: number[] = [0.75, 1, 1.25, 1.5];
 const FONT_SIZES: { value: FontSize; label: string }[] = [
   { value: "sm", label: "S" },
   { value: "md", label: "M" },
   { value: "lg", label: "L" },
 ];
+
+const GROUP =
+  "inline-flex items-center gap-0.5 border border-border/70 rounded-full bg-card p-0.5";
+const BTN_BASE =
+  "inline-flex items-center justify-center text-xs rounded-full transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+const BTN_CHIP = `${BTN_BASE} h-7`;
+/** Primary touch (play/pause/replay) — bumped to 36px (sm) per DESIGN.md
+ *  touch-target rule. Chip-density h-7 is reserved for the dense scales
+ *  (speed, font-size). */
+const BTN_PRIMARY = `${BTN_BASE} size-9`;
+const BTN_ACTIVE =
+  "bg-accent/20 text-foreground border border-accent/50 hover:bg-accent/25";
 
 export function VideoControls({
   isPlaying,
@@ -39,79 +50,80 @@ export function VideoControls({
   onOpenToc: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2 mt-3 flex-wrap">
-      <Button
-        variant="outline"
-        size="icon-sm"
-        onClick={onTogglePlay}
-        aria-label={isPlaying ? "Pausar" : "Reproducir"}
-      >
-        {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-      </Button>
+    <div className="flex items-center gap-2 mt-4 flex-wrap">
+      <div className={GROUP}>
+        <button
+          onClick={onTogglePlay}
+          aria-label={isPlaying ? "Pausar" : "Reproducir"}
+          className={BTN_PRIMARY}
+        >
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </button>
+        <button
+          onClick={onReplayCue}
+          title="Repetir cue (R)"
+          aria-label="Repetir cue"
+          className={BTN_PRIMARY}
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+      </div>
 
-      <div className="flex items-center gap-1 border rounded-md p-0.5">
+      <div className={GROUP}>
         {SPEEDS.map((s) => (
           <button
             key={s}
             onClick={() => onSpeedChange(s)}
-            className={`px-2 py-0.5 text-xs rounded tabular ${
-              speed === s ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-            }`}
+            className={`${BTN_CHIP} px-2.5 tabular ${speed === s ? BTN_ACTIVE : "text-foreground/80"}`}
           >
             {s}×
           </button>
         ))}
       </div>
 
-      <Button variant="ghost" size="sm" onClick={onReplayCue} title="Repetir cue (R)">
-        <RotateCcw className="h-3.5 w-3.5 mr-1" />
-        Repetir
-      </Button>
+      <div className={GROUP}>
+        <button
+          onClick={onToggleLoop}
+          aria-pressed={loop}
+          title="Loop cue (L)"
+          className={`${BTN_CHIP} px-3 ${loop ? BTN_ACTIVE : "text-foreground/80"}`}
+        >
+          Loop
+        </button>
+        <button
+          onClick={onToggleAutoPause}
+          aria-pressed={autoPause}
+          title="Pausar al final de cada cue (P)"
+          className={`${BTN_CHIP} px-3 ${autoPause ? BTN_ACTIVE : "text-foreground/80"}`}
+        >
+          Auto-pausa
+        </button>
+      </div>
 
-      <Button variant="ghost" size="sm" onClick={onOpenToc} title="Ver transcripción / buscar (T)">
-        <List className="h-3.5 w-3.5 mr-1" />
-        Transcripción
-      </Button>
-
-      <button
-        onClick={onToggleLoop}
-        className={`text-xs px-2 py-1 rounded border ${
-          loop ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-        }`}
-        title="Loop cue (L)"
-      >
-        {loop ? "✓ Loop" : "Loop"}
-      </button>
-
-      <button
-        onClick={onToggleAutoPause}
-        className={`text-xs px-2 py-1 rounded border ${
-          autoPause ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-        }`}
-        title="Pausar al final de cada cue (P)"
-      >
-        {autoPause ? "✓ Auto-pausa" : "Auto-pausa"}
-      </button>
-
-      <div
-        className="flex items-center gap-1 border rounded-md p-0.5"
-        title="Tamaño de letra de subs"
-      >
+      {/* Reading-size: serif italic ties the controls to the read content
+       *  they affect. DESIGN.md permits Source Serif on UI when it carries
+       *  semantic meaning, not as decoration. */}
+      <div className={GROUP} title="Tamaño de letra de subs">
         {FONT_SIZES.map((f) => (
           <button
             key={f.value}
             onClick={() => onFontSizeChange(f.value)}
-            className={`w-6 h-6 text-xs rounded font-mono ${
-              fontSize === f.value
-                ? "bg-accent text-accent-foreground"
-                : "hover:bg-muted"
-            }`}
             aria-label={`Tamaño de letra ${f.value}`}
+            className={`${BTN_CHIP} size-7 font-serif italic ${fontSize === f.value ? BTN_ACTIVE : "text-foreground/80"}`}
           >
             {f.label}
           </button>
         ))}
       </div>
+
+      <button
+        onClick={onOpenToc}
+        title="Ver transcripción / buscar (T)"
+        className="ml-auto inline-flex items-center gap-1.5 h-9 px-3.5 text-xs rounded-full border border-border/70 bg-card hover:bg-muted/70 transition-colors duration-150 ease-out"
+      >
+        <List className="size-3.5 text-muted-foreground" />
+        <span>Transcripción</span>
+      </button>
     </div>
   );
 }
