@@ -2,12 +2,18 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Library, BookMarked, GraduationCap, BarChart3 } from "lucide-react";
+import {
+  Library,
+  BookMarked,
+  GraduationCap,
+  BarChart3,
+  Video,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useCapturesList, useReviewQueue } from "@/lib/api/queries";
 
-type NavItemKey = "library" | "vocabulary" | "srs" | "settings";
+type NavItemKey = "library" | "videos" | "vocabulary" | "srs" | "settings";
 
 const NAV_ITEMS: {
   key: NavItemKey;
@@ -16,6 +22,7 @@ const NAV_ITEMS: {
   icon: typeof Library;
 }[] = [
   { key: "library", href: "/library", label: "Biblioteca", icon: Library },
+  { key: "videos", href: "/videos", label: "Videos", icon: Video },
   {
     key: "vocabulary",
     href: "/vocabulary",

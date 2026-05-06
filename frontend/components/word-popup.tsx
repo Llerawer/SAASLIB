@@ -2,13 +2,14 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Volume2, X, Check, Save, Quote, Headphones } from "lucide-react";
+import { Volume2, X, Check, Save, Quote, Headphones, Languages } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
   useCreateCapture,
   useDictionary,
+  useTranslateText,
   useUpdateCapture,
 } from "@/lib/api/queries";
 import { pronounceHref } from "@/lib/reader/pronounce-link";
@@ -55,6 +56,8 @@ export function WordPopup({
   const [noteSaving, setNoteSaving] = useState(false);
 
   const dictQuery = useDictionary(word, language);
+  const translateMutation = useTranslateText();
+  const [cueTranslation, setCueTranslation] = useState<string | null>(null);
   const createCapture = useCreateCapture({
     onSuccess: (capture) => {
       setSaved(true);
@@ -99,6 +102,16 @@ export function WordPopup({
       language,
       source,
     });
+  }
+
+  async function handleTranslateCue() {
+    if (!contextSentence) return;
+    try {
+      const out = await translateMutation.mutateAsync({ text: contextSentence });
+      setCueTranslation(out.translation);
+    } catch (err) {
+      toast.error(`No se pudo traducir: ${(err as Error).message}`);
+    }
   }
 
   // Keyboard: Escape closes, S/Enter saves, P plays audio.
@@ -315,6 +328,35 @@ export function WordPopup({
             <p className="text-xs italic font-serif text-foreground/80 leading-relaxed">
               {data.examples[0]}
             </p>
+          </div>
+        )}
+
+        {source.kind === "video" && contextSentence && (
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Cue completo
+              </div>
+              {!cueTranslation && (
+                <button
+                  onClick={handleTranslateCue}
+                  disabled={translateMutation.isPending}
+                  className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline disabled:opacity-50 disabled:no-underline"
+                  title="Traducir esta línea"
+                >
+                  <Languages className="h-3 w-3" />
+                  {translateMutation.isPending ? "Traduciendo…" : "Traducir"}
+                </button>
+              )}
+            </div>
+            <p className="text-xs font-serif text-foreground/85 leading-relaxed">
+              {contextSentence}
+            </p>
+            {cueTranslation && (
+              <p className="mt-1 text-xs font-serif italic text-muted-foreground leading-relaxed">
+                {cueTranslation}
+              </p>
+            )}
           </div>
         )}
 

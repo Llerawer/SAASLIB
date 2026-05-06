@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronUp, X } from "lucide-react";
 import { tokenize } from "@/lib/video/tokenize";
+import { formatTime } from "@/lib/video/format-time";
 import type { VideoCue } from "@/lib/api/queries";
 
 export type WordClickPayload = {
@@ -10,73 +12,319 @@ export type WordClickPayload = {
   cueEnd: number;
   cueText: string;
   span: HTMLElement;
+  /** True if the click was a quick-save (shift held) — caller should
+   *  bypass the popup and capture immediately. */
+  quickSave: boolean;
+};
+
+export type FontSize = "sm" | "md" | "lg";
+
+const SIZE_CLASS: Record<FontSize, string> = {
+  sm: "text-lg",
+  md: "text-2xl",
+  lg: "text-3xl",
 };
 
 export function VideoSubsPanel({
-  prevCue,
+  prevCues,
   currentCue,
-  nextCue,
+  nextCues,
+  currentTime,
   capturedNormalized,
+  knownSet,
   popupOpen,
   popupWordIndex,
+  fontSize,
+  hideSubs = false,
+  abLoop = null,
+  matchHeight = null,
   onWordClick,
+  onCueSeek,
 }: {
-  prevCue: VideoCue | null;
+  prevCues: VideoCue[];
   currentCue: VideoCue | null;
-  nextCue: VideoCue | null;
+  nextCues: VideoCue[];
+  currentTime: number;
   capturedNormalized: Set<string>;
+  /** Global "what the user has captured anywhere" — used to mark unknown
+   *  words with a dotted underline so they pop visually. */
+  knownSet?: Set<string>;
   popupOpen: boolean;
   popupWordIndex: number | null;
+  fontSize: FontSize;
+  hideSubs?: boolean;
+  abLoop?: { a: number; b: number } | null;
+  /** When set (desktop side-by-side), force the panel height to match the
+   *  video's height. Internal scroll handles overflow. */
+  matchHeight?: number | null;
   onWordClick: (payload: WordClickPayload) => void;
+  onCueSeek: (cueStart: number) => void;
 }) {
-  const currentRef = useRef<HTMLDivElement | null>(null);
-
+  // Detect desktop only on client; SSR-safe default false.
+  const [isDesktop, setIsDesktop] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    currentRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 1024px)");
+    setIsDesktop(mq.matches);
+    const h = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const heightStyle =
+    isDesktop && matchHeight ? { height: matchHeight } : undefined;
+  const currentRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const userScrolledRef = useRef(false);
+  const userScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Progressive disclosure of history: by default we only show the current
+  // cue + next. Scrolling up (or clicking the chevron) reveals +10 prevs.
+  const [revealedPrev, setRevealedPrev] = useState(1);
+  const pendingScrollAdjustRef = useRef<{ st: number; sh: number } | null>(null);
+
+  function revealMorePrev() {
+    const c = scrollContainerRef.current;
+    if (!c) return;
+    if (revealedPrev >= prevCues.length) return;
+    pendingScrollAdjustRef.current = { st: c.scrollTop, sh: c.scrollHeight };
+    setRevealedPrev((n) => Math.min(prevCues.length, n + 10));
+  }
+
+  function collapsePrev() {
+    setRevealedPrev(1);
+    userScrolledRef.current = false;
+    if (userScrollTimerRef.current) {
+      clearTimeout(userScrollTimerRef.current);
+      userScrollTimerRef.current = null;
+    }
+    // After the layout settles, scroll the current cue back into view.
+    requestAnimationFrame(() => {
+      currentRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  // Track manual scroll: pauses auto-scroll for 6 s + triggers reveal when
+  // user reaches the top boundary.
+  function handlePanelScroll() {
+    userScrolledRef.current = true;
+    if (userScrollTimerRef.current) clearTimeout(userScrollTimerRef.current);
+    userScrollTimerRef.current = setTimeout(() => {
+      userScrolledRef.current = false;
+    }, 6000);
+
+    const c = scrollContainerRef.current;
+    if (!c) return;
+    if (c.scrollTop < 60 && revealedPrev < prevCues.length) {
+      revealMorePrev();
+    }
+  }
+
+  // After revealing more prevs, restore visual scroll position so the user's
+  // viewport doesn't jump.
+  useLayoutEffect(() => {
+    const c = scrollContainerRef.current;
+    const adjust = pendingScrollAdjustRef.current;
+    if (!c || !adjust) return;
+    const delta = c.scrollHeight - adjust.sh;
+    c.scrollTop = adjust.st + delta;
+    pendingScrollAdjustRef.current = null;
+  }, [revealedPrev]);
+
+  // Auto-scroll the current cue into view, BUT only when (a) user isn't
+  // actively scrolled away and (b) the cue isn't already visible.
+  useEffect(() => {
+    if (userScrolledRef.current) return;
+    const el = currentRef.current;
+    const container = scrollContainerRef.current;
+    if (!el || !container) return;
+    const ercbottom = el.offsetTop + el.offsetHeight;
+    const top = container.scrollTop;
+    const bottom = top + container.clientHeight;
+    const fullyVisible = el.offsetTop >= top + 20 && ercbottom <= bottom - 20;
+    if (!fullyVisible) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }, [currentCue?.id]);
 
+  // Cleanup the timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (userScrollTimerRef.current) clearTimeout(userScrollTimerRef.current);
+    };
+  }, []);
+
+  const sizeClass = SIZE_CLASS[fontSize];
+
+  // Karaoke: compute active word index from time elapsed within the current
+  // cue. Approximation — we don't have real per-word timing in YouTube .vtt,
+  // so we divide the cue duration evenly across words.
+  const activeWordIndex = useMemo(() => {
+    if (!currentCue || popupOpen) return null;
+    const dur = currentCue.end_s - currentCue.start_s;
+    if (dur <= 0) return null;
+    const elapsed = currentTime - currentCue.start_s;
+    if (elapsed < 0 || elapsed >= dur) return null;
+    const wordCount = currentCue.text
+      .split(/\s+/)
+      .filter((w) => /\p{L}/u.test(w)).length;
+    if (wordCount === 0) return null;
+    return Math.min(Math.floor((elapsed / dur) * wordCount), wordCount - 1);
+  }, [currentCue, currentTime, popupOpen]);
+
   return (
-    <div className="border rounded-xl bg-card p-4 mt-3 space-y-2">
-      {prevCue && <CueRow cue={prevCue} dim />}
+    <div
+      className="relative mt-3 max-h-[calc(100vh-9.5rem)]"
+      style={heightStyle}
+    >
+    <div
+      ref={scrollContainerRef}
+      onScroll={handlePanelScroll}
+      className="border rounded-2xl bg-card p-4 space-y-2 relative h-full overflow-y-auto"
+    >
+      {(revealedPrev < prevCues.length || revealedPrev > 1) && (
+        <div className="flex items-center gap-2 -mt-1 mb-1">
+          {revealedPrev < prevCues.length && (
+            <button
+              onClick={revealMorePrev}
+              className="flex-1 flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1.5 rounded hover:bg-muted/40"
+              title="Mostrar 10 cues anteriores más"
+            >
+              <ChevronUp className="h-3 w-3" />
+              Ver anteriores ({prevCues.length - revealedPrev} disponibles)
+            </button>
+          )}
+          {revealedPrev > 1 && (
+            <button
+              onClick={collapsePrev}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded hover:bg-muted/40 shrink-0"
+              title="Ocultar historial y volver al cue actual"
+            >
+              <X className="h-3 w-3" />
+              Ocultar
+            </button>
+          )}
+        </div>
+      )}
+      {prevCues.slice(prevCues.length - revealedPrev).map((c, i) => {
+        const visibleCount = revealedPrev;
+        // Older prev cues (further from current) more faded.
+        const distance = visibleCount - 1 - i;
+        const fadeClass =
+          distance === 0
+            ? "text-muted-foreground/85"
+            : distance < 5
+            ? "text-muted-foreground/65"
+            : "text-muted-foreground/45";
+        return (
+          <CueRow
+            key={c.id}
+            cue={c}
+            dim
+            fadeClass={fadeClass}
+            hideSubs={hideSubs}
+            onClick={() => onCueSeek(c.start_s)}
+          />
+        );
+      })}
       {currentCue ? (
         <div
           ref={currentRef}
-          className={`max-h-[7rem] overflow-y-auto font-serif text-xl leading-relaxed transition-colors ${
+          className={`max-h-[9rem] overflow-y-auto font-serif ${sizeClass} leading-loose tracking-wide transition-colors ${
             popupOpen ? "bg-muted/30 rounded-md px-2 -mx-2" : ""
+          } ${
+            hideSubs
+              ? "blur-md hover:blur-none focus-within:blur-none transition-[filter] duration-200"
+              : ""
           }`}
+          title={hideSubs ? "Subs ocultos — pasa el cursor para revelar (H)" : undefined}
         >
           <CueWords
             cue={currentCue}
             capturedNormalized={capturedNormalized}
+            knownSet={knownSet}
             popupWordIndex={popupWordIndex}
+            activeWordIndex={activeWordIndex}
             onWordClick={onWordClick}
           />
         </div>
       ) : (
         <p className="text-muted-foreground italic">— sin cue activo —</p>
       )}
-      {nextCue && <CueRow cue={nextCue} dim />}
+      <div className="absolute top-1 right-2 flex items-center gap-2 pointer-events-none">
+        {abLoop && (
+          <span className="text-[10px] tabular bg-warning/30 rounded px-1.5 py-0.5">
+            A {formatTime(abLoop.a)} → B {formatTime(abLoop.b)}
+          </span>
+        )}
+        {currentCue && (
+          <span className="text-[10px] text-muted-foreground tabular">
+            {formatTime(currentCue.start_s)}
+          </span>
+        )}
+      </div>
+      {nextCues.map((c) => (
+        <CueRow
+          key={c.id}
+          cue={c}
+          dim
+          fadeClass="text-muted-foreground/80"
+          hideSubs={hideSubs}
+          onClick={() => onCueSeek(c.start_s)}
+        />
+      ))}
+    </div>
     </div>
   );
 }
 
-function CueRow({ cue, dim }: { cue: VideoCue; dim?: boolean }) {
+function CueRow({
+  cue,
+  dim,
+  fadeClass,
+  hideSubs,
+  onClick,
+}: {
+  cue: VideoCue;
+  dim?: boolean;
+  fadeClass?: string;
+  hideSubs?: boolean;
+  onClick?: () => void;
+}) {
   return (
-    <div className={dim ? "text-sm text-muted-foreground line-clamp-2" : ""}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`block w-full text-left rounded-sm hover:bg-muted/50 transition-colors px-1 -mx-1 ${
+        dim
+          ? `text-base ${fadeClass ?? "text-muted-foreground/80"} leading-relaxed line-clamp-2`
+          : ""
+      } ${
+        hideSubs
+          ? "blur-md hover:blur-none focus:blur-none transition-[filter] duration-200"
+          : ""
+      }`}
+      title={hideSubs ? "Subs ocultos — pasa el cursor (H)" : "Saltar a este cue"}
+    >
       {cue.text}
-    </div>
+    </button>
   );
 }
 
 function CueWords({
   cue,
   capturedNormalized,
+  knownSet,
   popupWordIndex,
+  activeWordIndex,
   onWordClick,
 }: {
   cue: VideoCue;
   capturedNormalized: Set<string>;
+  knownSet?: Set<string>;
   popupWordIndex: number | null;
+  activeWordIndex: number | null;
   onWordClick: (p: WordClickPayload) => void;
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,15 +346,21 @@ function CueWords({
                 cueEnd: cue.end_s,
                 cueText: cue.text,
                 span: e.currentTarget,
+                quickSave: e.shiftKey,
               })
             }
+            title="Click: definición · Shift+click: guardar directo"
             className={`inline cursor-pointer rounded-sm transition-[outline,background-color] ${
               capturedNormalized.has(t.text.toLowerCase())
                 ? "underline decoration-accent decoration-2 underline-offset-4"
+                : knownSet && t.text.length >= 4 && !knownSet.has(t.text.toLowerCase())
+                ? "underline decoration-dotted decoration-muted-foreground/40 underline-offset-4"
                 : ""
             } ${
               popupWordIndex === t.index
                 ? "outline outline-2 outline-accent bg-accent/10"
+                : activeWordIndex === t.index
+                ? "bg-warning/40"
                 : ""
             }`}
           >

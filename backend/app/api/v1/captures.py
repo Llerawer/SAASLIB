@@ -89,11 +89,47 @@ async def create_capture(
     )
 
 
+@router.get("/lemmas", response_model=list[str])
+@limiter.limit("60/minute")
+async def list_capture_lemmas(
+    request: Request,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Return ALL distinct word_normalized values for the user's captures.
+
+    Used by the video reader to mark unknown words at a glance — much
+    cheaper than fetching full capture rows. Paginates explicitly because
+    Supabase REST caps at 1000 rows per page.
+    """
+    client = get_user_client(auth.jwt)
+    seen: set[str] = set()
+    PAGE = 1000
+    page = 0
+    while True:
+        res = (
+            client.table("captures")
+            .select("word_normalized")
+            .eq("user_id", auth.user_id)
+            .range(page * PAGE, (page + 1) * PAGE - 1)
+            .execute()
+        )
+        chunk = res.data or []
+        for r in chunk:
+            w = r.get("word_normalized")
+            if w:
+                seen.add(w)
+        if len(chunk) < PAGE:
+            break
+        page += 1
+    return sorted(seen)
+
+
 @router.get("", response_model=list[CaptureOut])
 @limiter.limit("60/minute")
 async def list_captures(
     request: Request,
     book_id: str | None = None,
+    video_id: str | None = None,
     promoted: bool | None = None,
     tag: str | None = None,
     q: str | None = None,
@@ -112,6 +148,8 @@ async def list_captures(
     )
     if book_id is not None:
         query = query.eq("book_id", book_id)
+    if video_id is not None:
+        query = query.eq("video_id", video_id)
     if promoted is not None:
         query = query.eq("promoted_to_card", promoted)
     if tag is not None:

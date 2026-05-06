@@ -3,17 +3,33 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
+import { toast } from "sonner";
 import {
-  useVideoStatus,
+  useCaptureLemmas,
+  useCreateCapture,
+  usePromoteCaptures,
+  useUpdateVideoProgress,
+  useVideoCaptures,
   useVideoCues,
+  useVideoProgress,
+  useVideoStatus,
 } from "@/lib/api/queries";
+import { Sparkles } from "lucide-react";
+import { formatTime } from "@/lib/video/format-time";
 import { useCueTracker } from "@/lib/video/use-cue-tracker";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video/video-player";
-import { VideoSubsPanel, type WordClickPayload } from "@/components/video/video-subs-panel";
+import {
+  VideoSubsPanel,
+  type WordClickPayload,
+  type FontSize,
+} from "@/components/video/video-subs-panel";
 import { VideoControls } from "@/components/video/video-controls";
+import { VideoTocSheet } from "@/components/video/video-toc-sheet";
 import { WordPopup } from "@/components/word-popup";
 import { Button } from "@/components/ui/button";
+import CubeLoader from "@/components/ui/cube-loader";
 
 export default function WatchPage({
   params,
@@ -21,18 +37,59 @@ export default function WatchPage({
   params: Promise<{ videoId: string }>;
 }) {
   const { videoId } = use(params);
+  const router = useRouter();
   const playerRef = useRef<VideoPlayerHandle | null>(null);
 
   const status = useVideoStatus(videoId);
   const cues = useVideoCues(status.data?.status === "done" ? videoId : null);
+  const progress = useVideoProgress(status.data?.status === "done" ? videoId : null);
+  const updateProgress = useUpdateVideoProgress();
 
-  // TODO: wire useCapturedWords (or actual hook name) when available for video captures.
-  const capturedSet = useMemo(() => new Set<string>(), []);
+  const videoCaptures = useVideoCaptures(
+    status.data?.status === "done" ? videoId : null,
+  );
+  // Global "what the user already knows" — drives both the captured-mark
+  // (you've seen this before) and the unknown-mark (worth pausing on).
+  const allLemmas = useCaptureLemmas();
+  const knownSet = useMemo(
+    () => new Set((allLemmas.data ?? []).map((w) => w.toLowerCase())),
+    [allLemmas.data],
+  );
+  const captureCount = videoCaptures.data?.length ?? 0;
+  const unpromotedIds = useMemo(
+    () =>
+      (videoCaptures.data ?? [])
+        .filter((c) => !c.promoted_to_card)
+        .map((c) => c.id),
+    [videoCaptures.data],
+  );
+  const promote = usePromoteCaptures();
 
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [loop, setLoop] = useState(false);
+  const [fontSize, setFontSize] = useState<FontSize>(() => {
+    if (typeof window === "undefined") return "md";
+    const v = localStorage.getItem("video-font-size");
+    return v === "sm" || v === "md" || v === "lg" ? v : "md";
+  });
+  const [autoPause, setAutoPause] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("video-auto-pause") === "1";
+  });
+  const [hideSubs, setHideSubs] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("video-hide-subs") === "1";
+  });
+  const [pointA, setPointA] = useState<number | null>(null);
+  const [pointB, setPointB] = useState<number | null>(null);
+  const [tocOpen, setTocOpen] = useState(false);
+  const videoBoxRef = useRef<HTMLDivElement | null>(null);
+  const [videoBoxHeight, setVideoBoxHeight] = useState<number | null>(null);
+  const lastAutoPausedCueRef = useRef<string | null>(null);
+  const resumedRef = useRef(false);
+  const lastSavedProgressRef = useRef(0);
   const [popup, setPopup] = useState<
     | {
         word: string;
@@ -45,7 +102,88 @@ export default function WatchPage({
     | null
   >(null);
 
-  const tracker = useCueTracker(cues.data, currentTime);
+  // 50 prev cues so the user can scroll up through the recent transcript;
+  // 1 next cue is enough as a hint of what's coming.
+  const tracker = useCueTracker(cues.data, currentTime, 50, 1);
+
+  // Persist UI prefs.
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem("video-font-size", fontSize);
+  }, [fontSize]);
+  useEffect(() => {
+    if (typeof window !== "undefined")
+      localStorage.setItem("video-auto-pause", autoPause ? "1" : "0");
+  }, [autoPause]);
+  useEffect(() => {
+    if (typeof window !== "undefined")
+      localStorage.setItem("video-hide-subs", hideSubs ? "1" : "0");
+  }, [hideSubs]);
+
+  // Resume from last position. Wait until both progress and cues loaded so
+  // tracker doesn't flicker. Fire seekTo once.
+  useEffect(() => {
+    if (resumedRef.current) return;
+    if (!progress.data || !cues.data) return;
+    const target = progress.data.last_position_s;
+    // Skip resume if it'd land within 5s of start (no point) or past end.
+    const max = (status.data?.duration_s ?? Infinity) - 5;
+    if (target > 5 && target < max) {
+      // Defer the seek slightly so the YT iframe is ready.
+      const t = setTimeout(() => playerRef.current?.seekTo(target), 800);
+      resumedRef.current = true;
+      return () => clearTimeout(t);
+    }
+    resumedRef.current = true;
+  }, [progress.data, cues.data, status.data?.duration_s]);
+
+  // Debounced progress save: every 5s of advance, write last position.
+  useEffect(() => {
+    const t = Math.floor(currentTime);
+    if (t < 1) return;
+    if (Math.abs(t - lastSavedProgressRef.current) < 5) return;
+    lastSavedProgressRef.current = t;
+    updateProgress.mutate({ videoId, last_position_s: t });
+  }, [currentTime, videoId, updateProgress]);
+
+  // Measure the video container so the subs panel can match its height
+  // (1:1 visual alignment in side-by-side layout).
+  useEffect(() => {
+    const el = videoBoxRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height;
+      if (h) setVideoBoxHeight(Math.round(h));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // A-B loop: when both points set and currentTime crosses B, seek back to A.
+  useEffect(() => {
+    if (pointA == null || pointB == null) return;
+    if (currentTime >= pointB - 0.05) {
+      playerRef.current?.seekTo(pointA);
+    }
+  }, [currentTime, pointA, pointB]);
+
+  // Auto-pause at end of cue (per-cue once, with re-arm on cue change or rewind).
+  useEffect(() => {
+    if (!autoPause || popup || !tracker.currentCue) return;
+    const cue = tracker.currentCue;
+    const past = currentTime >= cue.end_s - 0.05;
+    const fresh = lastAutoPausedCueRef.current !== cue.id;
+    if (past && fresh) {
+      lastAutoPausedCueRef.current = cue.id;
+      playerRef.current?.pause();
+      setIsPlaying(false);
+    } else if (!past && lastAutoPausedCueRef.current === cue.id) {
+      lastAutoPausedCueRef.current = null; // user seeked back; re-arm
+    }
+  }, [autoPause, popup, currentTime, tracker.currentCue]);
+
+  useEffect(() => {
+    lastAutoPausedCueRef.current = null;
+  }, [tracker.currentCue?.id]);
 
   // Loop cue: when current cue ends, seek back if loop is on.
   useEffect(() => {
@@ -55,22 +193,46 @@ export default function WatchPage({
     }
   }, [loop, currentTime, tracker.currentCue]);
 
-  const handleWordClick = useCallback((payload: WordClickPayload) => {
-    const wasPlaying = !(playerRef.current?.isPaused() ?? true);
-    playerRef.current?.pause();
-    playerRef.current?.seekTo(payload.cueStart);
-    setIsPlaying(false);
-    const rect = payload.span.getBoundingClientRect();
-    const wordIndex = parseInt(payload.span.dataset.wordIdx ?? "0", 10);
-    setPopup({
-      word: payload.word,
-      position: { x: rect.left, y: rect.bottom + 8 },
-      cueStart: payload.cueStart,
-      cueText: payload.cueText,
-      wordIndex,
-      wasPlaying,
-    });
-  }, []);
+  const quickCapture = useCreateCapture({
+    onSuccess: (c) => toast.success(`Guardado: ${c.word_normalized}`),
+    onError: (e) => toast.error(`No se pudo guardar: ${e.message}`),
+  });
+
+  // Backward-compat alias for the SubsPanel prop name.
+  const capturedSet = knownSet;
+
+  const handleWordClick = useCallback(
+    (payload: WordClickPayload) => {
+      // Shift+click: capture instantly without opening the popup.
+      if (payload.quickSave) {
+        quickCapture.mutate({
+          word: payload.word,
+          context_sentence: payload.cueText,
+          source: {
+            kind: "video",
+            videoId,
+            timestampSeconds: Math.round(payload.cueStart),
+          },
+        });
+        return;
+      }
+      const wasPlaying = !(playerRef.current?.isPaused() ?? true);
+      playerRef.current?.pause();
+      playerRef.current?.seekTo(payload.cueStart);
+      setIsPlaying(false);
+      const rect = payload.span.getBoundingClientRect();
+      const wordIndex = parseInt(payload.span.dataset.wordIdx ?? "0", 10);
+      setPopup({
+        word: payload.word,
+        position: { x: rect.left, y: rect.bottom + 8 },
+        cueStart: payload.cueStart,
+        cueText: payload.cueText,
+        wordIndex,
+        wasPlaying,
+      });
+    },
+    [videoId, quickCapture],
+  );
 
   const handlePopupClose = useCallback(() => {
     if (popup?.wasPlaying) {
@@ -100,17 +262,40 @@ export default function WatchPage({
         }
       } else if (e.key === "l" || e.key === "L") {
         setLoop((v) => !v);
+      } else if (e.key === "p" || e.key === "P") {
+        setAutoPause((v) => !v);
+      } else if (e.key === "h" || e.key === "H") {
+        setHideSubs((v) => !v);
+      } else if (e.key === "a" || e.key === "A") {
+        setPointA(playerRef.current?.getCurrentTime() ?? currentTime);
+      } else if (e.key === "b" || e.key === "B") {
+        setPointB(playerRef.current?.getCurrentTime() ?? currentTime);
+      } else if (e.key === "x" || e.key === "X") {
+        // Clear A-B loop.
+        setPointA(null);
+        setPointB(null);
+      } else if (e.key === "t" || e.key === "T") {
+        setTocOpen((v) => !v);
       } else if (e.key === "ArrowLeft") {
-        if (tracker.prevCue) playerRef.current?.seekTo(tracker.prevCue.start_s);
+        const prev = tracker.prevCues.at(-1);
+        if (prev) playerRef.current?.seekTo(prev.start_s);
       } else if (e.key === "ArrowRight") {
-        if (tracker.nextCue) playerRef.current?.seekTo(tracker.nextCue.start_s);
+        const next = tracker.nextCues[0];
+        if (next) playerRef.current?.seekTo(next.start_s);
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [popup, isPlaying, tracker.currentCue, tracker.prevCue, tracker.nextCue]);
+  }, [popup, isPlaying, currentTime, tracker.currentCue, tracker.prevCues, tracker.nextCues]);
 
-  if (status.isLoading) return <Centered>Cargando...</Centered>;
+  if (status.isLoading) {
+    return (
+      <LoadingScreen
+        title="Cargando video…"
+        subtitle="Conectando con el servidor."
+      />
+    );
+  }
   if (status.isError || !status.data) {
     return (
       <Centered>
@@ -120,7 +305,12 @@ export default function WatchPage({
     );
   }
   if (status.data.status === "processing" || status.data.status === "pending") {
-    return <Centered>Procesando subtítulos…</Centered>;
+    return (
+      <LoadingScreen
+        title="Procesando subtítulos"
+        subtitle="Descargando .vtt de YouTube e indexando cues. Toma ~10–20 s."
+      />
+    );
   }
   if (status.data.status === "error") {
     return (
@@ -134,47 +324,122 @@ export default function WatchPage({
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      <h1 className="text-lg font-semibold mb-3 line-clamp-2">{status.data.title ?? videoId}</h1>
+    <div className="max-w-7xl mx-auto p-4 md:p-6">
+      <header className="mb-4">
+        <h1 className="text-2xl md:text-3xl font-serif font-semibold tracking-tight line-clamp-2">
+          {status.data.title ?? videoId}
+        </h1>
+        <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground tabular flex-wrap">
+          {status.data.duration_s != null && (
+            <span className="inline-flex items-center gap-1">
+              <span className="size-1 rounded-full bg-muted-foreground/60" aria-hidden />
+              {formatTime(status.data.duration_s)}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1">
+            <span className="size-1 rounded-full bg-accent" aria-hidden />
+            {captureCount} {captureCount === 1 ? "palabra capturada" : "palabras capturadas"} de este video
+          </span>
+          {unpromotedIds.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              disabled={promote.isPending}
+              onClick={async () => {
+                try {
+                  const r = await promote.mutateAsync({
+                    capture_ids: unpromotedIds,
+                  });
+                  toast.success(
+                    `${r.created_count} tarjeta${r.created_count === 1 ? "" : "s"} nueva${r.created_count === 1 ? "" : "s"} en tu repaso`,
+                  );
+                  router.push("/srs");
+                } catch (e) {
+                  toast.error(`Error: ${(e as Error).message}`);
+                }
+              }}
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              {promote.isPending
+                ? "Promoviendo…"
+                : `Estudiar ${unpromotedIds.length} ${unpromotedIds.length === 1 ? "palabra nueva" : "palabras nuevas"}`}
+            </Button>
+          )}
+        </div>
+      </header>
 
-      <VideoPlayer
-        ref={playerRef}
-        videoId={videoId}
-        onTimeUpdate={(t) => {
-          setCurrentTime(t);
-          setIsPlaying(!(playerRef.current?.isPaused() ?? true));
-        }}
-      />
+      <div className="lg:flex lg:gap-6 lg:items-start lg:h-[calc(100vh-9.5rem)]">
+        {/* Left column: video (sticky) + controls */}
+        <div className="lg:w-7/12 lg:h-full lg:overflow-y-auto lg:pr-1">
+          <div
+            ref={videoBoxRef}
+            className="lg:sticky lg:top-0 lg:z-10 rounded-2xl bg-gradient-to-b from-muted/30 to-transparent p-1"
+          >
+            <VideoPlayer
+              ref={playerRef}
+              videoId={videoId}
+              onTimeUpdate={(t) => {
+                setCurrentTime(t);
+                setIsPlaying(!(playerRef.current?.isPaused() ?? true));
+              }}
+            />
+          </div>
 
-      <VideoSubsPanel
-        prevCue={tracker.prevCue}
-        currentCue={tracker.currentCue}
-        nextCue={tracker.nextCue}
-        capturedNormalized={capturedSet}
-        popupOpen={popup !== null}
-        popupWordIndex={popup?.wordIndex ?? null}
-        onWordClick={handleWordClick}
-      />
+          <VideoControls
+            isPlaying={isPlaying}
+            speed={speed}
+            loop={loop}
+            fontSize={fontSize}
+            autoPause={autoPause}
+            onTogglePlay={() => {
+              if (isPlaying) playerRef.current?.pause();
+              else playerRef.current?.play();
+              setIsPlaying(!isPlaying);
+            }}
+            onSpeedChange={(s) => {
+              setSpeed(s);
+              playerRef.current?.setPlaybackRate(s);
+            }}
+            onToggleLoop={() => setLoop((v) => !v)}
+            onReplayCue={() => {
+              if (tracker.currentCue) {
+                playerRef.current?.seekTo(tracker.currentCue.start_s);
+              }
+            }}
+            onFontSizeChange={setFontSize}
+            onToggleAutoPause={() => setAutoPause((v) => !v)}
+            onOpenToc={() => setTocOpen(true)}
+          />
+        </div>
 
-      <VideoControls
-        isPlaying={isPlaying}
-        speed={speed}
-        loop={loop}
-        onTogglePlay={() => {
-          if (isPlaying) playerRef.current?.pause();
-          else playerRef.current?.play();
-          setIsPlaying(!isPlaying);
-        }}
-        onSpeedChange={(s) => {
-          setSpeed(s);
-          playerRef.current?.setPlaybackRate(s);
-        }}
-        onToggleLoop={() => setLoop((v) => !v)}
-        onReplayCue={() => {
-          if (tracker.currentCue) {
-            playerRef.current?.seekTo(tracker.currentCue.start_s);
-          }
-        }}
+        {/* Right column: subs panel handles its own scroll */}
+        <div className="lg:w-5/12 lg:h-full mt-4 lg:mt-0 lg:pl-1">
+          <VideoSubsPanel
+            prevCues={tracker.prevCues}
+            currentCue={tracker.currentCue}
+            nextCues={tracker.nextCues}
+            currentTime={currentTime}
+            capturedNormalized={capturedSet}
+            popupOpen={popup !== null}
+            popupWordIndex={popup?.wordIndex ?? null}
+            fontSize={fontSize}
+            hideSubs={hideSubs}
+            matchHeight={videoBoxHeight}
+            abLoop={pointA != null && pointB != null ? { a: pointA, b: pointB } : null}
+            knownSet={knownSet}
+            onWordClick={handleWordClick}
+            onCueSeek={(s) => playerRef.current?.seekTo(s)}
+          />
+        </div>
+      </div>
+
+      <VideoTocSheet
+        open={tocOpen}
+        onOpenChange={setTocOpen}
+        cues={cues.data ?? []}
+        currentIndex={tracker.currentIndex}
+        onSeek={(s) => playerRef.current?.seekTo(s)}
       />
 
       {popup && tracker.currentCue && (
@@ -183,7 +448,7 @@ export default function WatchPage({
           normalizedClient={popup.word.toLowerCase()}
           contextSentence={popup.cueText}
           position={popup.position}
-          alreadyCaptured={capturedSet.has(popup.word.toLowerCase())}
+          alreadyCaptured={knownSet.has(popup.word.toLowerCase())}
           source={{ kind: "video", videoId, timestampSeconds: Math.round(popup.cueStart) }}
           onClose={handlePopupClose}
         />
@@ -194,4 +459,18 @@ export default function WatchPage({
 
 function Centered({ children }: { children: React.ReactNode }) {
   return <div className="max-w-2xl mx-auto p-8 text-center">{children}</div>;
+}
+
+function LoadingScreen({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="max-w-2xl mx-auto">
+      <CubeLoader title={title} subtitle={subtitle} />
+    </div>
+  );
 }

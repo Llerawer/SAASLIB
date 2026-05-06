@@ -8,6 +8,8 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIngestVideo, useListVideos } from "@/lib/api/queries";
 import { VideoCard } from "@/components/video/video-card";
+import { parseVideoId } from "@/lib/video/parse-url";
+import CubeLoader from "@/components/ui/cube-loader";
 
 export default function VideosPage() {
   const router = useRouter();
@@ -15,25 +17,35 @@ export default function VideosPage() {
   const ingest = useIngestVideo();
   const [url, setUrl] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
-    try {
-      const meta = await ingest.mutateAsync({ url });
-      toast.success(`Ingestado: ${meta.title ?? meta.video_id}`);
-      setUrl("");
-      router.push(`/watch/${meta.video_id}`);
-    } catch (err) {
-      const detail = (err as Error & { detail?: { error_reason?: string } }).detail;
-      const reason = detail?.error_reason ?? "unknown";
-      const copy: Record<string, string> = {
-        invalid_url: "Esa URL no es de YouTube.",
-        not_found: "Ese video no existe o es privado.",
-        no_subs: "Este video no tiene subtítulos en inglés.",
-        ingest_failed: "Algo falló al procesar. Intenta de nuevo.",
-      };
-      toast.error(copy[reason] ?? (err as Error).message);
+    // Parse video_id client-side so we can navigate immediately. The watch
+    // page polls status; the ingest mutation runs in the background.
+    const videoId = parseVideoId(url);
+    if (!videoId) {
+      toast.error("Esa URL no es de YouTube.");
+      return;
     }
+    ingest.mutate(
+      { url },
+      {
+        onError: (err) => {
+          const detail = (err as Error & { detail?: { error_reason?: string } })
+            .detail;
+          const reason = detail?.error_reason ?? "unknown";
+          const copy: Record<string, string> = {
+            invalid_url: "Esa URL no es de YouTube.",
+            not_found: "Ese video no existe o es privado.",
+            no_subs: "Este video no tiene subtítulos en inglés.",
+            ingest_failed: "Algo falló al procesar. Intenta de nuevo.",
+          };
+          toast.error(copy[reason] ?? err.message);
+        },
+      },
+    );
+    setUrl("");
+    router.push(`/watch/${videoId}`);
   }
 
   return (
@@ -57,7 +69,12 @@ export default function VideosPage() {
         </Button>
       </form>
 
-      {list.isLoading && <p className="text-muted-foreground">Cargando...</p>}
+      {list.isLoading && (
+        <CubeLoader
+          title="Cargando videos"
+          subtitle="Recogiendo tus videos recientes…"
+        />
+      )}
       {list.data && list.data.length === 0 && (
         <p className="text-muted-foreground">
           No hay videos todavía. Pega una URL arriba para empezar.

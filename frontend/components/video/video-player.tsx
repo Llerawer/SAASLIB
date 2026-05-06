@@ -114,7 +114,7 @@ export const VideoPlayer = forwardRef<
   }), []);
 
   return (
-    <div className="aspect-video bg-black rounded-xl overflow-hidden">
+    <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-xl ring-1 ring-foreground/5">
       <div ref={containerRef} className="w-full h-full" />
     </div>
   );

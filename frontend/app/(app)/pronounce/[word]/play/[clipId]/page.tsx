@@ -89,6 +89,10 @@ export default function PronounceDeckPage({
   const [repCount, setRepCount] = useState(0);
   // pulseKey drives sentence-pulse animation; incremented on each loop.
   const [pulseKey, setPulseKey] = useState(0);
+  // Tracks YT player state. Drives the "▶ Reproducir" overlay shown when
+  // the player is paused (manual mode after segment end, autoplay blocked,
+  // user clicked pause inside the iframe).
+  const [playing, setPlaying] = useState(false);
 
   const playerRef = useRef<DeckPlayerHandle | null>(null);
 
@@ -221,9 +225,6 @@ export default function PronounceDeckPage({
         case "1":
           e.preventDefault();
           setSpeed(0.5);
-          // Speed is visual-only in v1.1 (postMessage was unreliable;
-          // see commit history). Persists in localStorage; chip reflects
-          // user preference. Re-applying to audio is a follow-up task.
           break;
         case "2":
           e.preventDefault();
@@ -326,9 +327,30 @@ export default function PronounceDeckPage({
           <PronounceDeckPlayer
             ref={playerRef}
             clip={clip}
+            speed={speed}
             autoLoop={mode !== "manual"}
+            onPlayingChange={setPlaying}
             onSegmentLoop={handleSegmentLoop}
           />
+          {!playing && (
+            <button
+              type="button"
+              onClick={handleRepeatManual}
+              aria-label="Reproducir clip"
+              className="absolute inset-0 flex items-center justify-center bg-black/40 hover:bg-black/50 transition-colors rounded-lg group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="flex items-center justify-center size-16 rounded-full bg-white/90 text-black shadow-lg group-hover:scale-105 transition-transform">
+                <svg
+                  className="h-7 w-7 ml-1"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+            </button>
+          )}
         </div>
 
         <button
@@ -377,12 +399,7 @@ export default function PronounceDeckPage({
         repCount={repCount}
         autoPlaysPerClip={AUTO_PLAYS_PER_CLIP}
         speed={speed}
-        onSpeedChange={(s) => {
-          // Visual-only in v1.1 (player no longer exposes setSpeed —
-          // postMessage proved unreliable). Preference persists for the
-          // moment we get a working channel back.
-          setSpeed(s);
-        }}
+        onSpeedChange={setSpeed}
         onRepeat={handleRepeatManual}
         meta={`${clip.channel}${clip.accent ? ` · ${clip.accent}` : ""}`}
       />
