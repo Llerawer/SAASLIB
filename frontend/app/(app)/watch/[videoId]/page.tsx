@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/queries";
 import { Sparkles } from "lucide-react";
 import { formatTime } from "@/lib/video/format-time";
+import { videoErrorCopy } from "@/lib/video/error-messages";
 import { useCueTracker } from "@/lib/video/use-cue-tracker";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video/video-player";
 import {
@@ -146,13 +147,16 @@ export default function WatchPage({
   }, [currentTime, videoId, updateProgress]);
 
   // Measure the video container so the subs panel can match its height
-  // (1:1 visual alignment in side-by-side layout).
+  // (1:1 visual alignment in side-by-side layout). Use offsetHeight
+  // (border-box) instead of contentRect so the panel matches the video's
+  // *rendered* height including its p-1 wrapper padding — otherwise the
+  // panel ends up 8px shorter and bottoms misalign.
   useEffect(() => {
     const el = videoBoxRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((entries) => {
-      const h = entries[0]?.contentRect.height;
-      if (h) setVideoBoxHeight(Math.round(h));
+    const ro = new ResizeObserver(() => {
+      const h = el.offsetHeight;
+      if (h) setVideoBoxHeight(h);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -316,9 +320,9 @@ export default function WatchPage({
     return (
       <Centered>
         <p className="text-destructive mb-4">
-          Error al procesar: {status.data.error_reason ?? "desconocido"}
+          Error al procesar: {videoErrorCopy(status.data.error_reason)}
         </p>
-        <Link href="/watch"><Button>Volver a /watch</Button></Link>
+        <Link href="/videos"><Button>Volver a videos</Button></Link>
       </Centered>
     );
   }

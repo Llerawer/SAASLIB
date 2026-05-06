@@ -3,7 +3,17 @@
 import React from "react";
 import styles from "./cube-loader.module.css";
 
-export default function CubeLoader() {
+export type CubeLoaderProps = {
+  /** Top label, defaults to "Loading". */
+  title?: string;
+  /** Sub-label below, defaults to "Preparing your experience, please wait…". */
+  subtitle?: string;
+};
+
+export default function CubeLoader({
+  title = "Loading",
+  subtitle = "Preparing your experience, please wait…",
+}: CubeLoaderProps = {}) {
   return (
     <div className="flex flex-col items-center justify-center gap-12 p-12 min-h-[400px] bg-slate-950/0">
       <div className={styles.container}>
@@ -54,11 +64,9 @@ export default function CubeLoader() {
 
       <div className="flex flex-col items-center gap-1 mt-2">
         <h3 className="text-sm font-semibold tracking-[0.3em] text-cyan-300 uppercase">
-          Loading
+          {title}
         </h3>
-        <p className="text-xs text-slate-400">
-          Preparing your experience, please wait…
-        </p>
+        <p className="text-xs text-slate-400">{subtitle}</p>
       </div>
     </div>
   );
