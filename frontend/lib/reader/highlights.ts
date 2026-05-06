@@ -56,6 +56,18 @@ export function applyAllHighlights(
     const cb = onClick
       ? (event: MouseEvent) => onClick(h.id, event)
       : undefined;
+    // CRITICAL: remove first. epub.js's add() does NOT dedupe — it
+    // overwrites the registry entry but leaves the previous SVG mark
+    // orphaned in the SVG pane. Subsequent annotation.remove() then
+    // only un-paints the most-recent registration; the orphan persists.
+    // Calling remove() before add() guarantees each CFI maps to exactly
+    // one rendered SVG. remove() is a no-op when the CFI isn't yet
+    // registered, so this is safe on the first paint too.
+    try {
+      rendition.annotations.remove(h.cfi_range, "highlight");
+    } catch {
+      // not registered; continue
+    }
     rendition.annotations.highlight(
       h.cfi_range,
       { id: h.id, color: h.color },
