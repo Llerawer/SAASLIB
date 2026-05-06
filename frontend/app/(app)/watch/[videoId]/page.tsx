@@ -16,7 +16,7 @@ import {
   useVideoProgress,
   useVideoStatus,
 } from "@/lib/api/queries";
-import { Sparkles } from "lucide-react";
+import { Keyboard, Sparkles } from "lucide-react";
 import { formatTime } from "@/lib/video/format-time";
 import { videoErrorCopy } from "@/lib/video/error-messages";
 import { useCueTracker } from "@/lib/video/use-cue-tracker";
@@ -28,6 +28,7 @@ import {
 } from "@/components/video/video-subs-panel";
 import { SPEEDS, VideoControls } from "@/components/video/video-controls";
 import { VideoTocSheet } from "@/components/video/video-toc-sheet";
+import { KeyboardShortcutsDialog } from "@/components/video/keyboard-shortcuts-dialog";
 import { WordPopup } from "@/components/word-popup";
 import { Button } from "@/components/ui/button";
 import CubeLoader from "@/components/ui/cube-loader";
@@ -197,15 +198,21 @@ export default function WatchPage({
   // see current state. The popup owns its own keys (Esc/save) so we
   // bail entirely when it's open.
 
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
   type KbHandlers = {
     togglePlay: () => void;
     prevCue: () => void;
     nextCue: () => void;
     speedUp: () => void;
     speedDown: () => void;
+    replayCue: () => void;
     toggleLoop: () => void;
+    toggleAutoPause: () => void;
     toggleHideSubs: () => void;
     openToc: () => void;
+    toggleToc: () => void;
+    openHelp: () => void;
   };
   const kbHandlersRef = useRef<KbHandlers>({
     togglePlay: () => {},
@@ -213,9 +220,13 @@ export default function WatchPage({
     nextCue: () => {},
     speedUp: () => {},
     speedDown: () => {},
+    replayCue: () => {},
     toggleLoop: () => {},
+    toggleAutoPause: () => {},
     toggleHideSubs: () => {},
     openToc: () => {},
+    toggleToc: () => {},
+    openHelp: () => {},
   });
 
   useEffect(() => {
@@ -250,9 +261,16 @@ export default function WatchPage({
         const next = i >= 0 ? SPEEDS[Math.max(0, i - 1)] : 1;
         setSpeed(next);
       },
+      replayCue: () => {
+        const cur = tracker.currentCue;
+        if (cur) playerRef.current?.seekTo(cur.start_s);
+      },
       toggleLoop: () => setLoop((v) => !v),
+      toggleAutoPause: () => setAutoPause((v) => !v),
       toggleHideSubs: () => setHideSubs((v) => !v),
       openToc: () => setTocOpen(true),
+      toggleToc: () => setTocOpen((v) => !v),
+      openHelp: () => setShortcutsOpen(true),
     };
   }, [isPlaying, cues.data, tracker.currentCue, speed]);
 
@@ -296,19 +314,38 @@ export default function WatchPage({
           e.preventDefault();
           h.speedDown();
           break;
+        case "r":
+        case "R":
+          e.preventDefault();
+          h.replayCue();
+          break;
         case "l":
         case "L":
           e.preventDefault();
           h.toggleLoop();
+          break;
+        case "p":
+        case "P":
+          e.preventDefault();
+          h.toggleAutoPause();
           break;
         case "h":
         case "H":
           e.preventDefault();
           h.toggleHideSubs();
           break;
+        case "t":
+        case "T":
+          e.preventDefault();
+          h.toggleToc();
+          break;
         case "/":
           e.preventDefault();
           h.openToc();
+          break;
+        case "?":
+          e.preventDefault();
+          h.openHelp();
           break;
       }
     }
@@ -487,32 +524,46 @@ export default function WatchPage({
             </span>{" "}
             capturada{captureCount === 1 ? "" : "s"}
           </span>
-          {unpromotedIds.length > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-auto"
-              disabled={promote.isPending}
-              onClick={async () => {
-                try {
-                  const r = await promote.mutateAsync({
-                    capture_ids: unpromotedIds,
-                  });
-                  toast.success(
-                    `${r.created_count} tarjeta${r.created_count === 1 ? "" : "s"} nueva${r.created_count === 1 ? "" : "s"} en tu repaso`,
-                  );
-                  router.push("/srs");
-                } catch (e) {
-                  toast.error(`Error: ${(e as Error).message}`);
-                }
-              }}
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShortcutsOpen(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              title="Atajos de teclado (?)"
+              aria-label="Mostrar atajos de teclado"
             >
-              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-              {promote.isPending
-                ? "Promoviendo…"
-                : `Estudiar ${unpromotedIds.length} ${unpromotedIds.length === 1 ? "palabra" : "palabras"} nueva${unpromotedIds.length === 1 ? "" : "s"}`}
-            </Button>
-          )}
+              <Keyboard className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Atajos</span>
+              <kbd className="px-1.5 rounded border border-border text-[10px] tabular bg-muted font-mono">
+                ?
+              </kbd>
+            </button>
+            {unpromotedIds.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={promote.isPending}
+                onClick={async () => {
+                  try {
+                    const r = await promote.mutateAsync({
+                      capture_ids: unpromotedIds,
+                    });
+                    toast.success(
+                      `${r.created_count} tarjeta${r.created_count === 1 ? "" : "s"} nueva${r.created_count === 1 ? "" : "s"} en tu repaso`,
+                    );
+                    router.push("/srs");
+                  } catch (e) {
+                    toast.error(`Error: ${(e as Error).message}`);
+                  }
+                }}
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                {promote.isPending
+                  ? "Promoviendo…"
+                  : `Estudiar ${unpromotedIds.length} ${unpromotedIds.length === 1 ? "palabra" : "palabras"} nueva${unpromotedIds.length === 1 ? "" : "s"}`}
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -600,6 +651,11 @@ export default function WatchPage({
           onClose={handlePopupClose}
         />
       )}
+
+      <KeyboardShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+      />
     </div>
   );
 }

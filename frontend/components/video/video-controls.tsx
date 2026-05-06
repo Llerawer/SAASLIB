@@ -55,6 +55,7 @@ export function VideoControls({
         <button
           onClick={onTogglePlay}
           aria-label={isPlaying ? "Pausar" : "Reproducir"}
+          title={isPlaying ? "Pausar (Space)" : "Reproducir (Space)"}
           className={BTN_PRIMARY}
         >
           {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -69,7 +70,7 @@ export function VideoControls({
         </button>
       </div>
 
-      <div className={GROUP}>
+      <div className={GROUP} title="Velocidad (↑ / ↓)">
         {SPEEDS.map((s) => (
           <button
             key={s}
