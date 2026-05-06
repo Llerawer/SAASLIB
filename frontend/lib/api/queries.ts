@@ -841,7 +841,24 @@ export function useVideoStatus(videoId: string | null, opts?: { enabled?: boolea
 export function useVideoCues(videoId: string | null) {
   return useQuery<VideoCue[]>({
     queryKey: ["video-cues", videoId],
-    queryFn: () => api.get<VideoCue[]>(`/api/v1/videos/${videoId}/cues`),
+    queryFn: async () => {
+      const cues = await api.get<VideoCue[]>(
+        `/api/v1/videos/${videoId}/cues`,
+      );
+      // Defensive dedupe by id. The backend paginates with a stable
+      // (sentence_start_ms, id) sort so this should be a no-op, but
+      // keeping the guard means a stale cache from before that fix
+      // doesn't trigger React duplicate-key warnings in <VideoTocSheet>.
+      const seen = new Set<string>();
+      const out: VideoCue[] = [];
+      for (const c of cues) {
+        if (!seen.has(c.id)) {
+          seen.add(c.id);
+          out.push(c);
+        }
+      }
+      return out;
+    },
     enabled: !!videoId,
     staleTime: Infinity, // cues never change for a given video
   });

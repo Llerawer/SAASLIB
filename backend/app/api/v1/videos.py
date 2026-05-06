@@ -181,7 +181,14 @@ async def list_cues(
             client.table("pronunciation_clips")
             .select("id, sentence_start_ms, sentence_end_ms, sentence_text")
             .eq("video_id", video_id)
+            # Tiebreaker on `id` is critical: without it, ties on
+            # sentence_start_ms make Postgres' LIMIT/OFFSET ordering
+            # non-deterministic across pages, so the same row can
+            # appear in two consecutive pages → React duplicate key
+            # warnings (and lost rows elsewhere). Adding a stable
+            # secondary sort makes the cursor monotonic.
             .order("sentence_start_ms", desc=False)
+            .order("id", desc=False)
             .range(page * PAGE, (page + 1) * PAGE - 1)
             .execute()
         )
