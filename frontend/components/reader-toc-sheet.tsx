@@ -4,11 +4,13 @@ import { useState } from "react";
 import {
   Bookmark as BookmarkIcon,
   ChevronRight,
+  Highlighter,
   ListTree,
   Trash2,
 } from "lucide-react";
 
-import type { Bookmark } from "@/lib/api/queries";
+import type { Bookmark, Highlight } from "@/lib/api/queries";
+import { HIGHLIGHT_COLORS } from "@/lib/reader/highlight-colors";
 import {
   Sheet,
   SheetContent,
@@ -46,6 +48,12 @@ type Props = {
   onJumpToBookmark: (cfi: string) => void;
   /** Delete a bookmark by id. */
   onDeleteBookmark: (id: string) => void;
+  /** User-saved text highlights for this book, most recent first. */
+  highlights: Highlight[];
+  /** Jump to a highlight's CFI range start. */
+  onJumpToHighlight: (cfi: string) => void;
+  /** Delete a highlight by id. */
+  onDeleteHighlight: (id: string) => void;
 };
 
 export function ReaderTocSheet({
@@ -59,6 +67,9 @@ export function ReaderTocSheet({
   bookmarks,
   onJumpToBookmark,
   onDeleteBookmark,
+  highlights,
+  onJumpToHighlight,
+  onDeleteHighlight,
 }: Props) {
   const [open, setOpen] = useState(false);
   // Local controlled value while user drags — committed onPointerUp to
@@ -170,6 +181,62 @@ export function ReaderTocSheet({
                     onClick={() => onDeleteBookmark(b.id)}
                     className="opacity-0 group-hover:opacity-60 hover:opacity-100 hover:text-red-600 px-1.5 py-1.5 transition-opacity"
                     aria-label="Eliminar marcador"
+                    title="Eliminar"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Highlights section — only when there are any */}
+        {highlights.length > 0 && (
+          <div className="border-b pb-3 -mx-1 px-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 flex items-center gap-1">
+              <Highlighter className="h-3 w-3" />
+              Subrayados ({highlights.length})
+            </div>
+            <ul className="space-y-1 max-h-48 overflow-y-auto">
+              {highlights.map((h) => (
+                <li
+                  key={h.id}
+                  className="flex items-start gap-2 group rounded hover:bg-accent transition-colors"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onJumpToHighlight(h.cfi_range);
+                      setOpen(false);
+                    }}
+                    className="flex-1 min-w-0 text-left px-2 py-1.5"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span
+                        className="mt-1 h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{
+                          backgroundColor: HIGHLIGHT_COLORS[h.color].swatch,
+                        }}
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm leading-snug line-clamp-2">
+                          {h.text_excerpt}
+                        </div>
+                        {h.note?.trim() && (
+                          <div className="text-[11px] text-muted-foreground italic mt-0.5 line-clamp-1">
+                            📝 {h.note}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteHighlight(h.id)}
+                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 hover:text-red-600 px-1.5 py-1.5 transition-opacity"
+                    aria-label="Eliminar subrayado"
                     title="Eliminar"
                   >
                     <Trash2 className="h-3.5 w-3.5" />

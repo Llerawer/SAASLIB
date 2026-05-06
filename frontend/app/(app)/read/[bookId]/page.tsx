@@ -882,6 +882,11 @@ export default function ReadPage({
             renditionRef.current?.display(cfi).catch(() => undefined);
           }}
           onDeleteBookmark={(id) => deleteBookmarkMut.mutate(id)}
+          highlights={highlightsQuery.data ?? []}
+          onJumpToHighlight={(cfi) => {
+            renditionRef.current?.display(cfi).catch(() => undefined);
+          }}
+          onDeleteHighlight={handleDeleteHighlight}
           trigger={
             <Button
               variant="ghost"
