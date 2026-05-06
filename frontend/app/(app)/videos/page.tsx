@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useIngestVideo, useListVideos } from "@/lib/api/queries";
+import {
+  useHideVideo,
+  useIngestVideo,
+  useListVideos,
+  useUnhideVideo,
+} from "@/lib/api/queries";
 import { VideoCard } from "@/components/video/video-card";
 import { VideoCardSkeleton } from "@/components/video/video-card-skeleton";
 import { parseVideoId } from "@/lib/video/parse-url";
@@ -16,6 +21,8 @@ export default function VideosPage() {
   const router = useRouter();
   const list = useListVideos();
   const ingest = useIngestVideo();
+  const hideVideo = useHideVideo();
+  const unhideVideo = useUnhideVideo();
   const [url, setUrl] = useState("");
 
   function dispatchIngest(rawUrl: string, navigateTo: boolean) {
@@ -65,6 +72,28 @@ export default function VideosPage() {
     // already looking at the list and wants to see the card flip
     // back to "Procesando…".
     dispatchIngest(retryUrl, false);
+  }
+
+  function handleHide(videoId: string) {
+    hideVideo.mutate(
+      { videoId },
+      {
+        onSuccess: () => {
+          // "Deshacer" toast — gives the user a graceful out without
+          // having to dig through settings. 8s is a forgiving window.
+          toast.success("Quitado de tu lista", {
+            duration: 8000,
+            action: {
+              label: "Deshacer",
+              onClick: () => unhideVideo.mutate({ videoId }),
+            },
+          });
+        },
+        onError: (err) => {
+          toast.error(`No se pudo quitar: ${err.message}`);
+        },
+      },
+    );
   }
 
   const isInitialLoading = list.isLoading;
@@ -118,7 +147,12 @@ export default function VideosPage() {
       {!isInitialLoading && (list.data?.length ?? 0) > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {list.data?.map((v) => (
-            <VideoCard key={v.video_id} video={v} onRetry={handleRetry} />
+            <VideoCard
+              key={v.video_id}
+              video={v}
+              onRetry={handleRetry}
+              onHide={handleHide}
+            />
           ))}
         </div>
       )}

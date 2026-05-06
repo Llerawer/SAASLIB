@@ -286,6 +286,12 @@ export type VideoListItem = {
   error_reason: VideoErrorReason | null;
   created_at: string;
   updated_at: string;
+  /** Per-user resume position. null when user never opened this video. */
+  last_position_s: number | null;
+  /** When the user's progress row was last updated. */
+  last_viewed_at: string | null;
+  /** Words this user captured from this video (0 if none). */
+  captures_count: number;
 };
 
 export type VideoCue = {
@@ -692,6 +698,9 @@ export function useIngestVideo() {
           error_reason: null,
           created_at: nowIso,
           updated_at: nowIso,
+          last_position_s: null,
+          last_viewed_at: null,
+          captures_count: 0,
         };
         return [optimistic, ...(old ?? [])];
       });
@@ -732,6 +741,48 @@ export function useListVideos() {
         (v) => v.status === "processing" || v.status === "pending",
       );
       return hasTransient ? 3000 : false;
+    },
+  });
+}
+
+/**
+ * "Quitar de mi lista" — per-user hide for the global videos cache.
+ * Optimistic: we drop the row from ['videos'] immediately, then
+ * settle on the server response. On error we put it back via
+ * onError's snapshot.
+ */
+export function useHideVideo() {
+  const qc = useQueryClient();
+  return useMutation<
+    void,
+    Error,
+    { videoId: string },
+    { snapshot: VideoListItem[] | undefined }
+  >({
+    mutationFn: ({ videoId }) =>
+      api.post<void>(`/api/v1/videos/${videoId}/hide`, {}),
+    onMutate: ({ videoId }) => {
+      const snapshot = qc.getQueryData<VideoListItem[]>(["videos"]);
+      qc.setQueryData<VideoListItem[]>(["videos"], (old) =>
+        (old ?? []).filter((v) => v.video_id !== videoId),
+      );
+      return { snapshot };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.snapshot) {
+        qc.setQueryData(["videos"], context.snapshot);
+      }
+    },
+  });
+}
+
+export function useUnhideVideo() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { videoId: string }>({
+    mutationFn: ({ videoId }) =>
+      api.del<void>(`/api/v1/videos/${videoId}/hide`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["videos"] });
     },
   });
 }
