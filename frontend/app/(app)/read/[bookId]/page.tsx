@@ -17,6 +17,7 @@ import {
 import { ReaderBookmarkButton } from "@/components/reader-bookmark-button";
 import { ReaderSelectionToolbar } from "@/components/reader-selection-toolbar";
 import { ReaderHighlightNoteDialog } from "@/components/reader-highlight-note-dialog";
+import { ReaderHighlightPopover } from "@/components/reader-highlight-popover";
 import {
   useBookmarks,
   useCapturedWords,
@@ -24,6 +25,8 @@ import {
   useDeleteBookmark,
   useDeleteHighlight,
   useHighlights,
+  useUpdateHighlight,
+  type Highlight,
   type HighlightColor,
 } from "@/lib/api/queries";
 import {
@@ -35,6 +38,7 @@ import { rangeToCfi, type EpubContents } from "@/lib/reader/highlight-cfi";
 import {
   applyAllHighlights,
   removeHighlight,
+  type HighlightClickHandler,
 } from "@/lib/reader/highlights";
 import { DEFAULT_HIGHLIGHT_COLOR } from "@/lib/reader/highlight-colors";
 import { applyReaderSettings } from "@/lib/reader/apply-settings";
@@ -167,7 +171,16 @@ export default function ReadPage({
   const deleteBookmarkMut = useDeleteBookmark(internalBookId);
   const highlightsQuery = useHighlights(internalBookId);
   const createHighlight = useCreateHighlight();
+  const updateHighlight = useUpdateHighlight();
   const deleteHighlightMut = useDeleteHighlight(internalBookId);
+
+  // Live mirror of highlights so the rendered-event handler can re-apply
+  // the latest list without re-registering on each refetch. Updated by the
+  // useEffect below; consumed inside the load effect's "rendered" listener.
+  const highlightsRef = useRef<Highlight[]>([]);
+  useEffect(() => {
+    highlightsRef.current = highlightsQuery.data ?? [];
+  }, [highlightsQuery.data]);
 
   // Selection toolbar state — anchor in host coords + the source contents
   // + range needed for CFI generation. Cleared when the toolbar dismisses.
@@ -187,6 +200,33 @@ export default function ReadPage({
   const [pendingNoteExcerpt, setPendingNoteExcerpt] = useState<string | null>(
     null,
   );
+
+  // Click-on-existing-highlight popover. Anchored in host coords; tracks
+  // which highlight id is being edited so PATCH/DELETE know the target.
+  const [highlightPopover, setHighlightPopover] = useState<{
+    id: string;
+    color: HighlightColor;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Click handler for existing highlights — opens the popover positioned
+  // over the click point. Stored in a ref so the rendered-event closure
+  // (registered once at book load) always sees the latest setter.
+  const onHighlightClickRef = useRef<HighlightClickHandler>(() => {});
+  useEffect(() => {
+    onHighlightClickRef.current = (highlightId, event) => {
+      const h = highlightsRef.current.find((x) => x.id === highlightId);
+      if (!h) return;
+      const target = event.target as Element | null;
+      const iframe = target?.ownerDocument?.defaultView
+        ?.frameElement as HTMLIFrameElement | null;
+      const iRect = iframe?.getBoundingClientRect();
+      const x = (iRect?.left ?? 0) + event.clientX;
+      const y = (iRect?.top ?? 0) + event.clientY;
+      setHighlightPopover({ id: h.id, color: h.color, x, y });
+    };
+  }, []);
 
   // Per-word colour overlay (localStorage). version bumps when user picks a
   // colour from the panel; we listen and repaint highlighted spans without
@@ -268,6 +308,7 @@ export default function ReadPage({
     applyAllHighlights(
       r as unknown as Parameters<typeof applyAllHighlights>[0],
       list,
+      (id, ev) => onHighlightClickRef.current(id, ev),
     );
   }, [highlightsQuery.data]);
 
@@ -357,6 +398,18 @@ export default function ReadPage({
 
         rendition.on("rendered", () => {
           applyRef.current();
+          // Re-attach text-range highlights every time epub.js mounts a
+          // new chapter iframe — the SVG overlay is per-view, so we have
+          // to register the annotations again whenever a fresh view
+          // appears. epub.js dedupes by (type, cfiRange) at the registry
+          // level, so repeated calls are safe.
+          if (highlightsRef.current.length > 0) {
+            applyAllHighlights(
+              rendition as unknown as Parameters<typeof applyAllHighlights>[0],
+              highlightsRef.current,
+              (id, ev) => onHighlightClickRef.current(id, ev),
+            );
+          }
         });
 
         rendition.on(
@@ -762,6 +815,7 @@ export default function ReadPage({
         applyAllHighlights(
           r as unknown as Parameters<typeof applyAllHighlights>[0],
           [created],
+          (id, ev) => onHighlightClickRef.current(id, ev),
         );
         ctx.contents.window.getSelection()?.removeAllRanges();
       } catch (err) {
@@ -795,6 +849,7 @@ export default function ReadPage({
       applyAllHighlights(
         r as unknown as Parameters<typeof applyAllHighlights>[0],
         [created],
+        (id, ev) => onHighlightClickRef.current(id, ev),
       );
       ctx.contents.window.getSelection()?.removeAllRanges();
       setPendingNoteHighlightId(created.id);
@@ -849,6 +904,49 @@ export default function ReadPage({
     },
     [deleteHighlightMut, highlightsQuery.data],
   );
+
+  // Popover: pick a new color for an existing highlight. epub.js doesn't
+  // support recoloring an annotation in place, so we remove + re-register
+  // with the new fill. Database state is the source of truth — the PATCH
+  // refreshes the cached query data, which our useEffect picks up.
+  const handlePopoverColorChange = useCallback(
+    async (color: HighlightColor) => {
+      const popover = highlightPopover;
+      if (!popover) return;
+      setHighlightPopover(null);
+      const r = renditionRef.current;
+      const target = highlightsRef.current.find((h) => h.id === popover.id);
+      if (!r || !target) return;
+      try {
+        const updated = await updateHighlight.mutateAsync({
+          id: popover.id,
+          patch: { color },
+        });
+        // Repaint: drop the old SVG overlay then re-register with the new
+        // fill. Same CFI, different color tokens.
+        removeHighlight(
+          r as unknown as Parameters<typeof removeHighlight>[0],
+          target.cfi_range,
+        );
+        applyAllHighlights(
+          r as unknown as Parameters<typeof applyAllHighlights>[0],
+          [updated],
+          (id, ev) => onHighlightClickRef.current(id, ev),
+        );
+      } catch (err) {
+        const { toast } = await import("sonner");
+        toast.error(`Error: ${(err as Error).message}`);
+      }
+    },
+    [highlightPopover, updateHighlight],
+  );
+
+  const handlePopoverDelete = useCallback(async () => {
+    const popover = highlightPopover;
+    if (!popover) return;
+    setHighlightPopover(null);
+    await handleDeleteHighlight(popover.id);
+  }, [highlightPopover, handleDeleteHighlight]);
 
   // Display string for the page indicator.
   const pageLabel = (() => {
@@ -996,6 +1094,16 @@ export default function ReadPage({
         excerpt={pendingNoteExcerpt}
         onSave={handleSaveNote}
         onCancel={handleCancelNote}
+      />
+
+      <ReaderHighlightPopover
+        position={
+          highlightPopover ? { x: highlightPopover.x, y: highlightPopover.y } : null
+        }
+        currentColor={highlightPopover?.color ?? null}
+        onPickColor={handlePopoverColorChange}
+        onDelete={handlePopoverDelete}
+        onClose={() => setHighlightPopover(null)}
       />
     </div>
   );
