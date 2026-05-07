@@ -8,16 +8,16 @@ import { Settings2, BookOpen, ListTree } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { WordPopup } from "@/components/word-popup";
-import { ReaderSettingsSheet } from "@/components/reader-settings-sheet";
-import { ReaderWordsPanel } from "@/components/reader-words-panel";
+import { ReaderSettingsSheet } from "@/components/reader/reader-settings-sheet";
+import { ReaderWordsPanel } from "@/components/reader/reader-words-panel";
 import {
   ReaderTocSheet,
   type TocItem,
-} from "@/components/reader-toc-sheet";
-import { ReaderBookmarkButton } from "@/components/reader-bookmark-button";
-import { ReaderSelectionToolbar } from "@/components/reader-selection-toolbar";
-import { ReaderHighlightNoteDialog } from "@/components/reader-highlight-note-dialog";
-import { ReaderHighlightPopover } from "@/components/reader-highlight-popover";
+} from "@/components/reader/reader-toc-sheet";
+import { ReaderBookmarkButton } from "@/components/reader/reader-bookmark-button";
+import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar";
+import { ReaderHighlightNoteDialog } from "@/components/reader/reader-highlight-note-dialog";
+import { ReaderHighlightPopover } from "@/components/reader/reader-highlight-popover";
 import {
   useBookmarks,
   useCapturedWords,
