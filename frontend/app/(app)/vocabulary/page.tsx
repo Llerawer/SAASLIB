@@ -307,7 +307,7 @@ function EmptyInbox({ hasFilter }: { hasFilter: boolean }) {
         className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
         style={{
           background:
-            "radial-gradient(circle at 30% 20%, oklch(0.94 0.04 75 / 0.7) 0%, transparent 60%)",
+            "radial-gradient(circle at 30% 20%, var(--bg-glow-warm) 0%, transparent 60%)",
         }}
         aria-hidden="true"
       />

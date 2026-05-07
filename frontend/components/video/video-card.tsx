@@ -128,7 +128,7 @@ export function VideoCard({ video, onRetry, onHide }: VideoCardProps) {
           {hasProgress && (
             <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
               <div
-                className="h-full bg-red-500"
+                className="h-full bg-destructive"
                 style={{ width: `${progressPct}%` }}
               />
             </div>

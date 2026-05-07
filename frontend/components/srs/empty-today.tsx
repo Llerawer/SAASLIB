@@ -9,7 +9,7 @@ export function SrsEmptyToday() {
         className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
         style={{
           background:
-            "radial-gradient(circle at 50% 0%, oklch(0.92 0.08 145 / 0.45) 0%, transparent 65%)",
+            "radial-gradient(circle at 50% 0%, var(--bg-glow-success) 0%, transparent 65%)",
         }}
         aria-hidden="true"
       />

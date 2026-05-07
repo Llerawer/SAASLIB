@@ -84,7 +84,7 @@ export function OnboardingRibbon() {
         className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
         style={{
           background:
-            "radial-gradient(circle at 25% 30%, oklch(0.94 0.05 75 / 0.6) 0%, transparent 65%)",
+            "radial-gradient(circle at 25% 30%, var(--bg-glow-warm) 0%, transparent 65%)",
         }}
         aria-hidden="true"
       />

@@ -115,7 +115,7 @@ export function ReaderHighlightPopover({
       <button
         type="button"
         onClick={onDelete}
-        className="h-7 w-7 rounded-full hover:bg-red-50 hover:text-red-600 transition-colors flex items-center justify-center text-muted-foreground"
+        className="h-7 w-7 rounded-full hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center justify-center text-muted-foreground"
         aria-label="Eliminar subrayado"
         title="Eliminar"
       >

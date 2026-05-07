@@ -85,15 +85,18 @@ export function stateLabel(state: number): string {
 }
 
 export function stateColorClass(state: number): string {
+  // Map FSRS lifecycle to existing semantic tokens so chips invert
+  // correctly in dark mode (the previous bg-blue-100/text-blue-700 etc.
+  // were Tailwind raw and stayed light on light background in dark).
   switch (state) {
-    case 0:
-      return "bg-blue-100 text-blue-700 border-blue-300";
-    case 1:
-      return "bg-amber-100 text-amber-700 border-amber-300";
-    case 2:
-      return "bg-emerald-100 text-emerald-700 border-emerald-300";
-    case 3:
-      return "bg-orange-100 text-orange-700 border-orange-300";
+    case 0: // New → informational
+      return "bg-info/15 text-info border-info/40";
+    case 1: // Learning → attention
+      return "bg-warning/20 text-warning-foreground border-warning/50";
+    case 2: // Review → mastered
+      return "bg-success/15 text-success border-success/40";
+    case 3: // Relearning → relapsed (urgent, but not catastrophic)
+      return "bg-destructive/15 text-destructive border-destructive/40";
     default:
       return "bg-muted text-muted-foreground border-input";
   }

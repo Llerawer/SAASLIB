@@ -1055,7 +1055,7 @@ export default function ReadPage({
         </Button>
       </div>
       {error && (
-        <div className="bg-red-50 text-red-700 text-sm p-3 border-b">{error}</div>
+        <div className="bg-destructive/10 text-destructive text-sm p-3 border-b">{error}</div>
       )}
       <div className="flex-1 relative">
         <div ref={viewerRef} className="absolute inset-0" />

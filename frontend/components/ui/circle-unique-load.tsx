@@ -3,28 +3,30 @@
 import React from "react";
 import { PlusIcon } from "lucide-react";
 
+type StageTone = "success" | "info" | "warning" | "accent";
+
 type LoadingProps = {
   /** When false, the component fits its parent instead of taking the full
    *  viewport. Useful when embedding inside a card. */
   screenHFull?: boolean;
   /** Optional override of the cycling stage list. Each entry has a label
-   *  and a tone (Tailwind colour family). Defaults to a Spanish ingest
+   *  and a tone keyed to a brand token. Defaults to a Spanish ingest
    *  pipeline (`Buscando → Descargando → Indexando → Procesando`). */
-  stages?: { label: string; tone: "lime" | "sky" | "yellow" | "orange" }[];
+  stages?: { label: string; tone: StageTone }[];
 };
 
 const DEFAULT_STAGES: NonNullable<LoadingProps["stages"]> = [
-  { label: "Buscando", tone: "lime" },
-  { label: "Descargando", tone: "sky" },
-  { label: "Indexando", tone: "yellow" },
-  { label: "Procesando", tone: "orange" },
+  { label: "Buscando", tone: "success" },
+  { label: "Descargando", tone: "info" },
+  { label: "Indexando", tone: "warning" },
+  { label: "Procesando", tone: "accent" },
 ];
 
-const TONE_CLASSES: Record<"lime" | "sky" | "yellow" | "orange", string> = {
-  lime: "border-lime-400 text-lime-400",
-  sky: "border-sky-400 text-sky-400",
-  yellow: "border-yellow-400 text-yellow-400",
-  orange: "border-orange-400 text-orange-400",
+const TONE_CLASSES: Record<StageTone, string> = {
+  success: "border-success text-success",
+  info: "border-info text-info",
+  warning: "border-warning text-warning",
+  accent: "border-accent text-accent",
 };
 
 const DOT_STATES = ["_", "__", ".", "..", "..."] as const;

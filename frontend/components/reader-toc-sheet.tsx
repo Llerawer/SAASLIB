@@ -179,7 +179,7 @@ export function ReaderTocSheet({
                   <button
                     type="button"
                     onClick={() => onDeleteBookmark(b.id)}
-                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 hover:text-red-600 px-1.5 py-1.5 transition-opacity"
+                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 hover:text-destructive px-1.5 py-1.5 transition-opacity"
                     aria-label="Eliminar marcador"
                     title="Eliminar"
                   >
@@ -235,7 +235,7 @@ export function ReaderTocSheet({
                   <button
                     type="button"
                     onClick={() => onDeleteHighlight(h.id)}
-                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 hover:text-red-600 px-1.5 py-1.5 transition-opacity"
+                    className="opacity-0 group-hover:opacity-60 hover:opacity-100 hover:text-destructive px-1.5 py-1.5 transition-opacity"
                     aria-label="Eliminar subrayado"
                     title="Eliminar"
                   >

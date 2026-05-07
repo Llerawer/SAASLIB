@@ -47,7 +47,7 @@ export function HiddenVideosSection() {
             <p className="text-xs text-muted-foreground">Cargando…</p>
           )}
           {hidden.isError && (
-            <p className="text-xs text-red-600">
+            <p className="text-xs text-destructive">
               No se pudo cargar la lista de ocultos.
             </p>
           )}

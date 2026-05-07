@@ -627,7 +627,7 @@ function EmptyExplore({
         className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
         style={{
           background:
-            "radial-gradient(circle at 30% 20%, oklch(0.94 0.04 75 / 0.7) 0%, transparent 60%)",
+            "radial-gradient(circle at 30% 20%, var(--bg-glow-warm) 0%, transparent 60%)",
         }}
         aria-hidden="true"
       />
@@ -867,7 +867,7 @@ function FeaturedBookCard({
         className="absolute inset-0 opacity-60 pointer-events-none dark:opacity-30"
         style={{
           background:
-            "radial-gradient(circle at 18% 30%, oklch(0.95 0.03 75 / 0.6) 0%, transparent 55%)",
+            "radial-gradient(circle at 18% 30%, var(--bg-glow-warm) 0%, transparent 55%)",
         }}
         aria-hidden="true"
       />

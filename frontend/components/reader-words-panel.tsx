@@ -182,7 +182,7 @@ export function ReaderWordsPanel({ bookId, trigger, getColor, setColor }: Props)
 
         <div className="flex-1 overflow-y-auto -mx-1 px-1">
           {capturesQuery.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-destructive">
               {(capturesQuery.error as Error).message}
             </p>
           )}
@@ -314,7 +314,7 @@ function WordRow({
           onClick={onDelete}
           disabled={deleting}
           aria-label="Eliminar palabra"
-          className="opacity-60 hover:opacity-100 hover:text-red-600"
+          className="opacity-60 hover:opacity-100 hover:text-destructive"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>

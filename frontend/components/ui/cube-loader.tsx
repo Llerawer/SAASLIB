@@ -14,47 +14,38 @@ export default function CubeLoader({
   title = "Loading",
   subtitle = "Preparing your experience, please wait…",
 }: CubeLoaderProps = {}) {
+  // Three face pairs use three brand tokens (info / accent / success) so the
+  // loader inherits the app's identity in both light and dark instead of
+  // shipping its own cyan/purple/indigo palette.
   return (
-    <div className="flex flex-col items-center justify-center gap-12 p-12 min-h-[400px] bg-slate-950/0">
+    <div className="flex flex-col items-center justify-center gap-12 p-12 min-h-[400px]">
       <div className={styles.container}>
         <div className={styles.scene}>
           <div className={styles.cube}>
             <div className={styles.core} />
 
             <div className={`${styles.sideWrapper} ${styles.front}`}>
-              <div
-                className={`${styles.face} bg-cyan-500/10 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]`}
-              />
+              <div className={`${styles.face} bg-info/10 border-info`} />
             </div>
 
             <div className={`${styles.sideWrapper} ${styles.back}`}>
-              <div
-                className={`${styles.face} bg-cyan-500/10 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]`}
-              />
+              <div className={`${styles.face} bg-info/10 border-info`} />
             </div>
 
             <div className={`${styles.sideWrapper} ${styles.right}`}>
-              <div
-                className={`${styles.face} bg-purple-500/10 border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)]`}
-              />
+              <div className={`${styles.face} bg-accent/10 border-accent`} />
             </div>
 
             <div className={`${styles.sideWrapper} ${styles.left}`}>
-              <div
-                className={`${styles.face} bg-purple-500/10 border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)]`}
-              />
+              <div className={`${styles.face} bg-accent/10 border-accent`} />
             </div>
 
             <div className={`${styles.sideWrapper} ${styles.top}`}>
-              <div
-                className={`${styles.face} bg-indigo-500/10 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]`}
-              />
+              <div className={`${styles.face} bg-success/10 border-success`} />
             </div>
 
             <div className={`${styles.sideWrapper} ${styles.bottom}`}>
-              <div
-                className={`${styles.face} bg-indigo-500/10 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.4)]`}
-              />
+              <div className={`${styles.face} bg-success/10 border-success`} />
             </div>
           </div>
 
@@ -63,10 +54,10 @@ export default function CubeLoader({
       </div>
 
       <div className="flex flex-col items-center gap-1 mt-2">
-        <h3 className="text-sm font-semibold tracking-[0.3em] text-cyan-300 uppercase">
+        <h3 className="text-sm font-semibold tracking-[0.3em] text-accent uppercase">
           {title}
         </h3>
-        <p className="text-xs text-slate-400">{subtitle}</p>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
       </div>
     </div>
   );
