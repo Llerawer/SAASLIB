@@ -45,3 +45,40 @@ def test_list_decks_isolated_per_user():
     result = _fetch_user_decks(client)
     assert result == []
     client.table.assert_called_with("decks")
+
+
+def test_would_create_cycle_detects_self_parent():
+    from app.api.v1.decks import _would_create_cycle
+    rows = [
+        {"id": "a", "parent_id": None},
+        {"id": "b", "parent_id": "a"},
+    ]
+    assert _would_create_cycle(rows, deck_id="b", new_parent_id="b") is True
+
+
+def test_would_create_cycle_detects_descendant_parent():
+    from app.api.v1.decks import _would_create_cycle
+    rows = [
+        {"id": "a", "parent_id": None},
+        {"id": "b", "parent_id": "a"},
+        {"id": "c", "parent_id": "b"},
+    ]
+    assert _would_create_cycle(rows, deck_id="a", new_parent_id="c") is True
+
+
+def test_would_not_cycle_for_unrelated_parent():
+    from app.api.v1.decks import _would_create_cycle
+    rows = [
+        {"id": "a", "parent_id": None},
+        {"id": "b", "parent_id": "a"},
+        {"id": "c", "parent_id": None},
+    ]
+    assert _would_create_cycle(rows, deck_id="b", new_parent_id="c") is False
+
+
+def test_would_not_cycle_for_root_move():
+    from app.api.v1.decks import _would_create_cycle
+    rows = [
+        {"id": "a", "parent_id": "x"},
+    ]
+    assert _would_create_cycle(rows, deck_id="a", new_parent_id=None) is False

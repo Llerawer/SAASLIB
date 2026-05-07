@@ -84,9 +84,98 @@ def _build_deck_response(
     return out
 
 
+def _would_create_cycle(
+    rows: list[dict], deck_id: str, new_parent_id: str | None
+) -> bool:
+    """Returns True if setting deck.parent_id = new_parent_id creates a cycle."""
+    if new_parent_id is None:
+        return False
+    if new_parent_id == deck_id:
+        return True
+    by_id = {r["id"]: r for r in rows}
+    cur = by_id.get(new_parent_id)
+    while cur is not None:
+        if cur["id"] == deck_id:
+            return True
+        cur = by_id.get(cur["parent_id"]) if cur["parent_id"] else None
+    return False
+
+
 @router.get("", response_model=list[DeckOut])
 async def list_decks(auth: AuthInfo = Depends(get_auth)):
     client = get_user_client(auth.jwt)
     rows = _fetch_user_decks(client)
     counts = _fetch_deck_card_counts(client)
     return _build_deck_response(rows, counts)
+
+
+@router.post("", response_model=DeckOut, status_code=201)
+async def create_deck(body: DeckCreate, auth: AuthInfo = Depends(get_auth)):
+    client = get_user_client(auth.jwt)
+    if body.parent_id:
+        parent = (
+            client.table("decks")
+            .select("id")
+            .eq("id", body.parent_id)
+            .limit(1)
+            .execute()
+        )
+        if not parent.data:
+            raise HTTPException(404, "parent deck not found")
+    inserted = (
+        client.table("decks")
+        .insert(
+            {
+                "user_id": auth.user_id,
+                "parent_id": body.parent_id,
+                "name": body.name,
+                "color_hue": body.color_hue,
+                "icon": body.icon,
+            }
+        )
+        .execute()
+    )
+    if not inserted.data:
+        raise HTTPException(500, "failed to insert deck")
+    row = inserted.data[0]
+    return {**row, "direct_card_count": 0, "direct_due_count": 0,
+            "descendant_card_count": 0, "descendant_due_count": 0}
+
+
+@router.patch("/{deck_id}", response_model=DeckOut)
+async def update_deck(
+    deck_id: str, body: DeckUpdate, auth: AuthInfo = Depends(get_auth)
+):
+    client = get_user_client(auth.jwt)
+    rows = _fetch_user_decks(client)
+    target = next((r for r in rows if r["id"] == deck_id), None)
+    if target is None:
+        raise HTTPException(404, "deck not found")
+
+    patch: dict = {}
+    if body.name is not None:
+        patch["name"] = body.name
+    if body.color_hue is not None:
+        patch["color_hue"] = body.color_hue
+    if body.icon is not None:
+        patch["icon"] = body.icon
+    if "parent_id" in body.model_fields_set:
+        if _would_create_cycle(rows, deck_id, body.parent_id):
+            raise HTTPException(400, "would create deck cycle")
+        patch["parent_id"] = body.parent_id
+
+    if not patch:
+        counts = _fetch_deck_card_counts(client)
+        return _build_deck_response([target], counts)[0]
+
+    updated = (
+        client.table("decks")
+        .update(patch)
+        .eq("id", deck_id)
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(500, "failed to update deck")
+
+    counts = _fetch_deck_card_counts(client)
+    return _build_deck_response(updated.data, counts)[0]
