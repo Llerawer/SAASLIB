@@ -51,6 +51,17 @@ export type CaptureCreateInput = {
   note?: string | null;
 };
 
+type CreateCaptureSource =
+  | { kind: "book"; bookId: string | null; pageOrLocation: string | null }
+  | { kind: "video"; videoId: string; timestampSeconds: number };
+
+type CreateCaptureInput = {
+  word: string;
+  context_sentence?: string | null;
+  language?: string;
+  source: CreateCaptureSource;
+};
+
 export const queryKeys = {
   dictionary: (word: string, lang = "en") => ["dictionary", word, lang] as const,
   capturedWords: (bookId: string) => ["captured-words", bookId] as const,
@@ -85,26 +96,41 @@ export function useCapturedWords(bookId: string | null) {
 }
 
 type CreateCaptureCallbacks = {
-  onSuccess?: (capture: Capture, input: CaptureCreateInput) => void;
-  onError?: (error: Error, input: CaptureCreateInput) => void;
+  onSuccess?: (capture: Capture) => void;
+  onError?: (error: Error) => void;
 };
 
 export function useCreateCapture(callbacks?: CreateCaptureCallbacks) {
   const qc = useQueryClient();
-  return useMutation<Capture, Error, CaptureCreateInput>({
-    mutationFn: (input) => api.post<Capture>("/api/v1/captures", input),
+  return useMutation<Capture, Error, CreateCaptureInput>({
+    mutationFn: ({ word, context_sentence, language, source }) => {
+      const base = { word, context_sentence, language: language ?? "en" };
+      const payload =
+        source.kind === "book"
+          ? { ...base, book_id: source.bookId, page_or_location: source.pageOrLocation }
+          : { ...base, video_id: source.videoId, video_timestamp_s: source.timestampSeconds };
+      return api.post<Capture>("/api/v1/captures", payload);
+    },
     onSuccess: (data, variables) => {
       qc.invalidateQueries({ queryKey: queryKeys.captures() });
-      if (variables.book_id) {
+      if (variables.source.kind === "book" && variables.source.bookId) {
         qc.invalidateQueries({
-          queryKey: queryKeys.capturedWords(variables.book_id),
+          queryKey: queryKeys.capturedWords(variables.source.bookId),
         });
       }
+      if (variables.source.kind === "video") {
+        qc.invalidateQueries({
+          queryKey: ["video-captures", variables.source.videoId],
+        });
+      }
+      // Global lemma set drives the "unknown word" dotted underline; refresh
+      // immediately so the saved word stops being marked as new.
+      qc.invalidateQueries({ queryKey: ["capture-lemmas"] });
       qc.invalidateQueries({ queryKey: queryKeys.capturesPendingCount() });
-      callbacks?.onSuccess?.(data, variables);
+      callbacks?.onSuccess?.(data);
     },
-    onError: (err, variables) => {
-      callbacks?.onError?.(err, variables);
+    onError: (err) => {
+      callbacks?.onError?.(err);
     },
   });
 }
@@ -310,6 +336,46 @@ export function useDeleteHighlight(bookId: string | null) {
     },
   });
 }
+
+export type VideoStatus = "pending" | "processing" | "done" | "error";
+export type VideoErrorReason =
+  | "invalid_url"
+  | "not_found"
+  | "no_subs"
+  | "ingest_failed";
+
+export type VideoMeta = {
+  video_id: string;
+  title: string | null;
+  duration_s: number | null;
+  thumb_url: string | null;
+  status: VideoStatus;
+  error_reason: VideoErrorReason | null;
+};
+
+export type VideoListItem = {
+  video_id: string;
+  title: string | null;
+  duration_s: number | null;
+  thumb_url: string | null;
+  status: VideoStatus;
+  error_reason: VideoErrorReason | null;
+  created_at: string;
+  updated_at: string;
+  /** Per-user resume position. null when user never opened this video. */
+  last_position_s: number | null;
+  /** When the user's progress row was last updated. */
+  last_viewed_at: string | null;
+  /** Words this user captured from this video (0 if none). */
+  captures_count: number;
+};
+
+export type VideoCue = {
+  id: string;
+  start_s: number;
+  end_s: number;
+  text: string;
+};
 
 export type Card = {
   id: string;
@@ -659,5 +725,288 @@ export function usePronounce(word: string | null, filters: PronounceFilters = {}
     enabled: !!word,
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
+  });
+}
+
+// ---------- Videos ----------
+
+/**
+ * Ingest mutation with optimistic insert.
+ *
+ * On `onMutate`: prepend a placeholder card to the ['videos'] list so
+ * the user sees their video appear instantly with status='processing'.
+ * The thumbnail is YouTube's hqdefault URL — always served, even for
+ * videos that don't exist yet (they get a placeholder image we'll
+ * replace once the real meta arrives).
+ *
+ * On `onError`: mark the optimistic card as 'error' so the user sees
+ * the failure inline (instead of a card stuck in 'processing' forever).
+ *
+ * On `onSuccess`: invalidate the list — the refetch overwrites the
+ * optimistic card with real backend data (same video_id, idempotent).
+ */
+export function useIngestVideo() {
+  const qc = useQueryClient();
+  return useMutation<
+    VideoMeta,
+    Error,
+    { url: string },
+    { videoId: string | null }
+  >({
+    mutationFn: ({ url }) =>
+      api.post<VideoMeta>("/api/v1/videos/ingest", { url }),
+    onMutate: async ({ url }) => {
+      const { parseVideoId } = await import("@/lib/video/parse-url");
+      const videoId = parseVideoId(url);
+      if (!videoId) return { videoId: null };
+      qc.setQueryData<VideoListItem[]>(["videos"], (old) => {
+        if (old?.some((v) => v.video_id === videoId)) return old;
+        const nowIso = new Date().toISOString();
+        const optimistic: VideoListItem = {
+          video_id: videoId,
+          title: null,
+          duration_s: null,
+          // YouTube serves a placeholder for unknown ids, so this is
+          // safe even if the URL turns out to be invalid (the card
+          // will flip to 'error' in onError below).
+          thumb_url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          status: "processing",
+          error_reason: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+          last_position_s: null,
+          last_viewed_at: null,
+          captures_count: 0,
+        };
+        return [optimistic, ...(old ?? [])];
+      });
+      return { videoId };
+    },
+    onError: (_err, _vars, context) => {
+      const id = context?.videoId;
+      if (!id) return;
+      qc.setQueryData<VideoListItem[]>(["videos"], (old) =>
+        (old ?? []).map((v) =>
+          v.video_id === id
+            ? { ...v, status: "error" as const }
+            : v,
+        ),
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["videos"] });
+    },
+  });
+}
+
+/**
+ * Polls the list every 3s while there's any video in a non-terminal
+ * state (processing/pending). Stops automatically once everything is
+ * done/error. 30s staleTime means navigating away and back doesn't
+ * trigger a refetch unless real time has passed.
+ */
+export function useListVideos() {
+  return useQuery<VideoListItem[]>({
+    queryKey: ["videos"],
+    queryFn: () => api.get<VideoListItem[]>("/api/v1/videos"),
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const data = query.state.data as VideoListItem[] | undefined;
+      if (!data) return false;
+      const hasTransient = data.some(
+        (v) => v.status === "processing" || v.status === "pending",
+      );
+      return hasTransient ? 3000 : false;
+    },
+  });
+}
+
+/**
+ * "Quitar de mi lista" — per-user hide for the global videos cache.
+ * Optimistic: we drop the row from ['videos'] immediately, then
+ * settle on the server response. On error we put it back via
+ * onError's snapshot.
+ */
+export function useHideVideo() {
+  const qc = useQueryClient();
+  return useMutation<
+    void,
+    Error,
+    { videoId: string },
+    { snapshot: VideoListItem[] | undefined }
+  >({
+    mutationFn: ({ videoId }) =>
+      api.post<void>(`/api/v1/videos/${videoId}/hide`, {}),
+    onMutate: ({ videoId }) => {
+      const snapshot = qc.getQueryData<VideoListItem[]>(["videos"]);
+      qc.setQueryData<VideoListItem[]>(["videos"], (old) =>
+        (old ?? []).filter((v) => v.video_id !== videoId),
+      );
+      return { snapshot };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.snapshot) {
+        qc.setQueryData(["videos"], context.snapshot);
+      }
+    },
+    onSuccess: () => {
+      // Refresh hidden list so the "Ocultos" section picks up the new
+      // entry without waiting for the user to close+reopen it.
+      qc.invalidateQueries({ queryKey: ["videos-hidden"] });
+    },
+  });
+}
+
+export function useUnhideVideo() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { videoId: string }>({
+    mutationFn: ({ videoId }) =>
+      api.del<void>(`/api/v1/videos/${videoId}/hide`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["videos"] });
+      qc.invalidateQueries({ queryKey: ["videos-hidden"] });
+    },
+  });
+}
+
+/**
+ * Videos this user has hidden from /videos. Used by the "Ocultos"
+ * collapsible section. Default `enabled: false` because this query
+ * fires only when the user opens the <details> — saves a round-trip
+ * for the common case where the user never expands it.
+ */
+export function useHiddenVideos(opts?: { enabled?: boolean }) {
+  return useQuery<VideoListItem[]>({
+    queryKey: ["videos-hidden"],
+    queryFn: () => api.get<VideoListItem[]>("/api/v1/videos/hidden"),
+    enabled: opts?.enabled ?? false,
+    staleTime: 30_000,
+  });
+}
+
+export function useVideoStatus(videoId: string | null, opts?: { enabled?: boolean }) {
+  const qc = useQueryClient();
+  return useQuery<VideoMeta>({
+    queryKey: ["video-status", videoId],
+    queryFn: async () => {
+      const data = await api.get<VideoMeta>(`/api/v1/videos/${videoId}/status`);
+      // Cross-invalidate the list when this video reaches a terminal
+      // state — the list shows it now too, so refresh it instantly
+      // instead of waiting for the next 3s tick.
+      if (data.status === "done" || data.status === "error") {
+        qc.invalidateQueries({ queryKey: ["videos"] });
+      }
+      return data;
+    },
+    enabled: opts?.enabled !== false && !!videoId,
+    // Tolerate the first few seconds while a freshly-pasted URL's row is
+    // being upserted on the backend (avoids a flash of "video no encontrado").
+    retry: 6,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 3000),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 1000;
+      if (data.status === "done" || data.status === "error") return false;
+      // Exponential backoff: 1s -> 2s -> 4s -> 5s cap.
+      const count = query.state.dataUpdateCount || 0;
+      return Math.min(5000, 1000 * 2 ** Math.min(count, 3));
+    },
+  });
+}
+
+export function useVideoCues(videoId: string | null) {
+  return useQuery<VideoCue[]>({
+    queryKey: ["video-cues", videoId],
+    queryFn: async () => {
+      const cues = await api.get<VideoCue[]>(
+        `/api/v1/videos/${videoId}/cues`,
+      );
+      // Defensive dedupe by id. The backend paginates with a stable
+      // (sentence_start_ms, id) sort so this should be a no-op, but
+      // keeping the guard means a stale cache from before that fix
+      // doesn't trigger React duplicate-key warnings in <VideoTocSheet>.
+      const seen = new Set<string>();
+      const out: VideoCue[] = [];
+      for (const c of cues) {
+        if (!seen.has(c.id)) {
+          seen.add(c.id);
+          out.push(c);
+        }
+      }
+      return out;
+    },
+    enabled: !!videoId,
+    staleTime: Infinity, // cues never change for a given video
+  });
+}
+
+export function useCaptureLemmas() {
+  return useQuery<string[]>({
+    queryKey: ["capture-lemmas"],
+    queryFn: () => api.get<string[]>("/api/v1/captures/lemmas"),
+    staleTime: 60_000, // 1 min — captures don't change that often
+  });
+}
+
+export type VideoCaptureRow = {
+  id: string;
+  word: string;
+  word_normalized: string;
+  promoted_to_card: boolean;
+};
+
+export function useVideoCaptures(videoId: string | null) {
+  return useQuery<VideoCaptureRow[]>({
+    queryKey: ["video-captures", videoId],
+    queryFn: () =>
+      api.get<VideoCaptureRow[]>(
+        `/api/v1/captures?video_id=${encodeURIComponent(videoId ?? "")}&limit=200`,
+      ),
+    enabled: !!videoId,
+    staleTime: 30_000,
+  });
+}
+
+
+export type VideoProgress = {
+  video_id: string;
+  last_position_s: number;
+  updated_at: string | null;
+};
+
+export function useVideoProgress(videoId: string | null) {
+  return useQuery<VideoProgress>({
+    queryKey: ["video-progress", videoId],
+    queryFn: () => api.get<VideoProgress>(`/api/v1/videos/${videoId}/progress`),
+    enabled: !!videoId,
+    staleTime: 30_000,
+  });
+}
+
+export function useUpdateVideoProgress() {
+  return useMutation<
+    VideoProgress,
+    Error,
+    { videoId: string; last_position_s: number }
+  >({
+    mutationFn: ({ videoId, last_position_s }) =>
+      api.put<VideoProgress>(`/api/v1/videos/${videoId}/progress`, {
+        last_position_s,
+      }),
+  });
+}
+
+export function useTranslateText() {
+  return useMutation<
+    { translation: string },
+    Error,
+    { text: string; source_lang?: string; target_lang?: string }
+  >({
+    mutationFn: ({ text, source_lang = "EN", target_lang = "ES" }) =>
+      api.post<{ translation: string }>("/api/v1/translate", {
+        text,
+        source_lang,
+        target_lang,
+      }),
   });
 }

@@ -20,6 +20,8 @@ from app.api.v1 import (
     pronounce,
     reviews,
     stats,
+    translate,
+    videos,
 )
 from app.core.alerts import install_default_alerts, run_periodic
 from app.core.auth import get_current_user_id
@@ -138,3 +140,5 @@ app.include_router(internal.router)
 app.include_router(pronounce.router)
 app.include_router(reviews.router)
 app.include_router(stats.router)
+app.include_router(translate.router)
+app.include_router(videos.router)

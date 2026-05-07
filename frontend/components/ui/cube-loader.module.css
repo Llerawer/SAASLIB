@@ -1,0 +1,162 @@
+/* CubeLoader — 3D rotating cube. CSS module so Next/Turbopack scopes
+   class names but keyframes remain global (CSS modules treat @keyframes
+   as global by default in Next). */
+
+.container {
+  perspective: 1200px;
+}
+
+.scene {
+  transform-style: preserve-3d;
+  position: relative;
+  width: 6rem;
+  height: 6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cube {
+  transform-style: preserve-3d;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: cubeSpin 8s linear infinite;
+}
+
+.core {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 2rem;
+  height: 2rem;
+  background: white;
+  border-radius: 9999px;
+  filter: blur(0.5rem);
+  box-shadow: 0 0 40px rgba(255, 255, 255, 0.8);
+  animation: corePulse 2s ease-in-out infinite;
+}
+
+.sideWrapper {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-style: preserve-3d;
+}
+
+.face {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  /* Base 3D position: each face sits at +48px (half the cube edge of
+     96px = w-24). This way the cube has its 3D shape even before/after
+     the breathe animation runs. */
+  transform: translateZ(48px);
+  animation: breathe 3s ease-in-out infinite;
+  backdrop-filter: blur(2px);
+  border-width: 2px;
+  border-style: solid;
+}
+
+.front {
+  transform: rotateY(0deg);
+}
+.back {
+  transform: rotateY(180deg);
+}
+.right {
+  transform: rotateY(90deg);
+}
+.left {
+  transform: rotateY(-90deg);
+}
+.top {
+  transform: rotateX(90deg);
+}
+.bottom {
+  transform: rotateX(-90deg);
+}
+
+.shadow {
+  position: absolute;
+  bottom: -5rem;
+  width: 6rem;
+  height: 2rem;
+  background: rgba(0, 0, 0, 0.4);
+  filter: blur(1rem);
+  border-radius: 100%;
+  animation: shadowBreathe 3s ease-in-out infinite;
+}
+
+@keyframes cubeSpin {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg);
+  }
+  100% {
+    transform: rotateX(360deg) rotateY(360deg);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: translateZ(48px);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateZ(80px);
+    opacity: 0.4;
+    border-color: rgba(255, 255, 255, 0.85);
+  }
+}
+
+@keyframes corePulse {
+  0%,
+  100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+@keyframes shadowBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.2;
+  }
+}
+
+/* Override the app-wide reduced-motion rule from globals.css. The cube IS
+   the loading affordance — its rotation communicates that work is in
+   progress, so we keep it animating even when reduced-motion is preferred.
+   The base translateZ(48px) on .face guarantees the cube still has its
+   3D shape if a future change pauses these animations. */
+@media (prefers-reduced-motion: reduce) {
+  .cube {
+    animation-duration: 8s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .face {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .core {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .shadow {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

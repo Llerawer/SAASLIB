@@ -8,6 +8,7 @@ import {
   GraduationCap,
   BarChart3,
   Headphones,
+  Video,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ import { useCapturesList, useReviewQueue } from "@/lib/api/queries";
 
 type NavItemKey =
   | "library"
+  | "videos"
   | "vocabulary"
   | "pronounce"
   | "srs"
@@ -27,6 +29,7 @@ const NAV_ITEMS: {
   icon: typeof Library;
 }[] = [
   { key: "library", href: "/library", label: "Biblioteca", icon: Library },
+  { key: "videos", href: "/videos", label: "Videos", icon: Video },
   {
     key: "vocabulary",
     href: "/vocabulary",

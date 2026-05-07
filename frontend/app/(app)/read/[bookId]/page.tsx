@@ -58,6 +58,7 @@ type PopupState = {
   word: string;
   normalizedClient: string;
   contextSentence: string | null;
+  bookId: string | null;
   pageOrLocation: string | null;
   position: { x: number; y: number };
 };
@@ -517,6 +518,7 @@ export default function ReadPage({
                 word,
                 normalizedClient,
                 contextSentence,
+                bookId: internalBookIdRef.current,
                 pageOrLocation: null,
                 position: { x, y },
               });
@@ -1074,8 +1076,7 @@ export default function ReadPage({
           word={popup.word}
           normalizedClient={popup.normalizedClient}
           contextSentence={popup.contextSentence}
-          pageOrLocation={popup.pageOrLocation}
-          bookId={internalBookId}
+          source={{ kind: "book", bookId: popup.bookId, pageOrLocation: popup.pageOrLocation }}
           language="en"
           position={popup.position}
           alreadyCaptured={mergedCaptured().has(popup.normalizedClient)}

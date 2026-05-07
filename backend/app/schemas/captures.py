@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Defensive caps to keep payloads bounded and avoid DB bloat / memory abuse.
 _MAX_TAGS = 20
@@ -10,6 +10,7 @@ _MAX_TAG_LEN = 50
 _MAX_LOCATION_LEN = 200
 _MAX_BOOK_ID_LEN = 64
 _MAX_NOTE_LEN = 2000
+_MAX_VIDEO_ID_LEN = 16  # YouTube IDs are 11 chars; some buffer for future formats
 
 
 class CaptureCreate(BaseModel):
@@ -17,6 +18,8 @@ class CaptureCreate(BaseModel):
     context_sentence: str | None = Field(default=None, max_length=600)
     page_or_location: str | None = Field(default=None, max_length=_MAX_LOCATION_LEN)
     book_id: str | None = Field(default=None, max_length=_MAX_BOOK_ID_LEN)
+    video_id: str | None = Field(default=None, max_length=_MAX_VIDEO_ID_LEN)
+    video_timestamp_s: int | None = Field(default=None, ge=0)
     language: str = Field(default="en", min_length=2, max_length=5)
     tags: list[str] = Field(default_factory=list, max_length=_MAX_TAGS)
     note: str | None = Field(default=None, max_length=_MAX_NOTE_LEN)
@@ -28,6 +31,20 @@ class CaptureCreate(BaseModel):
             if len(t) > _MAX_TAG_LEN:
                 raise ValueError(f"tag exceeds {_MAX_TAG_LEN} chars")
         return v
+
+    @model_validator(mode="after")
+    def _validate_source_exclusivity(self) -> "CaptureCreate":
+        has_book = self.book_id is not None
+        has_video = self.video_id is not None or self.video_timestamp_s is not None
+        if has_book and has_video:
+            raise ValueError(
+                "captures may have at most one of (book_id) or (video_id + video_timestamp_s)"
+            )
+        if has_video and (self.video_id is None or self.video_timestamp_s is None):
+            raise ValueError(
+                "video captures require both video_id and video_timestamp_s"
+            )
+        return self
 
 
 class CaptureUpdate(BaseModel):
@@ -55,6 +72,8 @@ class CaptureOut(BaseModel):
     context_sentence: str | None
     page_or_location: str | None
     book_id: str | None
+    video_id: str | None = None
+    video_timestamp_s: int | None = None
     tags: list[str]
     note: str | None = None
     promoted_to_card: bool
