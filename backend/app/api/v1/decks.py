@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import AuthInfo, get_auth
 from app.db.supabase_client import get_user_client
+from app.schemas.cards import CardOut
 from app.schemas.decks import DeckCreate, DeckOut, DeckUpdate, MoveCardRequest
 
 router = APIRouter(prefix="/api/v1/decks", tags=["decks"])
@@ -224,3 +225,60 @@ async def delete_deck(deck_id: str, auth: AuthInfo = Depends(get_auth)):
     _check_deck_empty(client, deck_id, target.data[0]["is_inbox"])
     client.table("decks").delete().eq("id", deck_id).execute()
     return None
+
+
+def _resolve_subtree_ids(client, root_id: str) -> list[str]:
+    """RPC wrapper: returns the deck root_id and all its descendants.
+    The decks_subtree_ids function is RLS-aware via SELECT on public.decks.
+    """
+    res = client.rpc("decks_subtree_ids", {"root_id": root_id}).execute()
+    return [r["id"] for r in res.data or []]
+
+
+def _list_cards_in_deck(
+    client, deck_ids: list[str], limit: int, offset: int
+) -> list[dict]:
+    """Cards directly in any of the given deck_ids.
+
+    Note: does NOT filter out suspended cards. The cards-list browser is for
+    managing the collection (including suspended ones); the reviewer queue
+    filters separately. Mirroring the queue's two-query pattern (cards +
+    card_schedule join) here would add complexity for no UX benefit in v1.
+    """
+    res = (
+        client.table("cards")
+        .select("*")
+        .in_("deck_id", deck_ids)
+        .order("due_at", desc=False)
+        .range(offset, offset + limit - 1)
+        .execute()
+    )
+    return res.data or []
+
+
+@router.get("/{deck_id}/cards", response_model=list[CardOut])
+async def list_cards_in_deck(
+    deck_id: str,
+    include_subdecks: bool = False,
+    limit: int = 200,
+    offset: int = 0,
+    auth: AuthInfo = Depends(get_auth),
+):
+    client = get_user_client(auth.jwt)
+    if include_subdecks:
+        ids = _resolve_subtree_ids(client, deck_id)
+        if not ids:
+            raise HTTPException(404, "deck not found")
+    else:
+        deck = (
+            client.table("decks")
+            .select("id")
+            .eq("id", deck_id)
+            .limit(1)
+            .execute()
+        )
+        if not deck.data:
+            raise HTTPException(404, "deck not found")
+        ids = [deck_id]
+    rows = _list_cards_in_deck(client, ids, limit, offset)
+    return rows

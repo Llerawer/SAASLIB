@@ -140,3 +140,36 @@ def test_delete_blocks_with_cards():
     except HTTPException as e:
         assert e.status_code == 409
         assert "cards" in e.detail
+
+
+def test_cards_in_deck_direct_only():
+    from app.api.v1.decks import _list_cards_in_deck
+    client = MagicMock()
+    # Mock chain matches the actual implementation:
+    # .table("cards").select("*").in_("deck_id", ids).order(...).range(...).execute()
+    chain = (
+        client.table.return_value
+        .select.return_value
+        .in_.return_value
+        .order.return_value
+        .range.return_value
+    )
+    chain.execute.return_value.data = [
+        {"id": "c1", "deck_id": "d1", "due_at": "2026-05-08", "user_id": "u1"}
+    ]
+    cards = _list_cards_in_deck(
+        client, deck_ids=["d1"], limit=200, offset=0
+    )
+    assert len(cards) == 1
+    assert cards[0]["deck_id"] == "d1"
+
+
+def test_cards_in_deck_subtree_uses_rpc():
+    from app.api.v1.decks import _resolve_subtree_ids
+    client = MagicMock()
+    client.rpc.return_value.execute.return_value.data = [
+        {"id": "d1"}, {"id": "d2"}, {"id": "d3"}
+    ]
+    ids = _resolve_subtree_ids(client, root_id="d1")
+    assert ids == ["d1", "d2", "d3"]
+    client.rpc.assert_called_with("decks_subtree_ids", {"root_id": "d1"})
