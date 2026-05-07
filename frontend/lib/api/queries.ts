@@ -391,6 +391,7 @@ export type Card = {
   cefr: string | null;
   notes: string | null;
   source_capture_ids: string[];
+  deck_id: string;
   created_at: string;
   updated_at: string;
   flag: number;
@@ -500,6 +501,7 @@ export type ReviewQueueCard = {
   user_image_url: string | null;
   user_audio_url: string | null;
   flag: number;
+  deck_id: string;
 };
 
 export type GradeResult = {

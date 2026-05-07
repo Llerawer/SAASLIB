@@ -85,6 +85,7 @@ def _row_to_card(row: dict) -> CardOut:
         cefr=row.get("cefr"),
         notes=row.get("notes"),
         source_capture_ids=row.get("source_capture_ids") or [],
+        deck_id=row["deck_id"],
         flag=row.get("flag", 0),
         user_image_url=row.get("user_image_url") or None,
         user_audio_url=row.get("user_audio_url") or None,

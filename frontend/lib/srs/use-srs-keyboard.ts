@@ -10,6 +10,7 @@ export type SrsKeymap = {
   onFlag?: () => void;
   onGoToBook?: () => void;
   onPause?: () => void;
+  onMoveDeck?: () => void;
 };
 
 const isInput = (el: EventTarget | null): boolean =>
@@ -62,6 +63,10 @@ export function useSrsKeyboard(km: SrsKeymap, enabled = true) {
         case "p":
         case "P":
           km.onPause?.();
+          break;
+        case "m":
+        case "M":
+          km.onMoveDeck?.();
           break;
       }
     }

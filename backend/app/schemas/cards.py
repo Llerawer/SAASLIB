@@ -78,6 +78,7 @@ class CardOut(BaseModel):
     cefr: str | None
     notes: str | None
     source_capture_ids: list[str]
+    deck_id: str
     flag: int = 0
     user_image_url: str | None = None
     user_audio_url: str | None = None

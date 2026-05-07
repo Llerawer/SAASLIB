@@ -45,6 +45,7 @@ export function Reviewer({
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [breakActive, setBreakActive] = useState(false);
+  const [moveDeckOpen, setMoveDeckOpen] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set in the per-card useEffect below before any user interaction can fire.
   const cardShownAtRef = useRef<number>(0);
@@ -81,6 +82,7 @@ export function Reviewer({
   const flip = useCallback(() => setShowBack((v) => !v), []);
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const openEdit = useCallback(() => setEditOpen(true), []);
+  const openMoveDeck = useCallback(() => setMoveDeckOpen(true), []);
   const startBreak = useCallback(() => setBreakActive(true), []);
 
   const handleGrade = useCallback(
@@ -127,13 +129,14 @@ export function Reviewer({
 
   useReviewerKeyboard({
     showBack,
-    enabled: !breakActive && !editOpen && !menuOpen,
+    enabled: !breakActive && !editOpen && !menuOpen && !moveDeckOpen,
     onFlip: flip,
     onGrade: handleGrade,
     onUndo: handleUndo,
     onEdit: openEdit,
     onOpenMenu: openMenu,
     onPause: startBreak,
+    onMoveDeck: openMoveDeck,
   });
 
   if (!card) return null;
@@ -177,8 +180,14 @@ export function Reviewer({
           setMenuOpen(false);
           setEditOpen(true);
         }}
+        onMoveDeck={openMoveDeck}
       />
       <EditCardSheet card={card} open={editOpen} onOpenChange={setEditOpen} />
+      <EditCardSheet
+        card={card}
+        open={moveDeckOpen}
+        onOpenChange={setMoveDeckOpen}
+      />
 
       {throttle.shouldShow && !breakActive && (
         <ThrottleToast

@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Flag,
   BookOpen,
+  FolderInput,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -39,11 +40,13 @@ export function CardMenu({
   open,
   onOpenChange,
   onEdit,
+  onMoveDeck,
 }: {
   card: ReviewQueueCard | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onEdit: () => void;
+  onMoveDeck: () => void;
 }) {
   const suspend = useSuspendCard();
   const reset = useResetCard();
@@ -112,6 +115,16 @@ export function CardMenu({
       subtitle: "Cambia traducción, definición, medios",
       shortcut: "E",
       onClick: onEdit,
+    },
+    {
+      icon: FolderInput,
+      label: "Mover a deck",
+      subtitle: "Cambia el deck de esta tarjeta",
+      shortcut: "M",
+      onClick: () => {
+        onOpenChange(false);
+        onMoveDeck();
+      },
     },
     {
       icon: BookOpen,

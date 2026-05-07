@@ -12,6 +12,7 @@ export function useReviewerKeyboard({
   onEdit,
   onOpenMenu,
   onPause,
+  onMoveDeck,
 }: {
   showBack: boolean;
   enabled: boolean;
@@ -21,6 +22,7 @@ export function useReviewerKeyboard({
   onEdit: () => void;
   onOpenMenu: () => void;
   onPause: () => void;
+  onMoveDeck?: () => void;
 }) {
   // S/R/F/B all route to the same onOpenMenu — the design says menu-trigger
   // keys open the menu rather than firing the action directly, so the user
@@ -36,8 +38,9 @@ export function useReviewerKeyboard({
       onFlag: onOpenMenu,
       onGoToBook: onOpenMenu,
       onPause,
+      onMoveDeck: () => onMoveDeck?.(),
     }),
-    [showBack, onFlip, onGrade, onUndo, onEdit, onOpenMenu, onPause],
+    [showBack, onFlip, onGrade, onUndo, onEdit, onOpenMenu, onPause, onMoveDeck],
   );
 
   useSrsKeyboard(keymap, enabled);
