@@ -1,4 +1,4 @@
-"""Decks API — unit tests on Supabase mock."""
+"""Decks API -- unit tests on Supabase mock."""
 from unittest.mock import MagicMock
 
 
@@ -173,3 +173,46 @@ def test_cards_in_deck_subtree_uses_rpc():
     ids = _resolve_subtree_ids(client, root_id="d1")
     assert ids == ["d1", "d2", "d3"]
     client.rpc.assert_called_with("decks_subtree_ids", {"root_id": "d1"})
+
+
+def test_queue_filters_by_deck_subtree(monkeypatch):
+    """If deck_id is passed, queue must use _resolve_subtree_ids."""
+    from app.api.v1 import reviews as reviews_module
+    called = {}
+
+    def fake_subtree(client, root_id):
+        called["root_id"] = root_id
+        return [root_id, "d-child"]
+
+    monkeypatch.setattr(reviews_module, "_resolve_subtree_ids", fake_subtree)
+    ids = reviews_module._build_queue_filter(client=MagicMock(), deck_id="d1")
+    assert ids == ["d1", "d-child"]
+    assert called["root_id"] == "d1"
+
+
+def test_queue_no_deck_id_returns_none():
+    from app.api.v1 import reviews as reviews_module
+    ids = reviews_module._build_queue_filter(client=MagicMock(), deck_id=None)
+    assert ids is None
+
+
+def test_promote_auto_assigns_book_deck():
+    from app.api.v1.captures import _ensure_book_deck
+    client = MagicMock()
+    sel = client.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.limit.return_value
+    sel.execute.return_value.data = []
+    ins = client.table.return_value.insert.return_value
+    ins.execute.return_value.data = [{"id": "deck-new"}]
+    deck_id = _ensure_book_deck(
+        client, user_id="u1", book_id="b1", book_title="Sherlock"
+    )
+    assert deck_id == "deck-new"
+
+
+def test_promote_no_book_uses_inbox():
+    from app.api.v1.captures import _ensure_inbox_deck
+    client = MagicMock()
+    sel = client.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value
+    sel.execute.return_value.data = [{"id": "inbox-id"}]
+    deck_id = _ensure_inbox_deck(client, user_id="u1")
+    assert deck_id == "inbox-id"
