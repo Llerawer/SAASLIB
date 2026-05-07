@@ -135,10 +135,20 @@ export default function VideosPage() {
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold font-serif tracking-tight">
+        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
+          <span>Biblioteca</span>
+          <span aria-hidden className="text-muted-foreground/50">·</span>
+          <span>Videos de YouTube</span>
+        </div>
+        <h1 className="font-serif font-semibold text-3xl md:text-4xl tracking-tight leading-[1.15]">
           Videos recientes
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-px w-10 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <p className="mt-2.5 text-sm text-muted-foreground">
           Cache global de videos ya procesados. Pega una URL para añadir
           uno nuevo.
         </p>

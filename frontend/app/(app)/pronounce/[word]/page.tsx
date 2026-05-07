@@ -36,22 +36,15 @@ export default function PronouncePage({
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6">
-      <header className="flex items-center gap-3 mb-6 flex-wrap">
+      {/* Toolbar row: back + filters. Sits above the editorial masthead so
+          the headword can read as the page subject without compete with chrome. */}
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <Link href="/pronounce">
           <Button variant="ghost" size="sm" aria-label="Volver al buscador">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Buscar otra
           </Button>
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight">{word}</h1>
-        {data && (
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {data.total === 0
-              ? "0 clips"
-              : `${data.total} clip${data.total === 1 ? "" : "s"}`}
-          </span>
-        )}
-        <div className="flex-1" />
         <PronounceFiltersBar
           accent={accent}
           channel={channel}
@@ -64,6 +57,28 @@ export default function PronouncePage({
             setLimit(PAGE_SIZE);
           }}
         />
+      </div>
+      <header className="mb-6">
+        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
+          <span>Pronunciación</span>
+          <span aria-hidden className="text-muted-foreground/50">·</span>
+          <span>Clips</span>
+        </div>
+        <h1 className="font-serif font-semibold text-4xl md:text-5xl tracking-tight leading-none">
+          {word}
+        </h1>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-px w-10 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        {data && (
+          <p className="mt-2.5 text-sm text-muted-foreground tabular">
+            {data.total === 0
+              ? "Sin clips encontrados"
+              : `${data.total} clip${data.total === 1 ? "" : "s"} encontrado${data.total === 1 ? "" : "s"}`}
+          </p>
+        )}
       </header>
 
       {query.isLoading && (

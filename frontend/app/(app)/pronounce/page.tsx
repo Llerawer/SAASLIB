@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Headphones, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useCapturesList } from "@/lib/api/queries";
@@ -28,14 +28,21 @@ export default function PronounceLandingPage() {
   return (
     <div className="max-w-2xl mx-auto p-4 sm:p-6 pt-12 sm:pt-20">
       <div className="text-center mb-8">
-        <Headphones
-          className="h-10 w-10 mx-auto text-accent mb-3"
-          aria-hidden="true"
-        />
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-          Escucha cómo lo dicen los nativos
+        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-3">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
+          <span>Pronunciación</span>
+          <span aria-hidden className="text-muted-foreground/50">·</span>
+          <span>Clips de YouTube</span>
+        </div>
+        <h1 className="font-serif font-semibold text-3xl sm:text-4xl tracking-tight leading-[1.15]">
+          Escucha cómo lo dicen los nativos.
         </h1>
-        <p className="text-sm text-muted-foreground mt-2">
+        <div className="mt-4 flex items-center justify-center gap-2 max-w-xs mx-auto">
+          <div className="h-px w-8 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+          <div className="h-px w-8 bg-accent/70" />
+        </div>
+        <p className="text-sm text-muted-foreground mt-3 max-w-md mx-auto">
           Busca cualquier palabra y reproduce clips reales de YouTube.
         </p>
       </div>
@@ -69,7 +76,7 @@ export default function PronounceLandingPage() {
 
       {recentWords.length > 0 && (
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-2">
             Tus capturas recientes
           </p>
           <div className="flex flex-wrap gap-2">

@@ -7,7 +7,6 @@ import {
   Sparkles,
   ExternalLink,
   Check,
-  Wand2,
   ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -144,29 +143,24 @@ export default function ImportPage() {
         Volver a vocabulario
       </Link>
 
-      <header className="relative mb-8 rounded-xl border bg-card overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(circle at 20% 30%, oklch(0.94 0.05 75 / 0.7) 0%, transparent 60%)",
-          }}
-          aria-hidden="true"
-        />
-        <div className="relative px-5 sm:px-6 py-5 sm:py-6 flex items-start gap-4">
-          <div className="shrink-0 inline-flex items-center justify-center size-10 rounded-md bg-accent/15 text-accent ring-1 ring-accent/30">
-            <Wand2 className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight font-serif">
-              Enriquecer con IA externa
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1 leading-relaxed max-w-xl">
-              Selecciona capturas pendientes, copia el prompt, pégalo en Claude
-              o ChatGPT y trae la respuesta para crear tarjetas.
-            </p>
-          </div>
+      <header className="mb-8">
+        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
+          <span>Vocabulario</span>
+          <span aria-hidden className="text-muted-foreground/50">·</span>
+          <span>IA externa</span>
         </div>
+        <h1 className="font-serif font-semibold text-3xl md:text-4xl tracking-tight leading-[1.15]">
+          Enriquecer con IA externa
+        </h1>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-px w-10 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <p className="mt-2.5 text-sm text-muted-foreground leading-relaxed max-w-xl">
+          Selecciona capturas pendientes, copia el prompt, pégalo en Claude
+          o ChatGPT y trae la respuesta para crear tarjetas.
+        </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

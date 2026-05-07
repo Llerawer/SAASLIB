@@ -115,33 +115,48 @@ export default function VocabularyPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6">
-      <header className="flex items-start justify-between mb-6 gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Vocabulario</h1>
-          <p className="text-sm text-muted-foreground tabular">
-            {pendingQuery.data?.length ?? 0} pendientes ·{" "}
-            {processedQuery.data?.length ?? 0} procesadas
-          </p>
+      <header className="mb-6">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+              <span className="size-1 rounded-full bg-accent" aria-hidden />
+              <span>Biblioteca</span>
+              <span aria-hidden className="text-muted-foreground/50">·</span>
+              <span>Tus palabras</span>
+            </div>
+            <h1 className="font-serif font-semibold text-3xl md:text-4xl tracking-tight leading-[1.15]">
+              Vocabulario
+            </h1>
+          </div>
+          <div className="flex gap-2 items-center">
+            {bulkIds.size > 0 && (
+              <Button
+                size="sm"
+                onClick={handlePromoteSelected}
+                disabled={promote.isPending}
+              >
+                <Sparkles className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                Promover {bulkIds.size}
+              </Button>
+            )}
+            <Link href="/vocabulary/import">
+              <Button variant="outline" size="sm">
+                <Wand2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Enriquecer con IA</span>
+                <span className="sm:hidden">IA</span>
+              </Button>
+            </Link>
+          </div>
         </div>
-        <div className="flex gap-2 items-center">
-          {bulkIds.size > 0 && (
-            <Button
-              size="sm"
-              onClick={handlePromoteSelected}
-              disabled={promote.isPending}
-            >
-              <Sparkles className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              Promover {bulkIds.size}
-            </Button>
-          )}
-          <Link href="/vocabulary/import">
-            <Button variant="outline" size="sm">
-              <Wand2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              <span className="hidden sm:inline">Enriquecer con IA</span>
-              <span className="sm:hidden">IA</span>
-            </Button>
-          </Link>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-px w-10 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
         </div>
+        <p className="mt-2.5 text-sm text-muted-foreground tabular">
+          {pendingQuery.data?.length ?? 0} pendientes
+          {" · "}
+          {processedQuery.data?.length ?? 0} procesadas
+        </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">

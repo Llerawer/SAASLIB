@@ -91,7 +91,7 @@ function NavBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-bold tabular border rounded-full leading-none shrink-0",
+        "inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-xs font-bold tabular border rounded-full leading-none shrink-0",
         align === "trailing" && "ml-auto",
         toneClasses,
       )}
@@ -141,10 +141,10 @@ export function AppNavLinks({
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+              "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               variant === "vertical" && "w-full",
               active
-                ? "bg-accent/15 text-foreground"
+                ? "bg-accent/15 text-accent"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted",
             )}
           >

@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   BookOpen,
-  Search,
   X,
   ChevronDown,
   ChevronRight,
@@ -277,14 +276,27 @@ export default function LibraryPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
-      <h1 className="sr-only">Biblioteca</h1>
+      <header className="mb-6">
+        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
+          <span>Lectura</span>
+          <span aria-hidden className="text-muted-foreground/50">·</span>
+          <span>Tus libros</span>
+        </div>
+        <h1 className="font-serif font-semibold text-3xl md:text-4xl tracking-tight leading-[1.15]">
+          Biblioteca
+        </h1>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-px w-10 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+      </header>
 
       <OnboardingRibbon />
 
       {myLibrary.isLoading ? (
         <section className="mb-10">
-          <h2 className="text-xl font-bold mb-1 flex items-center gap-2 tracking-tight">
-            <BookOpen className="h-5 w-5 text-accent" aria-hidden="true" />
+          <h2 className="font-serif font-semibold text-2xl mb-1 tracking-tight">
             Continuar leyendo
           </h2>
           <div className="h-4 w-24 bg-muted rounded animate-pulse mb-4 mt-2" />
@@ -296,8 +308,7 @@ export default function LibraryPage() {
         </section>
       ) : myBooks.length > 0 ? (
         <section className="mb-10">
-          <h2 className="text-xl font-bold mb-1 flex items-center gap-2 tracking-tight">
-            <BookOpen className="h-5 w-5 text-accent" aria-hidden="true" />
+          <h2 className="font-serif font-semibold text-2xl mb-1 tracking-tight">
             Continuar leyendo
           </h2>
           <p className="text-sm text-muted-foreground mb-4 tabular">
@@ -320,8 +331,7 @@ export default function LibraryPage() {
       ) : null}
 
       <section>
-        <h2 className="text-xl font-bold mb-1 flex items-center gap-2 tracking-tight">
-          <Search className="h-5 w-5 text-accent" aria-hidden="true" />
+        <h2 className="font-serif font-semibold text-2xl mb-1 tracking-tight">
           Explorar Gutenberg
         </h2>
         <p className="text-sm text-muted-foreground mb-4 tabular">

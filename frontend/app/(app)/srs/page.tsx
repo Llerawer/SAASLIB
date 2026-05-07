@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
-import { Volume2, Undo2, GraduationCap, Sparkles, Headphones } from "lucide-react";
+import { Volume2, Undo2, GraduationCap, Headphones } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -169,36 +169,33 @@ export default function SrsPage() {
     return (
       <div className="max-w-3xl mx-auto p-4 md:p-6">
         <h1 className="sr-only">Repaso</h1>
-        <div className="relative border rounded-xl bg-card overflow-hidden">
-          <div
-            className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
-            style={{
-              background:
-                "radial-gradient(circle at 50% 0%, oklch(0.92 0.08 145 / 0.45) 0%, transparent 65%)",
-            }}
-            aria-hidden="true"
-          />
-          <div className="relative px-6 py-10 sm:px-10 sm:py-14 text-center">
-            <div className="inline-flex items-center justify-center size-12 rounded-full bg-success/15 text-success ring-1 ring-success/30">
-              <Sparkles className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <h2 className="mt-4 text-2xl sm:text-3xl font-bold font-serif tracking-tight">
-              Has terminado por hoy.
-            </h2>
-            <p className="mt-2 text-sm sm:text-base text-muted-foreground leading-relaxed max-w-md mx-auto">
-              No hay tarjetas para repasar. Vuelve mañana o trae más palabras
-              de tu vocabulario.
-            </p>
-            <div className="flex justify-center gap-2 mt-6 flex-wrap">
-              <Link href="/vocabulary">
-                <Button>Ver mi vocabulario</Button>
-              </Link>
-              <Link href="/library">
-                <Button variant="outline">Volver a leer</Button>
-              </Link>
-            </div>
+        <section className="py-12 sm:py-16">
+          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-3">
+            <span className="size-1 rounded-full bg-accent" aria-hidden />
+            <span>Repaso</span>
+            <span aria-hidden className="text-muted-foreground/50">·</span>
+            <span>Hoy</span>
           </div>
-        </div>
+          <h2 className="font-serif font-semibold text-3xl md:text-4xl tracking-tight leading-[1.15]">
+            Has terminado por hoy.
+          </h2>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-px w-10 bg-accent/70" />
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground leading-relaxed max-w-md">
+            No hay tarjetas para repasar. Vuelve mañana o trae más palabras
+            de tu vocabulario.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link href="/vocabulary">
+              <Button>Ver mi vocabulario</Button>
+            </Link>
+            <Link href="/library">
+              <Button variant="outline">Volver a leer</Button>
+            </Link>
+          </div>
+        </section>
       </div>
     );
   }
