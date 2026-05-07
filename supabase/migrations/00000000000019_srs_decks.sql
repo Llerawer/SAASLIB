@@ -88,7 +88,7 @@ begin
     --     protect this case because parent_id IS NULL and NULLs are
     --     distinct in Postgres unique indexes.
     insert into public.decks (user_id, parent_id, name, icon, color_hue)
-    select distinct uid, null, b.title, 'book', 210
+    select distinct uid, null::uuid, b.title, 'book', 210
     from public.cards c
     join public.captures cap on cap.id = any(c.source_capture_ids)
     join public.books b on b.id = cap.book_id
