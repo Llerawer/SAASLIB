@@ -509,10 +509,14 @@ export type GradeResult = {
   review_id: string;
 };
 
-export function useReviewQueue() {
+export function useReviewQueue(deckId: string | null = null) {
   return useQuery({
-    queryKey: ["reviews-queue"] as const,
-    queryFn: () => api.get<ReviewQueueCard[]>("/api/v1/reviews/queue?limit=20"),
+    queryKey: ["reviews-queue", { deckId }] as const,
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: "20" });
+      if (deckId) params.set("deck_id", deckId);
+      return api.get<ReviewQueueCard[]>(`/api/v1/reviews/queue?${params}`);
+    },
     staleTime: 0, // always fresh after a grade invalidates
   });
 }
