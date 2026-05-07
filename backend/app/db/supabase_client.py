@@ -28,6 +28,15 @@ def get_user_client(jwt: str) -> Client:
     Use this in every endpoint that reads or writes user-owned data. The
     backend's manual `.eq("user_id", user_id)` filters become defense-in-depth
     instead of the only line of defense.
+
+    NOTE: supabase-py does NOT propagate the user JWT to the storage sub-client.
+    `client.postgrest.auth(jwt)` only patches PostgREST. Storage operations
+    would otherwise go out with the anon key, making `auth.uid()` resolve to
+    NULL inside `storage.objects` RLS policies (e.g. our `cards-media: own
+    files insert` policy that checks
+    `(storage.foldername(name))[1] = auth.uid()::text`). We override the
+    Authorization header on the storage client's underlying httpx session so
+    the JWT travels with storage operations too.
     """
     if not settings.SUPABASE_ANON_KEY:
         raise RuntimeError(
@@ -36,4 +45,7 @@ def get_user_client(jwt: str) -> Client:
         )
     client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
     client.postgrest.auth(jwt)
+    # Forward the JWT to storage too. `_client` is private but stable across
+    # supabase-py 2.x (tracked in supabase-community/supabase-py#724).
+    client.storage._client.headers["authorization"] = f"Bearer {jwt}"
     return client
