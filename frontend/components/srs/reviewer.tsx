@@ -46,7 +46,8 @@ export function Reviewer({
   const [editOpen, setEditOpen] = useState(false);
   const [breakActive, setBreakActive] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cardShownAtRef = useRef<number>(Date.now());
+  // Set in the per-card useEffect below before any user interaction can fire.
+  const cardShownAtRef = useRef<number>(0);
   const focusRef = useRef<HTMLDivElement | null>(null);
 
   const intervals = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 export type GradeEntry = {
   card_id: string;
@@ -76,11 +76,8 @@ function compute(entries: GradeEntry[], startedAt: number): SessionMetrics {
 }
 
 export function useSessionTracker(): SessionTrackerApi {
-  const startedAtRef = useRef<number>(Date.now());
+  const [startedAt, setStartedAt] = useState<number>(() => Date.now());
   const [entries, setEntries] = useState<GradeEntry[]>([]);
-  // Re-render trigger when reset advances startedAtRef. We track a simple
-  // version counter so callers see the new startedAt.
-  const [, setVersion] = useState(0);
 
   const add = useCallback((entry: GradeEntry) => {
     setEntries((prev) => [...prev, entry]);
@@ -91,16 +88,15 @@ export function useSessionTracker(): SessionTrackerApi {
   }, []);
 
   const reset = useCallback(() => {
-    startedAtRef.current = Date.now();
+    setStartedAt(Date.now());
     setEntries([]);
-    setVersion((v) => v + 1);
   }, []);
 
   return {
     add,
     undo,
     reset,
-    metrics: compute(entries, startedAtRef.current),
-    startedAt: startedAtRef.current,
+    metrics: compute(entries, startedAt),
+    startedAt,
   };
 }

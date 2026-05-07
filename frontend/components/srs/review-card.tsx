@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { Volume2, MoreVertical, Eye, PenLine, SquareDot, type LucideIcon } from "lucide-react";
+import { Volume2, MoreVertical, Eye, PenLine, SquareDot, Sparkles, type LucideIcon } from "lucide-react";
 import type { ReviewQueueCard } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
-import { stateLabel, stateColorClass, stateIcon } from "@/lib/fsrs-preview";
+import { stateLabel, stateColorClass, STATE_ICON } from "@/lib/fsrs-preview";
 import {
   resolveVariant,
   maskCloze,
@@ -58,14 +58,9 @@ export function ReviewCard({
     [card],
   );
 
-  const masked = useMemo(() => {
-    if (variant !== "cloze") return null;
-    for (const ex of card.examples) {
-      const m = maskCloze(ex, card.word, card.word_normalized);
-      if (m) return { original: ex, masked: m };
-    }
-    return null;
-  }, [variant, card]);
+  // Plain expression — React Compiler memoizes automatically. The previous
+  // useMemo was rejected by `react-hooks/preserve-manual-memoization`.
+  const masked = findMaskedExample(variant, card);
 
   return (
     <div
@@ -153,7 +148,7 @@ export function ReviewCard({
 }
 
 function StateChip({ state }: { state: number }) {
-  const Icon = stateIcon(state);
+  const Icon = STATE_ICON[state] ?? Sparkles;
   return (
     <span
       className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${stateColorClass(state)}`}
@@ -162,6 +157,18 @@ function StateChip({ state }: { state: number }) {
       <span>{stateLabel(state)}</span>
     </span>
   );
+}
+
+function findMaskedExample(
+  variant: Variant,
+  card: ReviewQueueCard,
+): { original: string; masked: string } | null {
+  if (variant !== "cloze") return null;
+  for (const ex of card.examples) {
+    const m = maskCloze(ex, card.word, card.word_normalized);
+    if (m) return { original: ex, masked: m };
+  }
+  return null;
 }
 
 function VariantChip({ variant }: { variant: Variant }) {

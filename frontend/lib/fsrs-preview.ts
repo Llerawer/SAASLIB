@@ -99,16 +99,12 @@ export function stateColorClass(state: number): string {
   }
 }
 
-export function stateIcon(state: number): LucideIcon {
-  switch (state) {
-    case 0:
-      return Sparkles;
-    case 1:
-    case 3:
-      return Sprout;
-    case 2:
-      return Layers;
-    default:
-      return Sparkles;
-  }
-}
+// Module-scope record; lookup is statically analyzable and lets callers do
+// `<Icon />` without the React Compiler treating it as a component declared
+// during render (which `stateIcon(state)` would have triggered).
+export const STATE_ICON: Record<number, LucideIcon> = {
+  0: Sparkles,
+  1: Sprout,
+  2: Layers,
+  3: Sprout,
+};
