@@ -4,6 +4,7 @@
  * "Again ~5min  Hard ~1h  Good ~2d  Easy ~5d" labels under the grade buttons.
  */
 import { fsrs, generatorParameters, Rating, type Card, State } from "ts-fsrs";
+import { Sparkles, Sprout, Layers, type LucideIcon } from "lucide-react";
 
 const f = fsrs(generatorParameters({ enable_fuzz: false }));
 
@@ -97,3 +98,13 @@ export function stateColorClass(state: number): string {
       return "bg-muted text-muted-foreground border-input";
   }
 }
+
+// Module-scope record; lookup is statically analyzable and lets callers do
+// `<Icon />` without the React Compiler treating it as a component declared
+// during render (which `stateIcon(state)` would have triggered).
+export const STATE_ICON: Record<number, LucideIcon> = {
+  0: Sparkles,
+  1: Sprout,
+  2: Layers,
+  3: Sprout,
+};

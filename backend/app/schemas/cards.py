@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -77,6 +78,9 @@ class CardOut(BaseModel):
     cefr: str | None
     notes: str | None
     source_capture_ids: list[str]
+    flag: int = 0
+    user_image_url: str | None = None
+    user_audio_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -93,3 +97,52 @@ class PromoteResult(BaseModel):
     cards: list[CardOut]
     created_count: int
     merged_count: int
+
+
+class CardFlagInput(BaseModel):
+    flag: int = Field(..., ge=0, le=4)
+
+
+class CardActionResult(BaseModel):
+    """Generic small response for suspend/unsuspend/reset/flag."""
+    card_id: str
+    suspended_at: datetime | None = None
+    flag: int = 0
+
+
+class CardSource(BaseModel):
+    capture_id: str
+    book_id: str | None
+    page_or_location: str | None
+    context_sentence: str | None
+
+
+MediaType = Literal["image", "audio"]
+_ALLOWED_MIME_IMAGE = {"image/png", "image/jpeg", "image/webp"}
+_ALLOWED_MIME_AUDIO = {"audio/webm", "audio/mpeg", "audio/mp4", "audio/x-m4a"}
+_MAX_SIZE_IMAGE = 5 * 1024 * 1024
+_MAX_SIZE_AUDIO = 1 * 1024 * 1024
+
+
+class MediaUploadUrlInput(BaseModel):
+    type: MediaType
+    mime: str
+    size: int
+
+    @field_validator("size")
+    @classmethod
+    def _v_size(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("size must be positive")
+        return v
+
+
+class MediaUploadUrlResult(BaseModel):
+    upload_url: str
+    path: str
+    expires_at: datetime
+
+
+class MediaConfirmInput(BaseModel):
+    type: MediaType
+    path: str = Field(..., min_length=1, max_length=500)

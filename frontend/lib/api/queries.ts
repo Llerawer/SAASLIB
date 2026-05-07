@@ -393,6 +393,9 @@ export type Card = {
   source_capture_ids: string[];
   created_at: string;
   updated_at: string;
+  flag: number;
+  user_image_url: string | null;
+  user_audio_url: string | null;
 };
 
 export type PromoteResult = {
@@ -494,6 +497,9 @@ export type ReviewQueueCard = {
   fsrs_state: number;
   fsrs_difficulty: number | null;
   fsrs_stability: number | null;
+  user_image_url: string | null;
+  user_audio_url: string | null;
+  flag: number;
 };
 
 export type GradeResult = {
@@ -546,6 +552,7 @@ export type StatsHeatmapDay = {
 export type Stats = {
   cards_today_due: number;
   cards_today_done: number;
+  cards_tomorrow_due: number;
   retention_30d: number | null;
   streak_days: number;
   heatmap_90d: StatsHeatmapDay[];
@@ -1008,5 +1015,154 @@ export function useTranslateText() {
         source_lang,
         target_lang,
       }),
+  });
+}
+
+// ============================================================
+// Card actions: suspend, unsuspend, reset, flag, source
+// ============================================================
+
+export type CardActionResult = {
+  card_id: string;
+  suspended_at: string | null;
+  flag: number;
+};
+
+type CardUpdatePatch = {
+  translation?: string | null;
+  definition?: string | null;
+  mnemonic?: string | null;
+  notes?: string | null;
+};
+
+export function useUpdateCard() {
+  const qc = useQueryClient();
+  return useMutation<Card, Error, { id: string; patch: CardUpdatePatch }>({
+    mutationFn: ({ id, patch }) => api.put<Card>(`/api/v1/cards/${id}`, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+    },
+  });
+}
+
+export function useSuspendCard() {
+  const qc = useQueryClient();
+  return useMutation<CardActionResult, Error, string>({
+    mutationFn: (id) =>
+      api.post<CardActionResult>(`/api/v1/cards/${id}/suspend`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+      qc.invalidateQueries({ queryKey: ["cards"] });
+    },
+  });
+}
+
+export function useUnsuspendCard() {
+  const qc = useQueryClient();
+  return useMutation<CardActionResult, Error, string>({
+    mutationFn: (id) =>
+      api.post<CardActionResult>(`/api/v1/cards/${id}/unsuspend`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+      qc.invalidateQueries({ queryKey: ["cards"] });
+    },
+  });
+}
+
+export function useResetCard() {
+  const qc = useQueryClient();
+  return useMutation<CardActionResult, Error, string>({
+    mutationFn: (id) =>
+      api.post<CardActionResult>(`/api/v1/cards/${id}/reset`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+      qc.invalidateQueries({ queryKey: ["stats-me"] });
+    },
+  });
+}
+
+export function useFlagCard() {
+  const qc = useQueryClient();
+  return useMutation<
+    CardActionResult,
+    Error,
+    { id: string; flag: 0 | 1 | 2 | 3 | 4 }
+  >({
+    mutationFn: ({ id, flag }) =>
+      api.post<CardActionResult>(`/api/v1/cards/${id}/flag`, { flag }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+    },
+  });
+}
+
+export type CardSource = {
+  capture_id: string;
+  book_id: string | null;
+  page_or_location: string | null;
+  context_sentence: string | null;
+};
+
+export function useCardSource(id: string | null) {
+  return useQuery({
+    queryKey: ["card-source", id] as const,
+    queryFn: () => api.get<CardSource | null>(`/api/v1/cards/${id}/source`),
+    enabled: !!id,
+    staleTime: 60 * 60_000,
+  });
+}
+
+// ============================================================
+// Card media: upload-url, confirm, delete
+// ============================================================
+
+export type MediaUploadUrlResult = {
+  upload_url: string;
+  path: string;
+  expires_at: string;
+};
+
+export function useUploadCardMediaUrl() {
+  return useMutation<
+    MediaUploadUrlResult,
+    Error,
+    { id: string; type: "image" | "audio"; mime: string; size: number }
+  >({
+    mutationFn: ({ id, type, mime, size }) =>
+      api.post<MediaUploadUrlResult>(`/api/v1/cards/${id}/media/upload-url`, {
+        type,
+        mime,
+        size,
+      }),
+  });
+}
+
+export function useConfirmCardMedia() {
+  const qc = useQueryClient();
+  return useMutation<
+    Card,
+    Error,
+    { id: string; type: "image" | "audio"; path: string }
+  >({
+    mutationFn: ({ id, type, path }) =>
+      api.post<Card>(`/api/v1/cards/${id}/media/confirm`, { type, path }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+    },
+  });
+}
+
+export function useDeleteCardMedia() {
+  const qc = useQueryClient();
+  return useMutation<Card, Error, { id: string; type: "image" | "audio" }>({
+    mutationFn: ({ id, type }) =>
+      api.del<Card>(`/api/v1/cards/${id}/media/${type}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["reviews-queue"] });
+    },
   });
 }
