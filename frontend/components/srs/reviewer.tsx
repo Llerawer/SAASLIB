@@ -2,23 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  type ReviewQueueCard,
-  useGradeReview,
-  useUndoReview,
-} from "@/lib/api/queries";
+import { type ReviewQueueCard, useGradeReview, useUndoReview } from "@/lib/api/queries";
 import { previewIntervals } from "@/lib/fsrs-preview";
 import { useCardAudio } from "@/lib/srs/use-card-audio";
 import { useReviewerKeyboard } from "@/lib/srs/use-reviewer-keyboard";
-import {
-  useSessionTracker,
-  type SessionMetrics,
-} from "@/lib/srs/use-session-tracker";
+import { useSessionTracker, type SessionMetrics } from "@/lib/srs/use-session-tracker";
 import { useCognitiveThrottle } from "@/lib/srs/use-throttle";
 import { ReviewCard } from "./review-card";
 import { SrsGradeButtons } from "./grade-buttons";
 import { CardMenu } from "./card-menu";
 import { EditCardSheet } from "./edit-card-sheet";
+import { MoveCardSheet } from "./move-card-sheet";
 import { ThrottleToast } from "./throttle-toast";
 import { BreakOverlay } from "./break-overlay";
 import { KeyboardHint } from "./keyboard-hint";
@@ -62,8 +56,7 @@ export function Reviewer({
     });
   }, [card]);
 
-  // showBack is local UI state derived from the active card identity —
-  // resetting on card change is intentional.
+  // showBack resets on card change intentionally.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowBack(false);
@@ -122,10 +115,7 @@ export function Reviewer({
     }
   }, [undo, tracker]);
 
-  const throttle = useCognitiveThrottle({
-    startedAt: tracker.startedAt,
-    recentFailureRate: tracker.metrics.recentFailureRate,
-  });
+  const throttle = useCognitiveThrottle({ startedAt: tracker.startedAt, recentFailureRate: tracker.metrics.recentFailureRate });
 
   useReviewerKeyboard({
     showBack,
@@ -176,15 +166,12 @@ export function Reviewer({
         card={card}
         open={menuOpen}
         onOpenChange={setMenuOpen}
-        onEdit={() => {
-          setMenuOpen(false);
-          setEditOpen(true);
-        }}
+        onEdit={() => { setMenuOpen(false); setEditOpen(true); }}
         onMoveDeck={openMoveDeck}
       />
       <EditCardSheet card={card} open={editOpen} onOpenChange={setEditOpen} />
-      <EditCardSheet
-        card={card}
+      <MoveCardSheet
+        card={card as never}
         open={moveDeckOpen}
         onOpenChange={setMoveDeckOpen}
       />

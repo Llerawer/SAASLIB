@@ -16,13 +16,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import {
-  useUpdateCard,
-  type ReviewQueueCard,
-} from "@/lib/api/queries";
-import { useDeckTree, useMoveCardToDeck } from "@/lib/decks/queries";
-import { deckPath, buildDeckTree } from "@/lib/decks/rules";
-import { DeckPicker } from "./deck-picker";
+import { useUpdateCard, type ReviewQueueCard } from "@/lib/api/queries";
+import { DeckField } from "./deck-field";
 import { MediaUpload } from "./media-upload";
 
 export function EditCardSheet({
@@ -35,17 +30,10 @@ export function EditCardSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const update = useUpdateCard();
-  const tree = useDeckTree();
-  const move = useMoveCardToDeck();
   const [translation, setTranslation] = useState("");
   const [definition, setDefinition] = useState("");
   const [mnemonic, setMnemonic] = useState("");
   const [notes, setNotes] = useState("");
-  const [pickingDeck, setPickingDeck] = useState(false);
-
-  const all = tree.data ?? [];
-  const path = card ? deckPath(buildDeckTree(all), card.deck_id) : [];
-  const pathLabel = path.map((p) => p.name).join(" › ");
 
   // Re-seed local state when the card identity changes (user opens edit on a
   // different card). Set-state-in-effect intentional here.
@@ -138,30 +126,7 @@ export function EditCardSheet({
           </Field>
 
           {card && (
-            <div className="flex items-center justify-between text-sm">
-              <span>Deck: <strong>{pathLabel || "—"}</strong></span>
-              <button
-                type="button"
-                onClick={() => setPickingDeck((v) => !v)}
-                className="text-primary hover:underline"
-              >
-                Cambiar
-              </button>
-            </div>
-          )}
-          {card && pickingDeck && (
-            <DeckPicker
-              currentId={card.deck_id}
-              onPick={async (d) => {
-                try {
-                  await move.mutateAsync({ card_id: card.card_id, deck_id: d.id });
-                  toast.success("Movida");
-                  setPickingDeck(false);
-                } catch (e) {
-                  toast.error((e as Error).message);
-                }
-              }}
-            />
+            <DeckField cardId={card.card_id} deckId={card.deck_id} />
           )}
 
           {card && (

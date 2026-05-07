@@ -53,9 +53,7 @@ export function CardMenu({
   const flag = useFlagCard();
   const source = useCardSource(card?.card_id ?? null);
   const [confirmReset, setConfirmReset] = useState(false);
-
   if (!card) return null;
-
   const isFlagged = (card.flag ?? 0) > 0;
 
   async function doSuspend() {
@@ -105,9 +103,7 @@ export function CardMenu({
   }
 
   const hasSource = !!source.data?.book_id;
-
   type Row = MenuRowSpec & { visible?: boolean };
-
   const safeRows: Row[] = [
     {
       icon: Pencil,
@@ -152,7 +148,6 @@ export function CardMenu({
   ];
 
   const visibleSafeRows = safeRows.filter((r) => r.visible !== false);
-
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
