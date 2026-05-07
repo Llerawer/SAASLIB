@@ -8,41 +8,17 @@ import {
 } from "react";
 
 import type { PronounceClip } from "@/lib/api/queries";
+import type { YTPlayer } from "@/lib/youtube/types";
 
 // ---------------------------------------------------------------------------
 // YT IFrame API loader — single global script tag, idempotent.
 // The official API handles the postMessage protocol internally so we don't
 // have to fight it with raw window.postMessage (which proved unreliable in
 // our dev/CSP context — see commit history of v1.0 and v1.1).
+//
+// YT typings live in @/lib/youtube/types — shared with components/video/
+// so Window.YT only gets one declaration (TS2717 otherwise).
 // ---------------------------------------------------------------------------
-
-type YTPlayer = {
-  destroy: () => void;
-  playVideo: () => void;
-  pauseVideo: () => void;
-  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
-  setPlaybackRate: (rate: number) => void;
-  getCurrentTime: () => number;
-};
-
-type YTConstructor = new (
-  el: HTMLElement,
-  opts: {
-    videoId: string;
-    playerVars?: Record<string, number | string>;
-    events?: {
-      onReady?: (e: { target: YTPlayer }) => void;
-      onStateChange?: (e: { target: YTPlayer; data: number }) => void;
-    };
-  },
-) => YTPlayer;
-
-declare global {
-  interface Window {
-    YT?: { Player: YTConstructor };
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
 
 let ytApiPromise: Promise<void> | null = null;
 

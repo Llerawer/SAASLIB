@@ -3,6 +3,8 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
+import type { YTPlayer } from "@/lib/youtube/types";
+
 export type VideoPlayerHandle = {
   play: () => void;
   pause: () => void;
@@ -12,34 +14,9 @@ export type VideoPlayerHandle = {
   setPlaybackRate: (rate: number) => void;
 };
 
-declare global {
-  interface Window {
-    YT?: {
-      Player: new (
-        el: HTMLElement,
-        opts: {
-          videoId: string;
-          events?: {
-            onReady?: () => void;
-            onStateChange?: (e: { data: number }) => void;
-          };
-          playerVars?: Record<string, string | number>;
-        },
-      ) => YTPlayerInstance;
-    };
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
-type YTPlayerInstance = {
-  playVideo: () => void;
-  pauseVideo: () => void;
-  seekTo: (s: number, allowSeekAhead?: boolean) => void;
-  getCurrentTime: () => number;
-  getPlayerState: () => number;
-  setPlaybackRate: (rate: number) => void;
-  destroy: () => void;
-};
+// YT typings live in @/lib/youtube/types — shared across pronounce-deck
+// and video-player so Window.YT only gets one declaration (TS2717 otherwise).
+type YTPlayerInstance = YTPlayer;
 
 const YT_PLAYING = 1;
 
