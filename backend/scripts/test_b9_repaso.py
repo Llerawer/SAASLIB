@@ -157,6 +157,64 @@ def main() -> int:
             "cards_tomorrow_due" in st and isinstance(st["cards_tomorrow_due"], int),
         )
 
+        # 9) Media upload-url + confirm + delete (full roundtrip)
+        # The signed-url creation hits storage.objects RLS, which requires
+        # the user JWT to be forwarded to the storage sub-client. This was
+        # broken in supabase-py defaults until get_user_client was patched.
+        png_bytes = (
+            b"\x89PNG\r\n\x1a\n"
+            b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+            b"\x00\x00\x00\rIDATx\x9cc\xfc\xff\xff?\x03\x05\x00\x01\x05\x00\xfe\xa7T\xff\xc8"
+            b"\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        url_resp = httpx.post(
+            f"{API}/api/v1/cards/{card_id}/media/upload-url",
+            headers=h,
+            json={"type": "image", "mime": "image/png", "size": len(png_bytes)},
+            timeout=20,
+        )
+        failed += not ok(
+            "media/upload-url 200 (storage RLS happy)",
+            url_resp.status_code == 200,
+            f"got {url_resp.status_code}: {url_resp.text[:200]}",
+        )
+        if url_resp.status_code == 200:
+            payload = url_resp.json()
+            put = httpx.put(
+                payload["upload_url"],
+                content=png_bytes,
+                headers={"Content-Type": "image/png"},
+                timeout=30,
+            )
+            failed += not ok("storage PUT 200", put.status_code in (200, 201))
+
+            confirm = httpx.post(
+                f"{API}/api/v1/cards/{card_id}/media/confirm",
+                headers=h,
+                json={"type": "image", "path": payload["path"]},
+                timeout=20,
+            )
+            failed += not ok(
+                "media/confirm 200",
+                confirm.status_code == 200,
+                f"got {confirm.status_code}: {confirm.text[:200]}",
+            )
+            if confirm.status_code == 200:
+                failed += not ok(
+                    "user_image_url persisted on card",
+                    confirm.json().get("user_image_url") == payload["path"],
+                )
+
+            delete = httpx.delete(
+                f"{API}/api/v1/cards/{card_id}/media/image",
+                headers=h,
+                timeout=20,
+            )
+            failed += not ok(
+                "media/delete 200 + nullified",
+                delete.status_code == 200 and delete.json().get("user_image_url") is None,
+            )
+
     finally:
         if uid:
             du(uid)
