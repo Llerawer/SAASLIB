@@ -32,7 +32,7 @@ def _ensure_book_deck(
         client.table("decks")
         .select("id")
         .eq("user_id", user_id)
-        .eq("parent_id", None)
+        .is_("parent_id", "null")
         .eq("name", book_title)
         .limit(1)
         .execute()
