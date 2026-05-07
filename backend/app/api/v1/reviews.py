@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from app.api.v1.decks import _resolve_subtree_ids
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
 from app.db.supabase_client import get_user_client
@@ -25,6 +26,13 @@ from app.services import stats as stats_service
 router = APIRouter(prefix="/api/v1/reviews", tags=["reviews"])
 
 
+def _build_queue_filter(client, deck_id: str | None) -> list[str] | None:
+    """Returns subtree deck_ids to filter by, or None to skip the filter."""
+    if deck_id is None:
+        return None
+    return _resolve_subtree_ids(client, deck_id)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -33,6 +41,7 @@ def _now_iso() -> str:
 @limiter.limit("60/minute")
 async def queue(
     request: Request,
+    deck_id: str | None = None,
     limit: int = Query(default=20, le=100),
     auth: AuthInfo = Depends(get_auth),
 ):
@@ -58,14 +67,11 @@ async def queue(
     if not sched:
         return []
     card_ids = [s["card_id"] for s in sched]
-    cards = (
-        client.table("cards")
-        .select("*")
-        .in_("id", card_ids)
-        .execute()
-        .data
-        or []
-    )
+    deck_ids = _build_queue_filter(client, deck_id)
+    cards_q = client.table("cards").select("*").in_("id", card_ids)
+    if deck_ids is not None:
+        cards_q = cards_q.in_("deck_id", deck_ids)
+    cards = cards_q.execute().data or []
     cards_by_id = {c["id"]: c for c in cards}
     out: list[ReviewQueueCard] = []
     for s in sched:

@@ -58,9 +58,10 @@ def _to_user_date(ts_iso: str | datetime, tz: ZoneInfo) -> str:
     return dt.astimezone(tz).date().isoformat()
 
 
-def compute(user_id: str) -> dict[str, Any]:
+def compute(user_id: str, deck_ids: list[str] | None = None) -> dict[str, Any]:
+    cache_key = user_id if deck_ids is None else f"{user_id}:{','.join(sorted(deck_ids))}"
     with _lock:
-        cached = _cache.get(user_id)
+        cached = _cache.get(cache_key)
         if cached and cached.expires_at > _now():
             return cached.value
 
@@ -107,14 +108,14 @@ def compute(user_id: str) -> dict[str, Any]:
         .count
         or 0
     )
-    total_cards = (
+    _cards_q = (
         client.table("cards")
         .select("id", count="exact")
         .eq("user_id", user_id)
-        .execute()
-        .count
-        or 0
     )
+    if deck_ids is not None:
+        _cards_q = _cards_q.in_("deck_id", deck_ids)
+    total_cards = _cards_q.execute().count or 0
     total_reviews = (
         client.table("reviews")
         .select("id", count="exact")
@@ -207,5 +208,5 @@ def compute(user_id: str) -> dict[str, Any]:
     }
 
     with _lock:
-        _cache[user_id] = _CacheEntry(value=result, expires_at=_now() + _TTL)
+        _cache[cache_key] = _CacheEntry(value=result, expires_at=_now() + _TTL)
     return result

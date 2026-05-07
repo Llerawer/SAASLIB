@@ -11,6 +11,66 @@ from app.services import prompt_template, word_lookup
 from app.services.normalize import normalize
 
 
+def _ensure_inbox_deck(client, user_id: str) -> str:
+    res = (
+        client.table("decks")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("is_inbox", True)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(500, "Inbox deck missing for user")
+    return res.data[0]["id"]
+
+
+def _ensure_book_deck(
+    client, user_id: str, book_id: str, book_title: str
+) -> str:
+    sel = (
+        client.table("decks")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("parent_id", None)
+        .eq("name", book_title)
+        .limit(1)
+        .execute()
+    )
+    if sel.data:
+        return sel.data[0]["id"]
+    ins = (
+        client.table("decks")
+        .insert(
+            {
+                "user_id": user_id,
+                "parent_id": None,
+                "name": book_title,
+                "icon": "book",
+                "color_hue": 210,
+            }
+        )
+        .execute()
+    )
+    return ins.data[0]["id"]
+
+
+def _resolve_capture_deck(client, user_id: str, capture: dict) -> str:
+    book_id = capture.get("book_id")
+    if not book_id:
+        return _ensure_inbox_deck(client, user_id)
+    book = (
+        client.table("books")
+        .select("id, title")
+        .eq("id", book_id)
+        .limit(1)
+        .execute()
+    )
+    if not book.data:
+        return _ensure_inbox_deck(client, user_id)
+    return _ensure_book_deck(client, user_id, book_id, book.data[0]["title"])
+
+
 class BatchPromptInput(BaseModel):
     capture_ids: list[str] = Field(..., min_length=1, max_length=100)
 
@@ -78,7 +138,7 @@ async def create_capture(
         "tags": body.tags,
         "note": body.note,
     }
-    # User-scoped client → RLS enforces user_id = auth.uid() on insert.
+    # User-scoped client -> RLS enforces user_id = auth.uid() on insert.
     client = get_user_client(auth.jwt)
     inserted = client.table("captures").insert(payload).execute()
     if not inserted.data:
@@ -97,7 +157,7 @@ async def list_capture_lemmas(
 ):
     """Return ALL distinct word_normalized values for the user's captures.
 
-    Used by the video reader to mark unknown words at a glance — much
+    Used by the video reader to mark unknown words at a glance -- much
     cheaper than fetching full capture rows. Paginates explicitly because
     Supabase REST caps at 1000 rows per page.
     """
@@ -169,7 +229,7 @@ async def update_capture(
     auth: AuthInfo = Depends(get_auth),
 ):
     # exclude_unset (not exclude_none): a client can clear ANY nullable
-    # column — note, context_sentence, page_or_location, tags — by sending
+    # column -- note, context_sentence, page_or_location, tags -- by sending
     # an explicit null. Absent fields stay untouched. Don't downgrade to
     # exclude_none without first auditing every caller for accidental nulls.
     update = body.model_dump(exclude_unset=True)

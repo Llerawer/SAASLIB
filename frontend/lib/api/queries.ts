@@ -1166,3 +1166,85 @@ export function useDeleteCardMedia() {
     },
   });
 }
+
+// ============================================================
+// Reader bootstrap: register Gutenberg book + saved/save progress
+// ============================================================
+
+export type RegisterGutenbergInput = {
+  gutenberg_id: number;
+  title: string;
+  author: string | null;
+  language: string;
+};
+
+export type BookOut = {
+  id: string;
+  title: string;
+  source_ref: string;
+};
+
+/**
+ * Registers a Gutenberg book in our DB on first read. Idempotent server-side
+ * (returns existing row if already registered for the user). The internal
+ * book_id returned is what every other reader query keys off.
+ */
+export function useRegisterGutenberg() {
+  return useMutation<BookOut, Error, RegisterGutenbergInput>({
+    mutationFn: (input) =>
+      api.post<BookOut>("/api/v1/books/gutenberg/register", input),
+  });
+}
+
+export type SavedProgress = {
+  current_location: string | null;
+  percent: number | null;
+};
+
+/**
+ * One-shot read of where the user left off. 404 → resolves to null (first
+ * time reading this book). staleTime Infinity because we only read it on
+ * mount; the user's writes don't invalidate (last write wins on next reload).
+ */
+export function useSavedProgress(bookId: string | null) {
+  return useQuery<SavedProgress | null>({
+    queryKey: ["saved-progress", bookId],
+    queryFn: async () => {
+      try {
+        return await api.get<SavedProgress>(
+          `/api/v1/books/${bookId}/progress`,
+        );
+      } catch (err) {
+        const msg = (err as Error).message ?? "";
+        if (msg.includes("404") || msg.includes("Not Found")) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: !!bookId,
+    staleTime: Infinity,
+  });
+}
+
+export type SaveProgressInput = {
+  location: string;
+  percent: number;
+};
+
+/**
+ * Writes the user's current position. Silent: we don't invalidate
+ * useSavedProgress (we wrote it, we know what's there; on reload the
+ * client reads fresh anyway). Page debounces calls; the mutation itself
+ * is a single round-trip.
+ */
+export function useSaveProgress(bookId: string | null) {
+  return useMutation<void, Error, SaveProgressInput>({
+    mutationFn: (input) => {
+      if (!bookId) {
+        return Promise.reject(new Error("No bookId"));
+      }
+      return api.put<void>(`/api/v1/books/${bookId}/progress`, input);
+    },
+  });
+}

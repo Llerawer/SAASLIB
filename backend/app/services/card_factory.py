@@ -98,7 +98,7 @@ def create_card(
         return existing
 
     c = _resolve_client(client)
-    insert = {
+    insert: dict[str, Any] = {
         "user_id": user_id,
         "word": word,
         "word_normalized": word_normalized,
@@ -112,6 +112,8 @@ def create_card(
         "notes": payload.get("notes"),
         "source_capture_ids": payload.get("source_capture_ids") or [],
     }
+    if "deck_id" in payload and payload["deck_id"] is not None:
+        insert["deck_id"] = payload["deck_id"]
     res = c.table("cards").insert(insert).execute()
     if not res.data:
         raise RuntimeError("Failed to insert card")
@@ -153,11 +155,13 @@ def promote_from_captures(
     capture_ids: list[str],
     ai_data: list[dict] | None = None,
     client: Client | None = None,
+    deck_resolver=None,
 ) -> dict:
     """Group captures by word_normalized; for each group, create or merge into
     the existing card. Mark all captures as promoted_to_card=true.
 
-    AI data is keyed by `word` field of each entry (matched after normalize)."""
+    AI data is keyed by `word` field of each entry (matched after normalize).
+    deck_resolver: optional callable(client, user_id, capture) -> deck_id str."""
     client = _resolve_client(client)
     cap_res = (
         client.table("captures")
@@ -244,6 +248,8 @@ def promote_from_captures(
                 group_caps, cache_lookup, ai_lookup
             )
             payload["source_capture_ids"] = new_capture_ids[-MAX_SOURCE_CAPTURES:]
+            if deck_resolver is not None:
+                payload["deck_id"] = deck_resolver(client, user_id, group_caps[0])
             card = create_card(user_id, payload, client)
             cards_out.append(card)
             created += 1

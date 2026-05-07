@@ -30,6 +30,7 @@ from app.schemas.cards import (
     _MAX_SIZE_AUDIO,
     _MAX_SIZE_IMAGE,
 )
+from app.api.v1.captures import _resolve_capture_deck
 from app.schemas.decks import MoveCardRequest
 from app.services import ai_response_parser, card_factory
 from app.services.fsrs_scheduler import initial_snapshot
@@ -120,6 +121,7 @@ async def promote(
         body.capture_ids,
         body.ai_data,
         client=get_user_client(auth.jwt),
+        deck_resolver=_resolve_capture_deck,
     )
     return PromoteResult(
         cards=[_row_to_card(c) for c in result["cards"]],
