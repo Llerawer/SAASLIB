@@ -61,3 +61,47 @@ $$;
 -- Grant execute to authenticated role (RLS on decks limits which IDs the
 -- caller can see indirectly, but the function itself doesn't filter by user).
 grant execute on function public.decks_subtree_ids(uuid) to authenticated;
+
+-- 5. Backfill: per user, create Inbox + book decks, assign cards.
+do $$
+declare
+  uid uuid;
+  inbox_id uuid;
+begin
+  for uid in select distinct user_id from public.cards loop
+    -- 5a. Inbox root
+    insert into public.decks (user_id, parent_id, name, is_inbox, icon, color_hue)
+    values (uid, null, 'Inbox', true, 'inbox', 220)
+    returning id into inbox_id;
+
+    -- 5b. One root deck per book the user has cards from. The unique
+    --     constraint on (user_id, parent_id, name) prevents duplicates if
+    --     two captures from the same book exist.
+    insert into public.decks (user_id, parent_id, name, icon, color_hue)
+    select distinct uid, null, b.title, 'book', 210
+    from public.cards c
+    join public.captures cap on cap.id = c.capture_id
+    join public.books b on b.id = cap.book_id
+    where c.user_id = uid and cap.book_id is not null;
+
+    -- 5c. Assign cards to their book deck.
+    update public.cards c
+    set deck_id = d.id
+    from public.captures cap, public.books b, public.decks d
+    where cap.id = c.capture_id
+      and b.id = cap.book_id
+      and d.user_id = uid
+      and d.parent_id is null
+      and d.name = b.title
+      and c.user_id = uid
+      and c.deck_id is null;
+
+    -- 5d. Cards without a book → Inbox.
+    update public.cards
+    set deck_id = inbox_id
+    where user_id = uid and deck_id is null;
+  end loop;
+end $$;
+
+-- 6. Lock down: deck_id is now mandatory.
+alter table public.cards alter column deck_id set not null;
