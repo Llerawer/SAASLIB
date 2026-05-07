@@ -82,3 +82,61 @@ def test_would_not_cycle_for_root_move():
         {"id": "a", "parent_id": "x"},
     ]
     assert _would_create_cycle(rows, deck_id="a", new_parent_id=None) is False
+
+
+def test_delete_check_empty_deck():
+    from app.api.v1.decks import _check_deck_empty
+    client = MagicMock()
+    # The implementation calls .eq().limit(1).execute(); mock at .limit.return_value.
+    chain = client.table.return_value.select.return_value.eq.return_value.limit.return_value
+    chain.execute.side_effect = [
+        MagicMock(data=[]),  # children check
+        MagicMock(data=[]),  # cards check
+    ]
+    _check_deck_empty(client, deck_id="d1", is_inbox=False)
+    # Did not raise.
+
+
+def test_delete_blocks_inbox():
+    from fastapi import HTTPException
+    from app.api.v1.decks import _check_deck_empty
+    client = MagicMock()
+    try:
+        _check_deck_empty(client, deck_id="d1", is_inbox=True)
+        assert False, "should have raised"
+    except HTTPException as e:
+        assert e.status_code == 409
+        assert "Inbox" in e.detail
+
+
+def test_delete_blocks_with_children():
+    from fastapi import HTTPException
+    from app.api.v1.decks import _check_deck_empty
+    client = MagicMock()
+    chain = client.table.return_value.select.return_value.eq.return_value.limit.return_value
+    chain.execute.side_effect = [
+        MagicMock(data=[{"id": "child1"}]),  # children present
+    ]
+    try:
+        _check_deck_empty(client, deck_id="d1", is_inbox=False)
+        assert False, "should have raised"
+    except HTTPException as e:
+        assert e.status_code == 409
+        assert "subdecks" in e.detail
+
+
+def test_delete_blocks_with_cards():
+    from fastapi import HTTPException
+    from app.api.v1.decks import _check_deck_empty
+    client = MagicMock()
+    chain = client.table.return_value.select.return_value.eq.return_value.limit.return_value
+    chain.execute.side_effect = [
+        MagicMock(data=[]),                          # children empty
+        MagicMock(data=[{"id": "card1"}]),           # but cards present
+    ]
+    try:
+        _check_deck_empty(client, deck_id="d1", is_inbox=False)
+        assert False, "should have raised"
+    except HTTPException as e:
+        assert e.status_code == 409
+        assert "cards" in e.detail

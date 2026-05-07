@@ -179,3 +179,48 @@ async def update_deck(
 
     counts = _fetch_deck_card_counts(client)
     return _build_deck_response(updated.data, counts)[0]
+
+
+def _check_deck_empty(client, deck_id: str, is_inbox: bool) -> None:
+    """Raise 409 if deck cannot be deleted; return None if safe."""
+    if is_inbox:
+        raise HTTPException(409, "Inbox no se puede eliminar")
+    children = (
+        client.table("decks")
+        .select("id")
+        .eq("parent_id", deck_id)
+        .limit(1)
+        .execute()
+    )
+    if children.data:
+        raise HTTPException(
+            409, "Este deck tiene subdecks; muévelos antes de eliminar"
+        )
+    cards = (
+        client.table("cards")
+        .select("id")
+        .eq("deck_id", deck_id)
+        .limit(1)
+        .execute()
+    )
+    if cards.data:
+        raise HTTPException(
+            409, "Este deck tiene cards; muévelas antes de eliminar"
+        )
+
+
+@router.delete("/{deck_id}", status_code=204)
+async def delete_deck(deck_id: str, auth: AuthInfo = Depends(get_auth)):
+    client = get_user_client(auth.jwt)
+    target = (
+        client.table("decks")
+        .select("id, is_inbox")
+        .eq("id", deck_id)
+        .limit(1)
+        .execute()
+    )
+    if not target.data:
+        raise HTTPException(404, "deck not found")
+    _check_deck_empty(client, deck_id, target.data[0]["is_inbox"])
+    client.table("decks").delete().eq("id", deck_id).execute()
+    return None
