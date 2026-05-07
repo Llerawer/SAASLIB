@@ -1,5 +1,8 @@
+-- Required for the EXCLUDE constraint on (user_id, is_inbox=true) below.
+create extension if not exists btree_gist;
+
 -- 1. decks table
-create table public.decks (
+create table if not exists public.decks (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references auth.users(id) on delete cascade,
   parent_id     uuid references public.decks(id) on delete restrict,
@@ -13,13 +16,13 @@ create table public.decks (
   constraint decks_one_inbox_per_user exclude (user_id with =) where (is_inbox = true)
 );
 
-create index decks_user_parent_idx on public.decks (user_id, parent_id);
+create index if not exists decks_user_parent_idx on public.decks (user_id, parent_id);
 
 -- 2. cards.deck_id (nullable for now; flipped to NOT NULL in Task 2 after backfill)
 alter table public.cards
-  add column deck_id uuid references public.decks(id) on delete restrict;
+  add column if not exists deck_id uuid references public.decks(id) on delete restrict;
 
-create index cards_deck_id_idx on public.cards (deck_id);
+create index if not exists cards_deck_id_idx on public.cards (deck_id);
 
 -- 3. RLS for decks
 alter table public.decks enable row level security;
@@ -45,10 +48,12 @@ create policy "decks: own delete" on public.decks for delete
 create or replace function public.decks_subtree_ids(root_id uuid)
 returns table(id uuid) language sql stable as $$
   with recursive deck_tree as (
-    select id from public.decks where id = root_id
+    select id, ARRAY[id] as path from public.decks where id = root_id
     union all
-    select d.id from public.decks d
+    select d.id, dt.path || d.id
+    from public.decks d
     join deck_tree dt on d.parent_id = dt.id
+    where not d.id = any(dt.path)
   )
   select id from deck_tree;
 $$;
