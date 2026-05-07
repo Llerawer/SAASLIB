@@ -115,7 +115,7 @@ export default function SrsPage() {
     .reduce((acc, d) => acc + d.direct_due_count + d.descendant_due_count, 0);
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex min-h-[calc(100vh-57px)] flex-col p-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Repaso</h1>
         <Button
@@ -127,8 +127,10 @@ export default function SrsPage() {
           <Plus className="h-3.5 w-3.5" /> Nuevo deck
         </Button>
       </div>
-      <ReviewAllCTA totalDue={totalDue} onStart={() => sel.startReview(null)} />
-      <DeckFan decks={roots} onSelect={(d) => sel.selectDeck(d.id)} />
+      <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-8">
+        <ReviewAllCTA totalDue={totalDue} onStart={() => sel.startReview(null)} />
+        <DeckFan decks={roots} onSelect={(d) => sel.selectDeck(d.id)} />
+      </div>
       <NewDeckSheet open={newOpen} onOpenChange={setNewOpen} />
     </div>
   );

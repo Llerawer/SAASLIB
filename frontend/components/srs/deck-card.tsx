@@ -29,38 +29,58 @@ export function DeckCard({
   const Icon = (deck.icon && ICON_MAP[deck.icon]) ? ICON_MAP[deck.icon] : DEFAULT_ICON;
   const totalDue = deck.direct_due_count + deck.descendant_due_count;
   const totalCards = deck.direct_card_count + deck.descendant_card_count;
-  const dim = totalDue === 0 ? "opacity-80" : "";
 
   return (
     <div
-      className={`relative h-full w-full rounded-2xl text-white p-5 flex flex-col justify-between ${dim}`}
+      className="relative h-full w-full rounded-2xl text-white p-5 flex flex-col justify-between transition-shadow"
       style={{
         width,
         height,
-        background: `linear-gradient(135deg, hsl(${hue} 50% 30%), hsl(${hue} 50% 18%))`,
+        background: `linear-gradient(135deg, hsl(${hue} 52% 32%), hsl(${hue} 50% 16%))`,
+        boxShadow: active
+          ? `0 22px 48px -16px hsl(${hue} 50% 8% / 0.6), 0 6px 14px -6px hsl(${hue} 50% 8% / 0.4)`
+          : "0 8px 22px -10px hsl(0 0% 0% / 0.35)",
       }}
     >
+      {/* Top sheen on active — gives the front card a lit-from-above quality */}
+      {active && (
+        <div
+          className="pointer-events-none absolute inset-0 rounded-2xl"
+          style={{
+            background:
+              "linear-gradient(180deg, hsl(0 0% 100% / 0.10), hsl(0 0% 100% / 0) 38%)",
+          }}
+          aria-hidden="true"
+        />
+      )}
+
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           <Icon className="h-5 w-5" />
           <span className="text-base font-semibold leading-tight">{deck.name}</span>
         </div>
         {deck.is_inbox && (
-          <span className="text-[10px] uppercase tracking-wide opacity-70">Inbox</span>
+          <span className="text-xs uppercase tracking-wide opacity-70">Inbox</span>
         )}
       </div>
 
-      <div className="flex flex-col items-start gap-1">
+      <div className="flex items-end gap-3">
         <div
-          className={`text-3xl font-bold ${totalDue === 0 ? "opacity-50" : ""}`}
+          className={`font-bold leading-none tabular-nums ${
+            totalDue === 0 ? "text-3xl opacity-45" : "text-4xl"
+          }`}
         >
           {totalDue}
         </div>
-        <div className="text-xs opacity-80">due hoy · {totalCards} total</div>
+        <div className="pb-1 text-xs leading-tight opacity-80">
+          {totalDue === 0 ? "al día" : "hoy"}
+          <br />
+          <span className="opacity-70">de {totalCards}</span>
+        </div>
       </div>
 
       {active && (
-        <div className="absolute inset-0 rounded-2xl ring-2 ring-white/40 pointer-events-none" />
+        <div className="absolute inset-0 rounded-2xl ring-1 ring-white/55 pointer-events-none" />
       )}
     </div>
   );

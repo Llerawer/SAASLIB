@@ -11,13 +11,30 @@ const OVERLAP = 0.48;
 const SPREAD_DEG = 48;
 const DEPTH_PX = 140;
 const TILT_X_DEG = 12;
-const ACTIVE_LIFT = 22;
-const ACTIVE_SCALE = 1.03;
-const INACTIVE_SCALE = 0.94;
+const ACTIVE_LIFT = 28;
+const ACTIVE_SCALE = 1.06;
+const INACTIVE_SCALE = 0.86;
+const INACTIVE_OPACITY = 0.55;
 
 function wrap(n: number, len: number) {
   if (len <= 0) return 0;
   return ((n % len) + len) % len;
+}
+
+/**
+ * Shortest signed distance from `i` to `active` on a circular array of length
+ * `len`. Without this the fan sits one-sided when the active deck is at the
+ * start of the list, e.g. active=0 and decks=[A,B,C,D,E] would render all
+ * four siblings to the right of A. With wrapped offsets, two go left and two
+ * go right and the fan reads as a balanced hand of cards. On exact 180° ties
+ * (even-length lists), positive direction wins.
+ */
+function wrappedOffset(i: number, active: number, len: number): number {
+  let off = i - active;
+  const half = len / 2;
+  if (off > half) off -= len;
+  else if (off < -half) off += len;
+  return off;
 }
 
 export function DeckFan({
@@ -56,7 +73,7 @@ export function DeckFan({
       aria-label="Decks"
     >
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto h-40 w-[76%] rounded-full bg-black/10 blur-3xl dark:bg-black/30"
+        className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto h-40 w-[60%] rounded-full bg-foreground/15 blur-3xl dark:bg-foreground/10"
         aria-hidden="true"
       />
       <div
@@ -65,16 +82,17 @@ export function DeckFan({
       >
         <AnimatePresence initial={false}>
           {decks.map((deck, i) => {
-            const off = i - active;
+            const off = wrappedOffset(i, active, len);
             const abs = Math.abs(off);
             if (abs > maxOffset) return null;
 
             const rotateZ = off * stepDeg;
             const x = off * cardSpacing;
-            const y = abs * 10;
+            const y = abs * 12;
             const z = -abs * DEPTH_PX;
             const isActive = off === 0;
             const scale = isActive ? ACTIVE_SCALE : INACTIVE_SCALE;
+            const opacity = isActive ? 1 : INACTIVE_OPACITY;
             const lift = isActive ? -ACTIVE_LIFT : 0;
             const rotateX = isActive ? 0 : TILT_X_DEG;
             const zIndex = 100 - abs;
@@ -108,7 +126,7 @@ export function DeckFan({
                     ? false
                     : { opacity: 0, y: y + 40, x, rotateZ, rotateX, scale }
                 }
-                animate={{ opacity: 1, x, y: y + lift, rotateZ, rotateX, scale }}
+                animate={{ opacity, x, y: y + lift, rotateZ, rotateX, scale }}
                 transition={{ type: "spring", stiffness: 280, damping: 28 }}
                 onClick={() => (isActive ? onSelect(deck) : setActive(i))}
                 {...dragProps}
@@ -128,15 +146,16 @@ export function DeckFan({
         </AnimatePresence>
       </div>
       {/* Dots */}
-      <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2">
+      <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
         {decks.map((d, i) => (
           <button
             key={d.id}
             onClick={() => setActive(i)}
-            className={`h-1.5 w-1.5 rounded-full transition ${
-              i === active ? "bg-foreground" : "bg-foreground/30"
+            className={`h-1.5 rounded-full transition-all duration-200 ${
+              i === active ? "w-5 bg-accent" : "w-1.5 bg-foreground/25 hover:bg-foreground/40"
             }`}
             aria-label={`Ir a ${d.name}`}
+            aria-current={i === active ? "true" : undefined}
           />
         ))}
       </div>

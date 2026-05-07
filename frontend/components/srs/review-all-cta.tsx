@@ -12,17 +12,22 @@ export function ReviewAllCTA({
 }) {
   if (totalDue === 0) {
     return (
-      <p className="text-sm text-muted-foreground text-center mb-4">
+      <p className="text-sm text-muted-foreground text-center">
         Nada pendiente hoy. Pulsa un deck para revisar o agregar cards.
       </p>
     );
   }
   return (
-    <div className="flex justify-center mb-4">
-      <Button onClick={onStart} size="lg" className="gap-2">
-        <Play className="h-4 w-4" />
-        Repasar todo ({totalDue} due)
-      </Button>
-    </div>
+    <Button onClick={onStart} size="lg" className="gap-2.5">
+      <Play className="h-4 w-4" />
+      <span>Repasar todo</span>
+      <span
+        aria-hidden="true"
+        className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary-foreground/15 px-2 text-xs font-semibold tabular-nums"
+      >
+        {totalDue}
+      </span>
+      <span className="sr-only">{totalDue} pendientes</span>
+    </Button>
   );
 }
