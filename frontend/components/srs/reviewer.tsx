@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Undo2 } from "lucide-react";
 import {
   type ReviewQueueCard,
   useGradeReview,
   useUndoReview,
 } from "@/lib/api/queries";
 import { previewIntervals } from "@/lib/fsrs-preview";
-import { useSrsKeyboard } from "@/lib/srs/use-srs-keyboard";
+import { useCardAudio } from "@/lib/srs/use-card-audio";
+import { useReviewerKeyboard } from "@/lib/srs/use-reviewer-keyboard";
 import {
   useSessionTracker,
   type SessionMetrics,
@@ -21,7 +21,8 @@ import { CardMenu } from "./card-menu";
 import { EditCardSheet } from "./edit-card-sheet";
 import { ThrottleToast } from "./throttle-toast";
 import { BreakOverlay } from "./break-overlay";
-import { Kbd } from "./kbd";
+import { KeyboardHint } from "./keyboard-hint";
+import { UndoBanner } from "./undo-banner";
 import { Button } from "@/components/ui/button";
 
 type GradeKey = 1 | 2 | 3 | 4;
@@ -48,41 +49,28 @@ export function Reviewer({
   const cardShownAtRef = useRef<number>(Date.now());
   const focusRef = useRef<HTMLDivElement | null>(null);
 
-  const intervals = useMemo(
-    () =>
-      previewIntervals(
-        card
-          ? {
-              state: card.fsrs_state,
-              stability: card.fsrs_stability,
-              difficulty: card.fsrs_difficulty,
-              due_at: card.due_at,
-              last_reviewed_at: null,
-            }
-          : null,
-      ),
-    [card],
-  );
+  const intervals = useMemo(() => {
+    if (!card) return previewIntervals(null);
+    return previewIntervals({
+      state: card.fsrs_state,
+      stability: card.fsrs_stability,
+      difficulty: card.fsrs_difficulty,
+      due_at: card.due_at,
+      last_reviewed_at: null,
+    });
+  }, [card]);
 
-  // Reset showBack + restart card timer when the active card changes.
-  // Set-state-in-effect is intentional: showBack is local UI state derived
-  // from the underlying card identity.
-  /* eslint-disable react-hooks/set-state-in-effect */
+  // showBack is local UI state derived from the active card identity —
+  // resetting on card change is intentional.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowBack(false);
     cardShownAtRef.current = Date.now();
     focusRef.current?.focus();
   }, [card?.card_id]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Auto-play native audio on card appearance.
-  useEffect(() => {
-    if (!card?.audio_url) return;
-    const a = new Audio(card.audio_url);
-    a.play().catch(() => undefined);
-  }, [card?.audio_url]);
+  const { playAudio, playUserAudio } = useCardAudio(card);
 
-  // Detect end of session.
   useEffect(() => {
     if (cards.length === 0 && tracker.metrics.total > 0) {
       onSessionEmpty(tracker.metrics);
@@ -90,16 +78,9 @@ export function Reviewer({
   }, [cards.length, tracker.metrics, onSessionEmpty]);
 
   const flip = useCallback(() => setShowBack((v) => !v), []);
-
-  const playAudio = useCallback(() => {
-    if (!card?.audio_url) return;
-    new Audio(card.audio_url).play().catch(() => undefined);
-  }, [card]);
-
-  const playUserAudio = useCallback(() => {
-    if (!card?.user_audio_url) return;
-    new Audio(card.user_audio_url).play().catch(() => undefined);
-  }, [card]);
+  const openMenu = useCallback(() => setMenuOpen(true), []);
+  const openEdit = useCallback(() => setEditOpen(true), []);
+  const startBreak = useCallback(() => setBreakActive(true), []);
 
   const handleGrade = useCallback(
     async (g: GradeKey) => {
@@ -143,24 +124,16 @@ export function Reviewer({
     recentFailureRate: tracker.metrics.recentFailureRate,
   });
 
-  // Keymap. The S/R/F/B keys all open the menu rather than firing the action
-  // directly — gives the user a moment to confirm before mutating state.
-  const keymap = useMemo(
-    () => ({
-      onFlip: () => !showBack && flip(),
-      onGrade: handleGrade,
-      onUndo: handleUndo,
-      onEdit: () => setEditOpen(true),
-      onSuspend: () => setMenuOpen(true),
-      onReset: () => setMenuOpen(true),
-      onFlag: () => setMenuOpen(true),
-      onGoToBook: () => setMenuOpen(true),
-      onPause: () => setBreakActive(true),
-    }),
-    [showBack, flip, handleGrade, handleUndo],
-  );
-
-  useSrsKeyboard(keymap, !breakActive && !editOpen && !menuOpen);
+  useReviewerKeyboard({
+    showBack,
+    enabled: !breakActive && !editOpen && !menuOpen,
+    onFlip: flip,
+    onGrade: handleGrade,
+    onUndo: handleUndo,
+    onEdit: openEdit,
+    onOpenMenu: openMenu,
+    onPause: startBreak,
+  });
 
   if (!card) return null;
 
@@ -177,7 +150,7 @@ export function Reviewer({
           onFlip={flip}
           onPlayAudio={playAudio}
           onPlayUserAudio={playUserAudio}
-          onOpenMenu={() => setMenuOpen(true)}
+          onOpenMenu={openMenu}
         />
         <SrsGradeButtons
           intervals={intervals}
@@ -192,27 +165,7 @@ export function Reviewer({
             </Button>
           </div>
         )}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <Kbd>Espacio</Kbd> voltear
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Kbd>1</Kbd>–<Kbd>4</Kbd> calificar
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Kbd>U</Kbd> deshacer
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Kbd>E</Kbd> editar
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Kbd>S</Kbd>
-            <Kbd>R</Kbd>
-            <Kbd>F</Kbd>
-            <Kbd>B</Kbd>
-            menú
-          </span>
-        </div>
+        <KeyboardHint />
       </div>
 
       <CardMenu
@@ -239,20 +192,7 @@ export function Reviewer({
 
       {breakActive && <BreakOverlay onResume={() => setBreakActive(false)} />}
 
-      {showUndoBanner && (
-        <div
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-foreground text-background rounded-lg px-4 py-2.5 flex items-center gap-3 shadow-lg z-50 animate-in fade-in-0 slide-in-from-bottom-4"
-          role="status"
-        >
-          <span className="text-sm">Repaso guardado</span>
-          <button
-            onClick={handleUndo}
-            className="flex items-center gap-1 text-sm font-semibold underline"
-          >
-            <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> Deshacer (U)
-          </button>
-        </div>
-      )}
+      {showUndoBanner && <UndoBanner onUndo={handleUndo} />}
     </>
   );
 }
