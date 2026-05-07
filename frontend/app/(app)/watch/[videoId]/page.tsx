@@ -31,7 +31,7 @@ import { VideoTocSheet } from "@/components/video/video-toc-sheet";
 import { KeyboardShortcutsDialog } from "@/components/video/keyboard-shortcuts-dialog";
 import { WordPopup } from "@/components/word-popup";
 import { Button } from "@/components/ui/button";
-import CubeLoader from "@/components/ui/cube-loader";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 
 export default function WatchPage({
   params,
@@ -664,16 +664,3 @@ function Centered({ children }: { children: React.ReactNode }) {
   return <div className="max-w-2xl mx-auto p-8 text-center">{children}</div>;
 }
 
-function LoadingScreen({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="max-w-2xl mx-auto">
-      <CubeLoader title={title} subtitle={subtitle} />
-    </div>
-  );
-}

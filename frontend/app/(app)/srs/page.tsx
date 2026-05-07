@@ -12,7 +12,7 @@ import { ReviewAllCTA } from "@/components/srs/review-all-cta";
 import { DeckDetail } from "@/components/srs/deck-detail";
 import { Reviewer } from "@/components/srs/reviewer";
 import { SrsEmptyToday } from "@/components/srs/empty-today";
-import { SrsSkeleton } from "@/components/srs/skeleton";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 import { SessionSummary } from "@/components/srs/session-summary";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -43,7 +43,7 @@ export default function SrsPage() {
     }
   }, []);
 
-  if (tree.isLoading) return <SrsSkeleton />;
+  if (tree.isLoading) return <LoadingScreen title="Repaso" subtitle="Cargando tus decks." />;
   if (tree.error)
     return (
       <p className="p-6 text-destructive">Error: {(tree.error as Error).message}</p>
@@ -53,7 +53,7 @@ export default function SrsPage() {
 
   // 1. Reviewing mode
   if (sel.reviewing) {
-    if (queueQ.isLoading) return <SrsSkeleton />;
+    if (queueQ.isLoading) return <LoadingScreen title="Repaso" subtitle="Preparando la sesión." />;
     const cards = queueQ.data ?? [];
 
     // Session just finished — show summary before navigating back

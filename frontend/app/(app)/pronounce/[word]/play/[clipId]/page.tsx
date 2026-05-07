@@ -13,6 +13,7 @@ import {
 } from "@/components/pronounce-deck-player";
 import { PronounceDeckControls } from "@/components/pronounce-deck-controls";
 import { Highlighted } from "@/lib/reader/pronounce-highlight";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 
 // ---------------------------------------------------------------------------
 // Constants + localStorage helpers (defined outside component to keep
@@ -263,7 +264,8 @@ export default function PronounceDeckPage({
   // Early returns (after all hooks)
   // ---------------------------------------------------------------------------
 
-  if (isLoading || !data) return <DeckSkeleton />;
+  if (isLoading || !data)
+    return <LoadingScreen title="Pronunciación" subtitle="Cargando los clips." />;
   if (isError) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -412,12 +414,3 @@ export default function PronounceDeckPage({
   );
 }
 
-function DeckSkeleton() {
-  return (
-    <div className="max-w-4xl mx-auto p-6 animate-pulse" aria-hidden="true">
-      <div className="h-6 bg-muted rounded w-32 mb-2" />
-      <div className="h-4 bg-muted rounded w-48 mb-4" />
-      <div className="aspect-video bg-muted rounded-lg" />
-    </div>
-  );
-}
