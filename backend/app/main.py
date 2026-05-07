@@ -17,6 +17,7 @@ from app.api.v1 import (
     dictionary,
     highlights,
     internal,
+    pronounce,
     reviews,
     stats,
 )
@@ -134,5 +135,6 @@ app.include_router(cards.router)
 app.include_router(dictionary.router)
 app.include_router(highlights.router)
 app.include_router(internal.router)
+app.include_router(pronounce.router)
 app.include_router(reviews.router)
 app.include_router(stats.router)

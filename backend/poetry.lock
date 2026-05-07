@@ -794,6 +794,25 @@ standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.8)", "fas
 standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[standard-no-fastapi-cloud-cli] (>=0.0.8)", "httpx (>=0.23.0,<1.0.0)", "jinja2 (>=3.1.5)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
 
 [[package]]
+name = "fsrs"
+version = "6.3.1"
+description = "Free Spaced Repetition Scheduler"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "fsrs-6.3.1-py3-none-any.whl", hash = "sha256:ac1bf9939573592d8c9bc1e11a00bd17e04146dc9f2c913127e2bcc431b9040b"},
+    {file = "fsrs-6.3.1.tar.gz", hash = "sha256:43c5c6056b97266baf6ebfef9e4cadeb9ac5a4e1b29ffdfb300f445b6e6b15ca"},
+]
+
+[package.dependencies]
+typing-extensions = "*"
+
+[package.extras]
+dev = ["numpy", "pandas", "pdoc", "pyrefly", "pytest", "pytest-cov", "pytest-xdist", "ruff", "setuptools", "torch", "tqdm", "uv"]
+optimizer = ["numpy", "pandas", "torch", "tqdm"]
+
+[[package]]
 name = "fsspec"
 version = "2026.3.0"
 description = "File-system specification"
@@ -3941,6 +3960,18 @@ files = [
 ]
 
 [[package]]
+name = "webvtt-py"
+version = "0.5.1"
+description = "WebVTT reader, writer and segmenter"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "webvtt-py-0.5.1.tar.gz", hash = "sha256:2040dd325277ddadc1e0c6cc66cbc4a1d9b6b49b24c57a0c3364374c3e8a3dc1"},
+    {file = "webvtt_py-0.5.1-py3-none-any.whl", hash = "sha256:9d517d286cfe7fc7825e9d4e2079647ce32f5678eb58e39ef544ffbb932610b7"},
+]
+
+[[package]]
 name = "wrapt"
 version = "2.1.2"
 description = "Module for decorators, wrappers and monkey patching."
@@ -4187,6 +4218,30 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [[package]]
+name = "yt-dlp"
+version = "2026.3.17"
+description = "A feature-rich command-line audio/video downloader"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "yt_dlp-2026.3.17-py3-none-any.whl", hash = "sha256:32992db94303a8a5d211a183f2174834fe7f8c29d83ed2e7a324eae97a8f26d8"},
+    {file = "yt_dlp-2026.3.17.tar.gz", hash = "sha256:ba7aa31d533f1ffccfe70e421596d7ca8ff0bf1398dc6bb658b7d9dec057d2c9"},
+]
+
+[package.extras]
+build = ["build", "hatchling (>=1.27.0)", "pip", "setuptools (>=71.0.2)", "wheel"]
+build-curl-cffi = ["curl-cffi (==0.13.0) ; sys_platform == \"darwin\" or sys_platform == \"linux\" and platform_machine != \"armv7l\"", "curl-cffi (==0.14.0) ; sys_platform == \"win32\" or sys_platform == \"linux\" and platform_machine == \"armv7l\""]
+curl-cffi = ["curl-cffi (>=0.5.10,<0.6.dev0 || >=0.10.dev0,<0.15) ; implementation_name == \"cpython\""]
+default = ["brotli ; implementation_name == \"cpython\"", "brotlicffi ; implementation_name != \"cpython\"", "certifi", "mutagen", "pycryptodomex", "requests (>=2.32.2,<3)", "urllib3 (>=2.0.2,<3)", "websockets (>=13.0)", "yt-dlp-ejs (==0.8.0)"]
+deno = ["deno (>=2.6.6)"]
+dev = ["autopep8 (>=2.0,<3.0)", "pre-commit", "pytest (>=8.1,<9.0)", "pytest-rerunfailures (>=14.0,<15.0)", "ruff (>=0.15.0,<0.16.0)"]
+pyinstaller = ["pyinstaller (>=6.17.0)"]
+secretstorage = ["cffi", "secretstorage"]
+static-analysis = ["autopep8 (>=2.0,<3.0)", "ruff (>=0.15.0,<0.16.0)"]
+test = ["pytest (>=8.1,<9.0)", "pytest-rerunfailures (>=14.0,<15.0)"]
+
+[[package]]
 name = "zstandard"
 version = "0.25.0"
 description = "Zstandard bindings for Python"
@@ -4301,4 +4356,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "26d9b404d02970da7b061dfa5b199e018353d5f2e260a3095681495d91986f36"
+content-hash = "32fe49f851ab02b7f737e65a897acd6f17d0d9623e931bf1e95ccccb6d2cb8c7"

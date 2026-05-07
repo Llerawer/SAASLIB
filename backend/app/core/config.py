@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     CACHE_MODE: Literal["auto", "redis", "memory"] = "auto"
     REDIS_URL: str = ""
 
+    # ===== Background-warmer ownership =====
+    # In multi-pod deploys we don't want every pod hammering Gutendex with
+    # its own warmup cycle (N pods × 50 calls × every 6 h). Set this true on
+    # exactly ONE pod (the "leader") and false on the rest. Default true so
+    # single-pod deployments need zero config.
+    WARMER_ENABLED: bool = True
+
     model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
 
 

@@ -9,7 +9,6 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import JSONResponse
-
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
 from app.db.supabase_client import get_admin_client, get_user_client
@@ -226,8 +225,18 @@ async def register_gutenberg_book(
     admin = get_admin_client()
     book_hash = f"gutenberg:{body.gutenberg_id}"
 
+    # Only the columns BookOut needs — keeps the DB→backend payload tight
+    # both on the happy path (book already in catalog) and the rare race
+    # re-fetch below. epub_source_url etc. stay in the row but don't ride
+    # the wire each time we register.
+    BOOK_COLS = "id,book_hash,source_type,source_ref,title,author,language,is_public"
+
     existing = (
-        admin.table("books").select("*").eq("book_hash", book_hash).limit(1).execute()
+        admin.table("books")
+        .select(BOOK_COLS)
+        .eq("book_hash", book_hash)
+        .limit(1)
+        .execute()
     )
     if existing.data:
         # Already registered → trust the cached row, skip the Gutendex hit.
@@ -249,9 +258,16 @@ async def register_gutenberg_book(
                 "EPUB en Gutenberg. Probablemente es un audiolibro u otro formato. "
                 "Busca otra edición.",
             )
-        inserted = (
+        # Atomic insert-or-noop: ON CONFLICT (book_hash) DO NOTHING RETURNING.
+        # Any concurrent request that lost the SELECT-then-INSERT race gets
+        # an empty `data` here (no row returned because of the conflict),
+        # then we fall back to SELECT to retrieve the row that won.
+        # We deliberately do NOT use DO UPDATE: title/author come from the
+        # client body and we don't want a later request overwriting the
+        # canonical catalog entry with possibly stale fields.
+        upserted = (
             admin.table("books")
-            .insert(
+            .upsert(
                 {
                     "book_hash": book_hash,
                     "source_type": "gutenberg",
@@ -261,13 +277,29 @@ async def register_gutenberg_book(
                     "language": body.language,
                     "is_public": True,
                     "epub_source_url": epub_url_value,
-                }
+                },
+                on_conflict="book_hash",
+                ignore_duplicates=True,
             )
             .execute()
         )
-        if not inserted.data:
-            raise HTTPException(500, "Failed to insert book")
-        book = inserted.data[0]
+        if upserted.data:
+            book = upserted.data[0]
+        else:
+            # Conflict path: someone won the race; re-fetch the canonical row.
+            existing_after = (
+                admin.table("books")
+                .select(BOOK_COLS)
+                .eq("book_hash", book_hash)
+                .limit(1)
+                .execute()
+            )
+            if not existing_after.data:
+                raise HTTPException(
+                    500,
+                    "upsert returned empty and book_hash not found on re-fetch",
+                )
+            book = existing_after.data[0]
 
     user_client = get_user_client(auth.jwt)
     user_client.table("user_books").upsert(

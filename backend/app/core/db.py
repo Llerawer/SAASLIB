@@ -165,3 +165,88 @@ async def upsert_search_cache(topic: str, response: dict) -> None:
             topic,
             json.dumps(response),
         )
+
+
+# ============================================================================
+# gutendex_metadata_cache — persistent per-book metadata cache
+# ============================================================================
+
+
+async def select_metadata_cache(
+    gutenberg_id: int,
+) -> tuple[dict, float] | None:
+    """Returns (payload, age_seconds) or None if missing. Bumps hit_count
+    AND last_hit_at on read — last_hit_at is what feeds the decay-weighted
+    warmup ranking so books not viewed recently lose priority automatically."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE public.gutendex_metadata_cache
+               SET hit_count = hit_count + 1,
+                   last_hit_at = now()
+             WHERE gutenberg_id = $1
+         RETURNING payload, EXTRACT(EPOCH FROM (now() - fetched_at)) AS age_seconds
+            """,
+            gutenberg_id,
+        )
+    if row is None:
+        return None
+    raw = row["payload"]
+    payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+    return payload, float(row["age_seconds"])
+
+
+async def upsert_metadata_cache(gutenberg_id: int, payload: dict) -> None:
+    """Insert or refresh a book's cached metadata. Resets fetched_at;
+    preserves hit_count on conflict."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO public.gutendex_metadata_cache
+                (gutenberg_id, payload, fetched_at)
+            VALUES ($1, $2::jsonb, now())
+            ON CONFLICT (gutenberg_id) DO UPDATE SET
+                payload = EXCLUDED.payload,
+                fetched_at = now()
+            """,
+            gutenberg_id,
+            json.dumps(payload),
+        )
+
+
+async def select_top_metadata_by_hits(
+    limit: int, min_age_seconds: float
+) -> list[tuple[int, float]]:
+    """Return up to `limit` stale books, ranked by a recency-weighted score:
+
+        score = hit_count * EXP(- hours_since_last_hit / 24)
+
+    Filtered to entries past `min_age_seconds` (skip fresh — self-throttling).
+    Books read a year ago decay near zero; books read this week stay near
+    full weight. No periodic cleanup needed — the score self-cleans.
+
+    Returns: [(gutenberg_id, age_seconds), ...]
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT gutenberg_id,
+                   EXTRACT(EPOCH FROM (now() - fetched_at)) AS age_seconds
+              FROM public.gutendex_metadata_cache
+             WHERE fetched_at < now() - ($2 || ' seconds')::interval
+          ORDER BY (
+                hit_count
+                * EXP(
+                      -EXTRACT(EPOCH FROM (now() - last_hit_at)) / (24.0 * 3600.0)
+                  )
+             ) DESC NULLS LAST,
+             fetched_at ASC
+             LIMIT $1
+            """,
+            limit,
+            str(int(min_age_seconds)),
+        )
+    return [(int(r["gutenberg_id"]), float(r["age_seconds"])) for r in rows]

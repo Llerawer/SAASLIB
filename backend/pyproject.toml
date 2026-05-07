@@ -26,7 +26,10 @@ dependencies = [
     "asyncpg (>=0.31.0,<0.32.0)",
     "redis (>=7.4.0,<8.0.0)",
     "tenacity (>=9.1.4,<10.0.0)",
-    "prometheus-client (>=0.25.0,<0.26.0)"
+    "prometheus-client (>=0.25.0,<0.26.0)",
+    "yt-dlp (>=2025.10.0)",
+    "webvtt-py (>=0.5.1,<1.0.0)",
+    "fsrs (>=6.3.1,<7.0.0)"
 ]
 
 

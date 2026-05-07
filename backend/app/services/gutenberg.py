@@ -3,9 +3,13 @@ cache, distributed stampede protection and circuit breaker."""
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import random
 import re
+import time
 from pathlib import Path
+from typing import Callable
 
 import asyncpg
 import httpx
@@ -63,12 +67,42 @@ _meta_stale: TTLCache[int, dict] = TTLCache(maxsize=10000, ttl=86400 * 7)  # 7 d
 
 # Background refresh dedupe — multiple stale-hits don't pile up tasks.
 _search_refresh: set[str] = set()
-_meta_refresh: set[int] = set()
+
+# Background refresh dedupe + COOLDOWN. The plain set used to allow infinite
+# retries: a request finds entry stale → dispatches refresh → refresh fails →
+# entry still stale → next request dispatches AGAIN. Under high traffic this
+# is a silent storm of identical Gutendex calls. The cooldown caps refreshes
+# per (book_id) to one per _META_REFRESH_COOLDOWN_SECONDS.
+_meta_refresh_inflight: set[int] = set()
+_meta_refresh_attempt_at: dict[int, float] = {}  # monotonic seconds
+_META_REFRESH_COOLDOWN_SECONDS = 3600.0           # 1 h between attempts
+_META_REFRESH_JITTER_MAX_MS = 2000                # 0-2s before dispatch
+
+
+def _should_refresh_meta(gutenberg_id: int) -> bool:
+    """Returns True if we should kick off a background refresh for this id.
+    Blocks two cases:
+      1. A refresh is already in flight (_meta_refresh_inflight).
+      2. A refresh was attempted within the cooldown window — even if it
+         failed. This is the storm-prevention safety net.
+    """
+    if gutenberg_id in _meta_refresh_inflight:
+        return False
+    last_attempt = _meta_refresh_attempt_at.get(gutenberg_id)
+    if last_attempt is None:
+        return True
+    return (time.monotonic() - last_attempt) >= _META_REFRESH_COOLDOWN_SECONDS
 
 
 # ============================================================================
 # Low-level HTTP
 # ============================================================================
+
+
+class UpstreamDataError(Exception):
+    """200 OK but the payload is malformed (invalid JSON, missing required
+    keys, empty when content was expected). Counts as a HOST failure for
+    the breaker — a healthy Gutendex doesn't return garbage."""
 
 
 @retry(
@@ -77,30 +111,63 @@ _meta_refresh: set[int] = set()
     wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
     reraise=True,
 )
-async def _gutendex_fetch_inner(url: str, params: dict | None) -> dict:
-    """Real HTTP call to gutendex.com — retried with exp backoff for
-    transient errors. The breaker around this catches sustained outages."""
+async def _gutendex_fetch_response(
+    url: str, params: dict | None
+) -> httpx.Response:
+    """HTTP call with retry on transient errors. Returns the raw Response —
+    caller decides what to do with the status code.
+
+    Importantly: only 5xx and network/timeout errors propagate as failures
+    that the caller's circuit breaker can count. 4xx (404 missing book, 410
+    gone, etc.) are RESOURCE-level errors, not HOST-level outages, and
+    must NOT influence the breaker — otherwise 5 missing book ids would
+    open the host breaker and block ALL books for 60 s."""
     client = get_client()
     r = await client.get(url, params=params)
-    r.raise_for_status()
-    content_length = r.headers.get("content-length")
-    if content_length and int(content_length) > _MAX_JSON_RESPONSE_BYTES:
-        raise HTTPException(502, "Upstream response too large")
-    if len(r.content) > _MAX_JSON_RESPONSE_BYTES:
-        raise HTTPException(502, "Upstream response too large")
-    return r.json()
+    if 500 <= r.status_code < 600:
+        # Surface 5xx as exception so the breaker counts it.
+        r.raise_for_status()
+    return r
 
 
-async def _get_json(url: str, **params) -> dict:
-    """GET → JSON via shared client + circuit breaker + retry."""
+async def _get_json(
+    url: str,
+    *,
+    validator: Callable[[dict], bool] | None = None,
+    **params,
+) -> dict:
+    """GET → JSON via shared client + circuit breaker + retry.
+
+    Failure attribution:
+      timeout / network / 5xx           → host failure (breaker)
+      INVALID JSON or validator(false)  → host failure (breaker) — see
+        UpstreamDataError. Healthy hosts don't return garbage payloads.
+      4xx                                → resource-level, NOT counted
+      oversized response                 → 502, NOT counted
+    """
     real_params = params or None
+
+    async def _do_call() -> tuple[httpx.Response, dict | None]:
+        """Wrap the response + JSON parse + validation INSIDE the breaker
+        boundary so payload errors are recorded as failures."""
+        r = await _gutendex_fetch_response(url, real_params)
+        if 400 <= r.status_code < 500:
+            # 4xx: don't parse, don't validate — caller will raise.
+            return r, None
+        # 2xx: parse + (maybe) validate before leaving the breaker.
+        try:
+            data = r.json()
+        except (ValueError, json.JSONDecodeError) as e:  # type: ignore[name-defined]
+            raise UpstreamDataError(f"invalid JSON from {url}") from e
+        if validator is not None and not validator(data):
+            raise UpstreamDataError(
+                f"validator rejected payload from {url}"
+            )
+        return r, data
+
     try:
-        return await call_with_breaker(
-            _GUTENDEX_BREAKER,
-            lambda: _gutendex_fetch_inner(url, real_params),
-        )
+        r, data = await call_with_breaker(_GUTENDEX_BREAKER, _do_call)
     except CircuitOpenError as e:
-        # Sustained outage. Don't make the user wait — fail fast.
         raise HTTPException(
             503,
             "Gutendex temporalmente no disponible. Intenta en un minuto.",
@@ -115,6 +182,28 @@ async def _get_json(url: str, **params) -> dict:
             status_code=e.response.status_code,
             detail=f"Gutendex error: {e.response.status_code}",
         ) from e
+    except UpstreamDataError as e:
+        # Was counted by the breaker. Surface to caller as 502.
+        raise HTTPException(
+            status_code=502,
+            detail=f"Upstream returned invalid data: {e}",
+        ) from e
+
+    # 4xx came through — breaker untouched.
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=r.status_code,
+            detail=f"Gutendex: {r.status_code}",
+        )
+
+    content_length = r.headers.get("content-length")
+    if content_length and int(content_length) > _MAX_JSON_RESPONSE_BYTES:
+        raise HTTPException(502, "Upstream response too large")
+    if len(r.content) > _MAX_JSON_RESPONSE_BYTES:
+        raise HTTPException(502, "Upstream response too large")
+    # data is non-None for 2xx (we parsed it inside the breaker scope).
+    assert data is not None
+    return data
 
 
 # ============================================================================
@@ -280,30 +369,171 @@ async def search_books(
 # ============================================================================
 
 
-async def _refresh_meta(gutenberg_id: int) -> None:
+# DB-cache freshness tiers for book metadata.
+#   < FRESH   → serve from DB, no refresh.
+#   < STALE   → serve from DB AND fire a background refresh (user gets data
+#               immediately, next reader gets the updated copy).
+#   < HARD    → still serve from DB but the periodic warmer prioritizes it.
+#   >= HARD   → treat as miss; force a synchronous fetch through the lock.
+#               Avoids serving genuinely outdated data when bg refresh has
+#               been failing for a month.
+_META_FRESH_SECONDS = 86400.0          # 24 h
+_META_STALE_SECONDS = 86400.0 * 7      # 7 d
+_META_HARD_EXPIRE_SECONDS = 86400.0 * 30  # 30 d
+
+
+def _is_valid_book_payload(data: object) -> bool:
+    """A healthy Gutendex book payload has at minimum an integer `id`,
+    a non-empty `title`, and a `formats` mapping. Anything else is
+    treated as upstream corruption — count as host failure."""
+    if not isinstance(data, dict):
+        return False
+    if not isinstance(data.get("id"), int):
+        return False
+    title = data.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return False
+    if not isinstance(data.get("formats"), dict):
+        return False
+    return True
+
+
+async def _persist_meta(gutenberg_id: int, data: dict) -> None:
+    """Write through to Postgres metadata cache. Swallow transient errors
+    (pgbouncer catalog lag etc.) — in-memory cache still has the data."""
     try:
-        data = await _get_json(f"{GUTENDEX_API}{gutenberg_id}")
+        from app.core.db import upsert_metadata_cache
+
+        await upsert_metadata_cache(gutenberg_id, data)
+    except asyncpg.exceptions.UndefinedTableError:
+        pass  # migration not yet applied / pgbouncer catalog lag
+    except Exception:
+        logger.exception(
+            "metadata-cache upsert failed", extra={"gutenberg_id": gutenberg_id}
+        )
+
+
+async def _refresh_meta(gutenberg_id: int) -> None:
+    """Background refresh task. Records the attempt timestamp BEFORE the
+    HTTP call so even if the call hangs / fails, the cooldown is honoured
+    and we don't pile up duplicate attempts."""
+    _meta_refresh_attempt_at[gutenberg_id] = time.monotonic()
+    # Small jitter so multiple stale entries dispatched in the same tick
+    # don't all hit Gutendex at the exact same millisecond.
+    jitter_ms = random.randint(0, _META_REFRESH_JITTER_MAX_MS)
+    if jitter_ms:
+        await asyncio.sleep(jitter_ms / 1000.0)
+    try:
+        data = await _get_json(
+                f"{GUTENDEX_API}{gutenberg_id}", validator=_is_valid_book_payload
+            )
         _meta_fresh[gutenberg_id] = data
         _meta_stale[gutenberg_id] = data
+        await _persist_meta(gutenberg_id, data)
     except Exception:
         pass
     finally:
-        _meta_refresh.discard(gutenberg_id)
+        _meta_refresh_inflight.discard(gutenberg_id)
+
+
+def _dispatch_meta_refresh(gutenberg_id: int) -> None:
+    """Idempotent + cooldown-respecting refresh dispatcher."""
+    if not _should_refresh_meta(gutenberg_id):
+        return
+    _meta_refresh_inflight.add(gutenberg_id)
+    asyncio.create_task(_refresh_meta(gutenberg_id))
+
+
+async def _fallback_meta_from_books(gutenberg_id: int) -> dict | None:
+    """Last-ditch metadata when Gutendex is unreachable AND nothing is
+    cached: synthesize a minimal Gutendex-shaped payload from the public
+    `books` row that was inserted at register time. Better than 504/503.
+
+    Returns None if the book was never registered (so we genuinely have
+    no info to serve)."""
+    try:
+        from app.db.supabase_client import get_admin_client
+
+        rows = (
+            get_admin_client()
+            .table("books")
+            .select("title, author, language, cover_url, epub_source_url")
+            .eq("book_hash", f"gutenberg:{gutenberg_id}")
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return None
+    if not rows:
+        return None
+    b = rows[0]
+    formats: dict[str, str] = {}
+    if b.get("epub_source_url"):
+        formats["application/epub+zip"] = b["epub_source_url"]
+    if b.get("cover_url"):
+        formats["image/jpeg"] = b["cover_url"]
+    return {
+        "id": gutenberg_id,
+        "title": b.get("title") or "",
+        "authors": [{"name": b["author"]}] if b.get("author") else [],
+        "languages": [b.get("language") or "en"],
+        "formats": formats,
+        "subjects": [],
+        "bookshelves": [],
+        # Markers for frontend cache discriminators. Bump _version when the
+        # synthesized shape changes so old cached responses can be evicted
+        # safely without ambiguity.
+        "_synthesized": True,
+        "_version": "synthesized_v1",
+    }
 
 
 async def get_book_metadata(gutenberg_id: int) -> dict:
-    """Same fresh / stale / miss layering as search_books, with distributed
-    stampede protection on cold misses."""
+    """Layered cache: in-memory fresh → in-memory stale → DB cache →
+    Gutendex (with stampede lock) → fallback synthesized from books row.
+
+    The DB cache layer is what tames Gutendex outages: any book seen at
+    least once persists its metadata, so user-facing paths read from
+    Postgres instead of timing out at the upstream."""
     fresh = _meta_fresh.get(gutenberg_id)
     if fresh is not None:
         return fresh
 
     stale = _meta_stale.get(gutenberg_id)
     if stale is not None:
-        if gutenberg_id not in _meta_refresh:
-            _meta_refresh.add(gutenberg_id)
-            asyncio.create_task(_refresh_meta(gutenberg_id))
+        _dispatch_meta_refresh(gutenberg_id)
         return stale
+
+    # DB cache lookup — persisted across restarts and pod replacements.
+    try:
+        from app.core.db import select_metadata_cache
+
+        db_hit = await select_metadata_cache(gutenberg_id)
+    except asyncpg.exceptions.UndefinedTableError:
+        db_hit = None
+    except Exception:
+        logger.exception(
+            "metadata-cache read failed", extra={"gutenberg_id": gutenberg_id}
+        )
+        db_hit = None
+
+    if db_hit is not None:
+        data, age = db_hit
+        if age < _META_HARD_EXPIRE_SECONDS:
+            # Promote to in-memory and serve. Bg refresh kicks in if we've
+            # entered stale territory (24 h - 30 d). _dispatch_meta_refresh
+            # respects the cooldown so a flood of stale hits doesn't storm
+            # Gutendex.
+            _meta_fresh[gutenberg_id] = data
+            _meta_stale[gutenberg_id] = data
+            if age >= _META_FRESH_SECONDS:
+                _dispatch_meta_refresh(gutenberg_id)
+            return data
+        # Beyond hard-expire: don't serve. Fall through to the stampede
+        # lock + sync fetch. If Gutendex is unreachable, the synthesized
+        # fallback in the except branch below still rescues us.
 
     lock_key = f"gutendex:meta:{gutenberg_id}"
     async with stampede_lock(lock_key, ttl=60) as (is_owner, fut):
@@ -321,14 +551,84 @@ async def get_book_metadata(gutenberg_id: int) -> dict:
             return await get_book_metadata(gutenberg_id)
 
         try:
-            data = await _get_json(f"{GUTENDEX_API}{gutenberg_id}")
+            data = await _get_json(
+                f"{GUTENDEX_API}{gutenberg_id}",
+                validator=_is_valid_book_payload,
+            )
             _meta_fresh[gutenberg_id] = data
             _meta_stale[gutenberg_id] = data
+            await _persist_meta(gutenberg_id, data)
             await stampede_publish(lock_key, data)
             return data
+        except HTTPException as e:
+            # Layered fallback strategy on upstream failure:
+            #
+            #   1. Synthesized from books table  (libro YA registrado)
+            #      → real title/author + epub URL. Best-effort but useful.
+            #
+            #   2. Degraded placeholder           (libro nunca visto)
+            #      → marker payload so the UI renders SOMETHING instead of
+            #      breaking. Frontend checks `_degraded` to show a
+            #      "Información no disponible" hint.
+            #
+            # Either way, we NEVER bubble 504/503 up to the user — the
+            # most common failure mode (Gutendex slow) is invisible to them.
+            if e.status_code in (502, 503, 504):
+                fallback = await _fallback_meta_from_books(gutenberg_id)
+                if fallback is not None:
+                    logger.warning(
+                        "Serving synthesized metadata fallback",
+                        extra={
+                            "gutenberg_id": gutenberg_id,
+                            "upstream_status": e.status_code,
+                        },
+                    )
+                    await stampede_publish(lock_key, fallback)
+                    return fallback
+                # No registered book either → minimal degraded payload.
+                degraded = _degraded_meta_placeholder(gutenberg_id)
+                logger.warning(
+                    "Serving degraded metadata placeholder",
+                    extra={
+                        "gutenberg_id": gutenberg_id,
+                        "upstream_status": e.status_code,
+                    },
+                )
+                await stampede_publish(lock_key, degraded)
+                return degraded
+            # 4xx (404 missing book) — no fallback, surface as-is. Returning
+            # a degraded payload here would mask genuinely-bad ids.
+            await stampede_publish_error(lock_key, e)
+            raise
         except Exception as e:
             await stampede_publish_error(lock_key, e)
             raise
+
+
+def _degraded_meta_placeholder(gutenberg_id: int) -> dict:
+    """Last-resort minimal payload when Gutendex is unreachable AND the
+    book was never registered locally. Lets the UI render gracefully
+    ("Información limitada") instead of error-toasting the user.
+
+    The `_degraded: True` marker lets the frontend distinguish this from
+    real metadata and show appropriate UX (e.g. retry button, "limited
+    info" badge).
+    """
+    return {
+        "id": gutenberg_id,
+        "title": f"Libro #{gutenberg_id}",
+        "authors": [],
+        "languages": ["en"],
+        "formats": {},
+        "subjects": [],
+        "bookshelves": [],
+        # Markers + version. Frontend caches keyed by `_version` discriminator
+        # can evict the placeholder cleanly the moment a real payload arrives.
+        # Bump the version string when the placeholder shape changes.
+        "_degraded": True,
+        "_version": "fallback_v1",
+        "_reason": "gutendex_unreachable",
+    }
 
 
 # ============================================================================
@@ -934,3 +1234,115 @@ async def stream_epub(gutenberg_id: int, cached_url: str | None = None) -> bytes
             f"Intentos: {summary}"
         ),
     )
+
+
+# ============================================================================
+# Metadata pre-warmer — refresh top-N most-viewed books on a schedule.
+# Self-throttling: only entries older than _META_FRESH_SECONDS are touched.
+# Polite to Gutendex: fixed inter-request delay.
+# ============================================================================
+
+
+_METADATA_WARMUP_DELAY_SECONDS = 1.5  # politeness between Gutendex calls
+_METADATA_WARMUP_LIMIT = 50           # top-N most-hit per cycle
+
+
+async def warmup_metadata_top_books() -> None:
+    """One-shot refresh of the top-N most-viewed books whose cache entry is
+    past the fresh threshold. Run on startup (after search warmup) and on
+    a periodic loop.
+
+    Errors are swallowed — a failed refresh just leaves the existing entry,
+    which is still served by get_book_metadata. Worst case: nothing changes.
+    """
+    import sys
+
+    try:
+        from app.core.db import select_top_metadata_by_hits
+    except ImportError:
+        return
+
+    try:
+        candidates = await select_top_metadata_by_hits(
+            limit=_METADATA_WARMUP_LIMIT,
+            min_age_seconds=_META_FRESH_SECONDS,
+        )
+    except asyncpg.exceptions.UndefinedTableError:
+        # Migration not applied yet — silently skip.
+        return
+    except Exception:
+        logger.exception("metadata-warmup: select failed")
+        return
+
+    if not candidates:
+        return
+
+    print(
+        f"[gutenberg] metadata-warmup: refreshing {len(candidates)} "
+        f"top-hit books (age > {_META_FRESH_SECONDS / 3600:.0f} h)",
+        file=sys.stderr,
+        flush=True,
+    )
+
+    refreshed = 0
+    skipped = 0
+    for gutenberg_id, age_seconds in candidates:
+        # Bail early if the breaker is open — no point hammering an
+        # unreachable host. Self-throttling.
+        if _GUTENDEX_BREAKER._state.state.name == "OPEN":
+            print(
+                "[gutenberg] metadata-warmup: breaker OPEN, aborting cycle",
+                file=sys.stderr,
+                flush=True,
+            )
+            break
+        try:
+            data = await _get_json(
+                f"{GUTENDEX_API}{gutenberg_id}", validator=_is_valid_book_payload
+            )
+            _meta_fresh[gutenberg_id] = data
+            _meta_stale[gutenberg_id] = data
+            await _persist_meta(gutenberg_id, data)
+            refreshed += 1
+        except HTTPException as e:
+            # 4xx (book gone) → skip silently, don't keep retrying it.
+            # 5xx / 503 / 504 → log and move on.
+            if 400 <= e.status_code < 500:
+                skipped += 1
+            else:
+                logger.warning(
+                    "metadata-warmup: %d -> %d", gutenberg_id, e.status_code
+                )
+        except Exception:
+            logger.exception(
+                "metadata-warmup: unexpected error",
+                extra={"gutenberg_id": gutenberg_id, "age_s": age_seconds},
+            )
+        await asyncio.sleep(_METADATA_WARMUP_DELAY_SECONDS)
+
+    print(
+        f"[gutenberg] metadata-warmup done — refreshed={refreshed}, "
+        f"skipped={skipped}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+async def metadata_warmup_loop(period_seconds: float = 6 * 3600) -> None:
+    """Long-running task: re-runs warmup_metadata_top_books every
+    `period_seconds`. Default 6 h.
+
+    First iteration sleeps a bit so it doesn't compete with the search
+    warmup right at boot."""
+    await asyncio.sleep(120)  # 2 min grace after startup
+    while True:
+        try:
+            await warmup_metadata_top_books()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("metadata_warmup_loop iteration failed")
+        try:
+            await asyncio.sleep(period_seconds)
+        except asyncio.CancelledError:
+            raise
