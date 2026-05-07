@@ -3,14 +3,14 @@ import { cn } from "@/lib/utils";
 type Props = {
   text: string;
   word: string;
-  /** When this number changes, the highlighted <mark> re-mounts and the
-   *  pulse CSS animation re-fires. The deck increments this on each loop
-   *  to give a visible "vuelve a empezar" cue. The gallery omits it.
-   */
+  /** Accepted for API compat with the deck player. Currently a no-op:
+   *  the audio loop + progress scrubber already communicate "starting
+   *  over"; a visual pulse on the highlighted word added flicker on
+   *  remount with no net signal. */
   pulseKey?: number;
 };
 
-export function Highlighted({ text, word, pulseKey = 0 }: Props) {
+export function Highlighted({ text, word }: Props) {
   if (!word) return <>{text}</>;
   const lower = word.toLowerCase();
   const re = new RegExp(
@@ -36,15 +36,15 @@ export function Highlighted({ text, word, pulseKey = 0 }: Props) {
           <span key={i}>{p}</span>
         ) : (
           <mark
-            key={`${i}-${pulseKey}`}
+            key={i}
             className={cn(
-              // Highlighter-yellow that reads in both themes:
-              // light → solid yellow-200, dark → softened yellow-300/40
-              // text-yellow-950 keeps contrast on both.
-              "bg-yellow-200 dark:bg-yellow-300/40 text-yellow-950 dark:text-yellow-50",
+              // --captured is the project token for "captured word in reader"
+              // — same semantic as the target word in this deck. Inherit text
+              // color from surrounding prose so the highlight signals via bg
+              // alone, keeping reading flow intact.
+              "bg-captured text-foreground",
               "rounded px-0.5 font-medium",
               "[box-decoration-break:clone] [-webkit-box-decoration-break:clone]",
-              pulseKey > 0 && "animate-pulse-once",
             )}
           >
             {p.match}

@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Link2, Loader2, Plus } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   useHideVideo,
   useIngestVideo,
@@ -167,22 +166,52 @@ export default function VideosPage() {
         </section>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex gap-2 mb-6 flex-wrap"
-      >
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://www.youtube.com/watch?v=..."
-          className="flex-1 min-w-0 border rounded-md px-3 py-2 bg-background disabled:opacity-60"
-          aria-label="URL de YouTube"
-          disabled={ingest.isPending}
-        />
-        <Button type="submit" disabled={ingest.isPending}>
-          <Plus className="h-4 w-4 mr-1" />
-          {ingest.isPending ? "Procesando..." : "Agregar"}
-        </Button>
+      {/* Unified URL bar — input + submit join into a single command-bar
+          surface. Focus-within wraps the whole bar in the accent ring so
+          keyboard users see the entire affordance, not just the textbox. */}
+      <form onSubmit={handleSubmit} className="mb-6">
+        <div
+          className={`flex items-stretch border rounded-md bg-card transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background ${
+            ingest.isPending
+              ? "opacity-70 border-input"
+              : "border-input hover:border-border"
+          }`}
+        >
+          <div
+            className="flex items-center pl-3 text-muted-foreground/70"
+            aria-hidden
+          >
+            <Link2 className="h-4 w-4" />
+          </div>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="flex-1 min-w-0 h-10 bg-transparent px-3 outline-none placeholder:text-muted-foreground/50 disabled:cursor-not-allowed"
+            aria-label="URL de YouTube"
+            disabled={ingest.isPending}
+            autoComplete="off"
+            spellCheck={false}
+            inputMode="url"
+          />
+          <button
+            type="submit"
+            disabled={ingest.isPending || !url.trim()}
+            className="inline-flex items-center gap-1.5 px-4 border-l border-input text-sm font-medium hover:bg-muted/70 transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:cursor-not-allowed focus-visible:outline-none focus-visible:bg-muted/70"
+          >
+            {ingest.isPending ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Procesando…</span>
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4" />
+                <span>Agregar</span>
+              </>
+            )}
+          </button>
+        </div>
       </form>
 
       {isInitialLoading && (

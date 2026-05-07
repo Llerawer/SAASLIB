@@ -105,8 +105,11 @@
   --muted: oklch(0.95 0.008 80);
   --muted-foreground: oklch(0.5 0.015 70);
 
-  /* Amber accent (CTA, highlights, captures) */
-  --accent: oklch(0.68 0.155 55);
+  /* Terracotta accent (CTA, highlights, captures). Hue 30° distinguishes
+     from --warning (75° amber-yellow) and --destructive (25° but chroma
+     0.22). Reads as "vintage book cover / wax seal / fountain pen ink"
+     rather than the genre-default amber. */
+  --accent: oklch(0.6 0.17 30);
   --accent-foreground: oklch(0.99 0.005 85);
 
   /* Semantic */
@@ -121,10 +124,10 @@
 
   --border: oklch(0.9 0.01 80);
   --input: oklch(0.93 0.012 80);
-  --ring: oklch(0.68 0.15 55);
+  --ring: oklch(0.6 0.17 30);
 
   /* Charts: warm progressive */
-  --chart-1: oklch(0.68 0.155 55);
+  --chart-1: oklch(0.6 0.17 30);
   --chart-2: oklch(0.55 0.13 230);
   --chart-3: oklch(0.62 0.14 145);
   --chart-4: oklch(0.55 0.22 25);
@@ -139,7 +142,7 @@
   --sidebar-accent: oklch(0.95 0.008 80);
   --sidebar-accent-foreground: oklch(0.25 0.015 70);
   --sidebar-border: oklch(0.9 0.01 80);
-  --sidebar-ring: oklch(0.68 0.15 55);
+  --sidebar-ring: oklch(0.6 0.17 30);
 
   /* CEFR */
   --cefr-easy: oklch(0.62 0.14 145);
@@ -182,7 +185,7 @@
   --muted: oklch(0.27 0.012 75);
   --muted-foreground: oklch(0.7 0.012 75);
 
-  --accent: oklch(0.72 0.16 55);
+  --accent: oklch(0.7 0.17 30);
   --accent-foreground: oklch(0.18 0.012 75);
 
   --destructive: oklch(0.65 0.21 25);
@@ -196,9 +199,9 @@
 
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.72 0.15 55);
+  --ring: oklch(0.7 0.17 30);
 
-  --chart-1: oklch(0.72 0.16 55);
+  --chart-1: oklch(0.7 0.17 30);
   --chart-2: oklch(0.7 0.13 230);
   --chart-3: oklch(0.7 0.14 145);
   --chart-4: oklch(0.65 0.21 25);
@@ -211,7 +214,7 @@
   --sidebar-accent: oklch(0.27 0.012 75);
   --sidebar-accent-foreground: oklch(0.96 0.005 80);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.72 0.15 55);
+  --sidebar-ring: oklch(0.7 0.17 30);
 
   --cefr-easy: oklch(0.7 0.14 145);
   --cefr-easy-foreground: oklch(0.18 0.012 75);
@@ -266,17 +269,16 @@
   }
 }
 
-/* CSS Color Module Level 5 relative-color syntax — supported in
-   Chrome/Edge 119+ (Oct 2023), Safari 16.4+ (Mar 2023), Firefox 128+
-   (Jul 2024). On older browsers the color modulation is ignored, but
-   the scale animation still plays so the pulse remains visible. */
+/* Subtle "we're starting again" cue. Pure transform — no background-color
+   animation, because the highlight base (--captured) is already amber. A
+   bg jump on every segment loop reads as flicker, not pulse. */
 @keyframes pulse-once {
-  0%   { background-color: oklch(0.96 0.18 105); transform: scale(1); }
-  35%  { background-color: oklch(0.90 0.22 95);  transform: scale(1.05); }
-  100% { background-color: oklch(0.96 0.18 105); transform: scale(1); }
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
 }
 .animate-pulse-once {
-  animation: pulse-once 280ms ease-out;
+  animation: pulse-once 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
