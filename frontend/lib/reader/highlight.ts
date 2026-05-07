@@ -48,6 +48,15 @@ function escapeRegex(s: string): string {
 /**
  * Wrap captured words inside the given document.
  *
+ * `formToLemma` maps a CLIENT-normalized inflected form (what we see in
+ * rendered text after `normalizeFn`) to its CANONICAL server lemma. The
+ * lemma is what gets persisted as `data-lemma` on the span, so colour
+ * lookups via getColor(lemma) match what the panel writes.
+ *
+ *   Example:
+ *     "Communists" / "COMMUNISTS"  → form "communists" → lemma "communist"
+ *     getColor("communist") returns the user's pick.
+ *
  * `getColor` is optional. If provided, each new span gets inline CSS
  * custom properties for its colour. Without it, spans inherit the green
  * defaults defined in HIGHLIGHT_THEME.
@@ -56,11 +65,11 @@ function escapeRegex(s: string): string {
  */
 export function applyHighlights(
   doc: Document,
-  capturedNormalized: Set<string>,
+  formToLemma: Map<string, string>,
   normalizeFn: (token: string) => string,
   getColor?: GetWordColor,
 ): void {
-  if (!doc.body || capturedNormalized.size === 0) return;
+  if (!doc.body || formToLemma.size === 0) return;
 
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
@@ -92,8 +101,9 @@ export function applyHighlights(
 
     for (const m of text.matchAll(WORD_RE_GLOBAL)) {
       const raw = m[0];
-      const normalized = normalizeFn(raw);
-      if (!capturedNormalized.has(normalized)) continue;
+      const form = normalizeFn(raw);
+      const lemma = formToLemma.get(form);
+      if (!lemma) continue;
 
       const start = m.index ?? 0;
       if (start > lastIndex) {
@@ -101,9 +111,9 @@ export function applyHighlights(
       }
       const span = doc.createElement("span");
       span.className = SPAN_CLASS;
-      span.setAttribute(LEMMA_ATTR, normalized);
+      span.setAttribute(LEMMA_ATTR, lemma);
       if (getColor) {
-        const color = getColor(normalized) ?? DEFAULT_WORD_COLOR;
+        const color = getColor(lemma) ?? DEFAULT_WORD_COLOR;
         applyColorToSpan(span, color);
       }
       span.textContent = raw;
@@ -119,7 +129,7 @@ export function applyHighlights(
     node.parentNode?.replaceChild(fragment, node);
   }
 
-  doc.body.setAttribute(APPLIED_ATTR, String(capturedNormalized.size));
+  doc.body.setAttribute(APPLIED_ATTR, String(formToLemma.size));
 }
 
 /**

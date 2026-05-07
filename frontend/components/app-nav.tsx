@@ -2,12 +2,23 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Library, BookMarked, GraduationCap, BarChart3 } from "lucide-react";
+import {
+  Library,
+  BookMarked,
+  GraduationCap,
+  BarChart3,
+  Headphones,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useCapturesList, useReviewQueue } from "@/lib/api/queries";
 
-type NavItemKey = "library" | "vocabulary" | "srs" | "settings";
+type NavItemKey =
+  | "library"
+  | "vocabulary"
+  | "pronounce"
+  | "srs"
+  | "settings";
 
 const NAV_ITEMS: {
   key: NavItemKey;
@@ -21,6 +32,12 @@ const NAV_ITEMS: {
     href: "/vocabulary",
     label: "Vocabulario",
     icon: BookMarked,
+  },
+  {
+    key: "pronounce",
+    href: "/pronounce",
+    label: "Pronunciación",
+    icon: Headphones,
   },
   { key: "srs", href: "/srs", label: "Repaso", icon: GraduationCap },
   {

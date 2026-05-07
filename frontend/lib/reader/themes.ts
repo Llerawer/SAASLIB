@@ -76,6 +76,10 @@ export function buildThemeRules(opts: {
       "font-family": fontFamily,
       "font-size": `${fontSizePct}%`,
       "line-height": String(lineHeight),
+      // iOS Safari fires double-tap-to-zoom by default. `manipulation`
+      // disables that gesture without disabling pinch-zoom or scroll —
+      // critical so dblclick → word capture is responsive on iPhone.
+      "touch-action": "manipulation",
     },
     // Force the foreground colour on the common text-containing tags.
     // Many EPUBs set their own colours on <p>/<span>/etc. that would

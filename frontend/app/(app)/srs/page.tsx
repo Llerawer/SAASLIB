@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
-import { Volume2, Undo2, GraduationCap, Sparkles } from "lucide-react";
+import { Volume2, Undo2, GraduationCap, Sparkles, Headphones } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -18,6 +18,7 @@ import {
   stateLabel,
   stateColorClass,
 } from "@/lib/fsrs-preview";
+import { pronounceHref } from "@/lib/reader/pronounce-link";
 
 type GradeKey = 1 | 2 | 3 | 4;
 
@@ -443,6 +444,15 @@ function CardView({
                 <span>{card.notes}</span>
               </div>
             )}
+            <div className="text-center pt-1">
+              <Link
+                href={pronounceHref(card.word_normalized)}
+                className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+              >
+                <Headphones className="h-3 w-3" aria-hidden="true" />
+                Escuchar nativos
+              </Link>
+            </div>
           </div>
         )}
       </div>

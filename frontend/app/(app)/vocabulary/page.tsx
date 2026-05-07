@@ -13,6 +13,7 @@ import {
   X,
   BookOpen,
   Wand2,
+  Headphones,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { TAG_OPTIONS, tagTone, sortTags } from "@/lib/vocabulary/tags";
+import { pronounceHref } from "@/lib/reader/pronounce-link";
 
 export default function VocabularyPage() {
   const pendingQuery = useCapturesList({ promoted: false, limit: 200 });
@@ -208,6 +210,15 @@ export default function VocabularyPage() {
                           </p>
                         )}
                       </div>
+                      <Link
+                        href={pronounceHref(c.word_normalized)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        aria-label={`Escuchar nativos pronunciar ${c.word_normalized}`}
+                        title="Escuchar nativos"
+                      >
+                        <Headphones className="h-3.5 w-3.5" />
+                      </Link>
                     </div>
                   </li>
                 );
