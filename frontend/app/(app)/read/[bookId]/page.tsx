@@ -25,9 +25,11 @@ import {
   useDeleteBookmark,
   useDeleteHighlight,
   useHighlights,
+  useRegisterGutenberg,
   useUpdateHighlight,
   type Highlight,
   type HighlightColor,
+  type SavedProgress,
 } from "@/lib/api/queries";
 import {
   applyHighlights,
@@ -47,10 +49,9 @@ import {
   attachWheelNav,
   type GestureMode,
 } from "@/lib/reader/gestures";
+import { useQueryClient } from "@tanstack/react-query";
 import { useReaderSettings } from "@/lib/reader/settings";
 import { useWordColors } from "@/lib/reader/word-colors";
-
-type BookOut = { id: string; title: string; source_ref: string };
 
 const WORD_RE = /[\w'-]+/u;
 
@@ -174,6 +175,8 @@ export default function ReadPage({
   const createHighlight = useCreateHighlight();
   const updateHighlight = useUpdateHighlight();
   const deleteHighlightMut = useDeleteHighlight(internalBookId);
+  const registerGutenberg = useRegisterGutenberg();
+  const qc = useQueryClient();
 
   // Live mirror of highlights so the rendered-event handler can re-apply
   // the latest list without re-registering on each refetch. Updated by the
@@ -346,15 +349,12 @@ export default function ReadPage({
 
     (async () => {
       try {
-        const registered = await api.post<BookOut>(
-          "/api/v1/books/gutenberg/register",
-          {
-            gutenberg_id: Number(gutenbergId),
-            title,
-            author: author || null,
-            language: "en",
-          },
-        );
+        const registered = await registerGutenberg.mutateAsync({
+          gutenberg_id: Number(gutenbergId),
+          title,
+          author: author || null,
+          language: "en",
+        });
         if (cancelled) return;
         internalBookIdRef.current = registered.id;
         setInternalBookId(registered.id);
@@ -674,12 +674,24 @@ export default function ReadPage({
         // Try to resume from saved progress; 404 first time is expected.
         let savedCfi: string | null = null;
         try {
-          const saved = await api.get<{ current_location: string | null }>(
-            `/api/v1/books/${registered.id}/progress`,
-          );
-          savedCfi = saved.current_location ?? null;
+          const saved = await qc.fetchQuery<SavedProgress | null>({
+            queryKey: ["saved-progress", registered.id],
+            queryFn: async () => {
+              try {
+                return await api.get<SavedProgress>(
+                  `/api/v1/books/${registered.id}/progress`,
+                );
+              } catch (err) {
+                const msg = (err as Error).message ?? "";
+                if (msg.includes("404") || msg.includes("Not Found")) return null;
+                throw err;
+              }
+            },
+            staleTime: Infinity,
+          });
+          savedCfi = saved?.current_location ?? null;
         } catch {
-          // 404 first time — fine.
+          // network — fine, start from beginning.
         }
         await rendition.display(savedCfi ?? undefined);
         renditionRef.current = rendition as never;
