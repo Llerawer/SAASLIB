@@ -37,4 +37,6 @@ backend/.env
 frontend/.env*.local
 backend/data/epub_cache/
 backend/data/
+
+# Superpowers brainstorming sessions
 .superpowers/
