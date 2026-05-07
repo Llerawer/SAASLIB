@@ -30,6 +30,7 @@ from app.schemas.cards import (
     _MAX_SIZE_AUDIO,
     _MAX_SIZE_IMAGE,
 )
+from app.schemas.decks import MoveCardRequest
 from app.services import ai_response_parser, card_factory
 from app.services.fsrs_scheduler import initial_snapshot
 
@@ -487,3 +488,33 @@ async def media_delete(
     if not res.data:
         raise HTTPException(404, "Card not found")
     return _row_to_card(res.data[0])
+
+
+def _move_card_to_deck(client, card_id: str, deck_id: str) -> dict:
+    """Validate deck exists for user (via RLS) then update the card."""
+    deck = (
+        client.table("decks")
+        .select("id")
+        .eq("id", deck_id)
+        .limit(1)
+        .execute()
+    )
+    if not deck.data:
+        raise HTTPException(404, "deck not found")
+    upd = (
+        client.table("cards")
+        .update({"deck_id": deck_id})
+        .eq("id", card_id)
+        .execute()
+    )
+    if not upd.data:
+        raise HTTPException(404, "card not found")
+    return upd.data[0]
+
+
+@router.post("/{card_id}/move-deck", response_model=CardOut)
+async def move_card_deck(
+    card_id: str, body: MoveCardRequest, auth: AuthInfo = Depends(get_auth)
+):
+    client = get_user_client(auth.jwt)
+    return _row_to_card(_move_card_to_deck(client, card_id, body.deck_id))
