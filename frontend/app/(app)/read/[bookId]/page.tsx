@@ -173,6 +173,28 @@ export default function ReadPage({
     },
   });
 
+  // Fully destructure reader so the react-hooks/refs rule doesn't flag any
+  // property access on `reader` in JSX. The rule treats the entire `reader`
+  // object as "ref-tainted" because it contains viewerRef, so every property
+  // access inside JSX triggers a false positive. By extracting all values
+  // here we keep JSX clean. Also hoisted before handlers so that
+  // readerRangeToCfi is defined before use (avoids use-before-define).
+  const {
+    viewerRef,
+    error: readerError,
+    toc: readerToc,
+    progress: readerProgress,
+    prev: readerPrev,
+    next: readerNext,
+    jumpToHref,
+    jumpToPercent,
+    jumpToCfi,
+    getCurrentSnippet,
+    rangeToCfi: readerRangeToCfi,
+  } = reader;
+  const { pct: progressPct, currentLocation, totalLocations, currentCfi } = readerProgress;
+  const pageLabel = formatPageLabel(readerProgress);
+
   useEffect(() => {
     return () => {
       if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
@@ -291,27 +313,6 @@ export default function ReadPage({
 
   // ---------- Render ----------
 
-  // Fully destructure reader so the react-hooks/refs rule doesn't flag any
-  // property access on `reader` in JSX. The rule treats the entire `reader`
-  // object as "ref-tainted" because it contains viewerRef, so every property
-  // access inside JSX triggers a false positive. By extracting all values
-  // here we keep JSX clean.
-  const {
-    viewerRef,
-    error: readerError,
-    toc: readerToc,
-    progress: readerProgress,
-    prev: readerPrev,
-    next: readerNext,
-    jumpToHref,
-    jumpToPercent,
-    jumpToCfi,
-    getCurrentSnippet,
-    rangeToCfi: readerRangeToCfi,
-  } = reader;
-  const { pct: progressPct, currentLocation, totalLocations, currentCfi } = readerProgress;
-  const pageLabel = formatPageLabel(readerProgress);
-
   if (registerError) {
     return (
       <div className="h-[calc(100vh-57px)] flex flex-col items-center justify-center p-6">
@@ -334,7 +335,6 @@ export default function ReadPage({
         capturedCount={mergedCapturedSize}
         internalBookId={internalBookId}
         settings={settings}
-        canJumpPercent={totalLocations !== null}
         onJumpHref={jumpToHref}
         onJumpPercent={jumpToPercent}
         onJumpCfi={jumpToCfi}

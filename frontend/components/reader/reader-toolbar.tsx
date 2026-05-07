@@ -24,7 +24,6 @@ export type ReaderToolbarProps = {
   capturedCount: number;
   internalBookId: string | null;
   settings: ReaderSettings;
-  canJumpPercent: boolean;
   onJumpHref: (href: string) => void;
   /** Returns true if the jump succeeded; false if locations not ready. */
   onJumpPercent: (pct: number) => boolean;
@@ -47,12 +46,15 @@ export type ReaderToolbarProps = {
 export function ReaderToolbar(props: ReaderToolbarProps) {
   const {
     title, pageLabel, toc, progressPct, currentLocation, totalLocations,
-    bookmarks, highlights, capturedCount, internalBookId, settings, canJumpPercent,
+    bookmarks, highlights, capturedCount, internalBookId, settings,
     onJumpHref, onJumpPercent, onJumpCfi, onSettingsChange,
     onIncFontSize, onDecFontSize, onResetSettings,
     onPrev, onNext, onDeleteBookmark, onDeleteHighlight,
     getColor, setColor, getCurrentSnippet, currentCfi,
   } = props;
+
+  // Derived locally — avoids a redundant boolean prop that duplicates totalLocations info.
+  const canJumpPercent = totalLocations !== null;
 
   // ReaderTocSheet.onJumpToPercent expects (pct: number) => void.
   // We wrap the boolean-returning version so the sheet's API is satisfied.
