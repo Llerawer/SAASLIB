@@ -69,30 +69,38 @@ declare
   inbox_id uuid;
 begin
   for uid in select distinct user_id from public.cards loop
-    -- 5a. Inbox root
+    -- 5a. Inbox root (idempotent: re-running for a user with an existing
+    --     Inbox does not abort because of the EXCLUDE constraint).
     insert into public.decks (user_id, parent_id, name, is_inbox, icon, color_hue)
     values (uid, null, 'Inbox', true, 'inbox', 220)
+    on conflict on constraint decks_one_inbox_per_user do nothing
     returning id into inbox_id;
 
-    -- 5b. One root deck per book the user has cards from. The unique
-    --     constraint on (user_id, parent_id, name) prevents duplicates if
-    --     two captures from the same book exist.
+    if inbox_id is null then
+      select id into inbox_id
+      from public.decks
+      where user_id = uid and is_inbox = true;
+    end if;
+
+    -- 5b. One root deck per book the user has cards from.
+    --     SELECT DISTINCT on b.title deduplicates per (user, title);
+    --     the unique constraint on (user_id, parent_id, name) does NOT
+    --     protect this case because parent_id IS NULL and NULLs are
+    --     distinct in Postgres unique indexes.
     insert into public.decks (user_id, parent_id, name, icon, color_hue)
     select distinct uid, null, b.title, 'book', 210
     from public.cards c
-    join public.captures cap on cap.id = c.capture_id
+    join public.captures cap on cap.id = any(c.source_capture_ids)
     join public.books b on b.id = cap.book_id
     where c.user_id = uid and cap.book_id is not null;
 
     -- 5c. Assign cards to their book deck.
     update public.cards c
     set deck_id = d.id
-    from public.captures cap, public.books b, public.decks d
-    where cap.id = c.capture_id
-      and b.id = cap.book_id
-      and d.user_id = uid
-      and d.parent_id is null
-      and d.name = b.title
+    from public.captures cap
+    join public.books b on b.id = cap.book_id
+    join public.decks d on d.user_id = uid and d.parent_id is null and d.name = b.title and d.is_inbox = false
+    where cap.id = any(c.source_capture_ids)
       and c.user_id = uid
       and c.deck_id is null;
 
