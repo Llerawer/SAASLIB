@@ -24,11 +24,16 @@ def _fetch_user_decks(client) -> list[dict]:
 
 
 def _fetch_deck_card_counts(client) -> dict[str, dict[str, int]]:
-    """Return {deck_id: {direct: int, due: int}} — direct (non-recursive) counts."""
+    """Return {deck_id: {direct: int, due: int}} — direct (non-recursive) counts.
+
+    Both due_at and suspended_at live on card_schedule (not cards), so we embed
+    the related row via PostgREST. Compare with reviews.queue which queries
+    card_schedule directly.
+    """
     now_iso = datetime.now(timezone.utc).isoformat()
     res = (
         client.table("cards")
-        .select("deck_id, due_at, suspended_at:card_schedule(suspended_at)")
+        .select("deck_id, schedule:card_schedule(due_at, suspended_at)")
         .execute()
     )
     counts: dict[str, dict[str, int]] = {}
@@ -36,14 +41,14 @@ def _fetch_deck_card_counts(client) -> dict[str, dict[str, int]]:
         deck_id = row.get("deck_id")
         if deck_id is None:
             continue
-        sched = row.get("suspended_at") or {}
+        sched = row.get("schedule") or {}
         if isinstance(sched, list):
             sched = sched[0] if sched else {}
         if sched.get("suspended_at"):
             continue
         bucket = counts.setdefault(deck_id, {"direct": 0, "due": 0})
         bucket["direct"] += 1
-        due_at = row.get("due_at")
+        due_at = sched.get("due_at")
         if due_at and due_at <= now_iso:
             bucket["due"] += 1
     return counts
@@ -249,7 +254,7 @@ def _list_cards_in_deck(
         client.table("cards")
         .select("*")
         .in_("deck_id", deck_ids)
-        .order("due_at", desc=False)
+        .order("created_at", desc=True)
         .range(offset, offset + limit - 1)
         .execute()
     )
