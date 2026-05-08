@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpen, MousePointerClick, GraduationCap, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import {
   useCapturesList,
@@ -12,23 +12,16 @@ import { Button } from "@/components/ui/button";
 
 const STORAGE_KEY = "lr.onboarding.dismissed.v1";
 
-const STEPS: {
-  icon: typeof BookOpen;
-  title: string;
-  detail: string;
-}[] = [
+const STEPS: { title: string; detail: string }[] = [
   {
-    icon: BookOpen,
     title: "Elige un libro",
     detail: "Más de 78.000 títulos clásicos.",
   },
   {
-    icon: MousePointerClick,
     title: "Doble clic en palabras",
     detail: "Captura las que no conozcas.",
   },
   {
-    icon: GraduationCap,
     title: "Repasa con SRS",
     detail: "Memorización a largo plazo.",
   },
@@ -77,17 +70,9 @@ export function OnboardingRibbon() {
 
   return (
     <section
-      className="relative border rounded-xl bg-card overflow-hidden mb-8"
+      className="relative border border-border rounded-xl bg-card mb-8"
       aria-label="Cómo funciona LinguaReader"
     >
-      <div
-        className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(circle at 25% 30%, var(--bg-glow-warm) 0%, transparent 65%)",
-        }}
-        aria-hidden="true"
-      />
       <Button
         variant="ghost"
         size="icon-xs"
@@ -98,37 +83,34 @@ export function OnboardingRibbon() {
         <X className="h-3.5 w-3.5" />
       </Button>
 
-      <div className="relative px-5 py-5 sm:px-6 sm:py-6">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+      <div className="px-5 py-5 sm:px-6 sm:py-6">
+        <p className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
           Cómo funciona
         </p>
-        <ol className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-          {STEPS.map((step, i) => {
-            const Icon = step.icon;
-            return (
-              <li key={i} className="flex items-start gap-3">
-                <div className="relative shrink-0">
-                  <span className="inline-flex items-center justify-center size-9 rounded-full bg-accent/15 text-accent ring-1 ring-accent/30">
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span
-                    className="absolute -top-1 -right-1 inline-flex items-center justify-center size-4 rounded-full bg-card text-foreground text-[10px] font-bold tabular ring-1 ring-border"
-                    aria-hidden="true"
-                  >
-                    {i + 1}
-                  </span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-tight">
-                    {step.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                    {step.detail}
-                  </p>
-                </div>
-              </li>
-            );
-          })}
+        <div className="mt-2 mb-5 flex items-center gap-2 max-w-xs">
+          <div className="h-px w-8 bg-accent/70" />
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <ol className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8">
+          {STEPS.map((step, i) => (
+            <li key={i} className="flex items-baseline gap-3">
+              <span
+                className="font-serif text-2xl font-semibold tabular text-accent leading-none shrink-0"
+                aria-hidden="true"
+              >
+                {i + 1}.
+              </span>
+              <div className="min-w-0">
+                <p className="font-serif text-base font-semibold leading-tight">
+                  {step.title}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  {step.detail}
+                </p>
+              </div>
+            </li>
+          ))}
         </ol>
       </div>
     </section>

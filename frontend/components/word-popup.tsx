@@ -235,7 +235,7 @@ export function WordPopup({
       <div className="flex items-start gap-2 p-3 pb-2 border-b border-border/60">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-base font-semibold leading-tight truncate">
+            <span className="font-serif text-lg font-semibold leading-tight truncate tracking-tight">
               {word}
             </span>
             {loading ? (
@@ -265,7 +265,7 @@ export function WordPopup({
             </Link>
           </div>
           {showLemma && (
-            <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+            <div className="text-xs text-muted-foreground truncate mt-0.5">
               lema: <span className="font-mono">{normalizedClient}</span>
             </div>
           )}
@@ -283,7 +283,7 @@ export function WordPopup({
 
       <div className="p-3 space-y-3">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+          <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">
             Traducción
           </div>
           {loading ? (
@@ -300,7 +300,7 @@ export function WordPopup({
         </div>
 
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+          <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">
             Definición
           </div>
           {loading ? (
@@ -334,14 +334,14 @@ export function WordPopup({
         {source.kind === "video" && contextSentence && (
           <div>
             <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">
                 Cue completo
               </div>
               {!cueTranslation && (
                 <button
                   onClick={handleTranslateCue}
                   disabled={translateMutation.isPending}
-                  className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline disabled:opacity-50 disabled:no-underline"
+                  className="inline-flex items-center gap-1 text-xs text-accent hover:underline disabled:opacity-50 disabled:no-underline"
                   title="Traducir esta línea"
                 >
                   <Languages className="h-3 w-3" />
@@ -387,7 +387,7 @@ export function WordPopup({
             <div className="space-y-1.5">
               <label
                 htmlFor="word-note"
-                className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+                className="text-xs uppercase tracking-widest text-muted-foreground font-semibold"
               >
                 Nota personal
               </label>
@@ -421,7 +421,7 @@ export function WordPopup({
               </Link>
             </div>
           )}
-          <p className="text-[10px] text-muted-foreground text-center mt-2">
+          <p className="text-xs text-muted-foreground text-center mt-2">
             S guardar · P audio · Esc cerrar
           </p>
         </div>

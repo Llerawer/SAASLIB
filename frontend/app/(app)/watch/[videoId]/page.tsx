@@ -468,7 +468,7 @@ export default function WatchPage({
     return (
       <Centered>
         <p className="text-muted-foreground mb-4">Video no encontrado.</p>
-        <Link href="/watch"><Button>Volver a /watch</Button></Link>
+        <Link href="/videos"><Button>Volver a videos</Button></Link>
       </Centered>
     );
   }

@@ -289,49 +289,57 @@ export default function VocabularyPage() {
 function EmptyInbox({ hasFilter }: { hasFilter: boolean }) {
   if (hasFilter) {
     return (
-      <div className="border rounded-lg p-8 text-center bg-card">
-        <Inbox
-          className="h-10 w-10 mx-auto text-muted-foreground/60"
-          aria-hidden="true"
-        />
-        <p className="font-semibold mt-3 font-serif">Sin coincidencias</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Prueba con otra palabra o limpia el filtro.
+      <div className="py-10 max-w-md">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
+          <span className="size-1 rounded-full bg-accent" aria-hidden />
+          Sin coincidencias
+        </p>
+        <h2 className="font-serif font-semibold text-2xl tracking-tight mt-3 leading-tight">
+          Nada que mostrar.
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+          Prueba con otra palabra o limpia el filtro de búsqueda.
         </p>
       </div>
     );
   }
   return (
-    <div className="relative border rounded-xl bg-card overflow-hidden">
-      <div
-        className="absolute inset-0 opacity-50 dark:opacity-20 pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(circle at 30% 20%, var(--bg-glow-warm) 0%, transparent 60%)",
-        }}
-        aria-hidden="true"
-      />
-      <div className="relative px-6 py-10 sm:px-10 sm:py-12">
-        <div className="inline-flex items-center justify-center size-12 rounded-full bg-accent/15 text-accent ring-1 ring-accent/30">
-          <Inbox className="h-5 w-5" aria-hidden="true" />
-        </div>
-        <h2 className="mt-4 text-2xl font-bold font-serif tracking-tight">
-          Tu inbox está limpio.
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground leading-relaxed max-w-md">
-          Aquí aparecen las palabras que captures mientras lees. Haz doble clic
-          en cualquier palabra dentro de un libro para guardarla.
-        </p>
-        <div className="mt-5">
-          <Link href="/library">
-            <Button size="sm">
-              <BookOpen className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              Ir a leer
-            </Button>
-          </Link>
-        </div>
+    <section className="py-10 max-w-xl">
+      <p className="text-xs uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
+        <span className="size-1 rounded-full bg-accent" aria-hidden />
+        <span>Vocabulario</span>
+        <span aria-hidden className="text-muted-foreground/50">·</span>
+        <span>Inbox</span>
+      </p>
+      <h2 className="font-serif font-semibold text-3xl tracking-tight mt-3 leading-[1.15]">
+        Tu inbox está limpio.
+      </h2>
+      <div className="mt-3 flex items-center gap-2">
+        <div className="h-px w-10 bg-accent/70" />
+        <div className="h-px flex-1 bg-border" />
       </div>
-    </div>
+      <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+        Aquí aparecen las palabras que captures mientras lees. Haz doble
+        clic en cualquier palabra dentro de un libro o un video para
+        guardarla.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Link
+          href="/library"
+          className="inline-flex items-center gap-1.5 h-9 px-3.5 text-xs rounded-full border border-border bg-card hover:bg-muted/70 hover:border-accent/50 transition-colors duration-150 ease-out"
+        >
+          <BookOpen className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          <span>Ir a leer</span>
+        </Link>
+        <Link
+          href="/videos"
+          className="inline-flex items-center gap-1.5 h-9 px-3.5 text-xs rounded-full border border-border bg-card hover:bg-muted/70 hover:border-accent/50 transition-colors duration-150 ease-out"
+        >
+          <Headphones className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          <span>Ver un video</span>
+        </Link>
+      </div>
+    </section>
   );
 }
 

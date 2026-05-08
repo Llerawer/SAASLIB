@@ -233,9 +233,23 @@ export default function VideosPage() {
       )}
 
       {hasNoVideos && (
-        <p className="text-muted-foreground">
-          No hay videos todavía. Pega una URL arriba para empezar.
-        </p>
+        <section className="py-10 max-w-xl">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
+            <span className="size-1 rounded-full bg-accent" aria-hidden />
+            <span>Empezar</span>
+          </p>
+          <h2 className="font-serif font-semibold text-2xl md:text-3xl tracking-tight mt-3 leading-[1.15]">
+            Aquí vivirán tus videos.
+          </h2>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-px w-10 bg-accent/70" />
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+            Pega una URL de YouTube en el campo de arriba y procesaremos los
+            subtítulos para que puedas estudiar palabra por palabra.
+          </p>
+        </section>
       )}
 
       {!isInitialLoading && (list.data?.length ?? 0) > 0 && (
