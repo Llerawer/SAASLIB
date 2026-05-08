@@ -282,6 +282,10 @@ export default function ReadPage({
     setPendingNoteExcerpt(null);
   };
 
+  const handleDeleteBookmark = (id: string) => {
+    deleteBookmarkMut.mutate(id);
+  };
+
   const handleDeleteHighlight = async (id: string) => {
     try {
       await deleteHighlightMut.mutateAsync(id);
@@ -306,11 +310,13 @@ export default function ReadPage({
     }
   };
 
-  const handlePopoverDelete = async () => {
+  // handleDeleteHighlight already swallows errors with a toast; no need to
+  // re-await or re-async-wrap. Just fire-and-forget after closing the popover.
+  const handlePopoverDelete = () => {
     const popover = highlightPopover;
     if (!popover) return;
     setHighlightPopover(null);
-    await handleDeleteHighlight(popover.id);
+    void handleDeleteHighlight(popover.id);
   };
 
   // ---------- Render ----------
@@ -318,7 +324,9 @@ export default function ReadPage({
   if (registerError) {
     return (
       <div className="h-[calc(100vh-57px)] flex flex-col items-center justify-center p-6">
-        <div className="bg-red-50 text-red-700 text-sm p-3 rounded">{registerError}</div>
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3 rounded-md">
+          {registerError}
+        </div>
       </div>
     );
   }
@@ -346,7 +354,7 @@ export default function ReadPage({
         onResetSettings={reset}
         onPrev={readerPrev}
         onNext={readerNext}
-        onDeleteBookmark={(id) => deleteBookmarkMut.mutate(id)}
+        onDeleteBookmark={handleDeleteBookmark}
         onDeleteHighlight={handleDeleteHighlight}
         getColor={wordColors.getColor}
         setColor={wordColors.setColor}
@@ -355,7 +363,9 @@ export default function ReadPage({
       />
 
       {readerError && (
-        <div className="bg-red-50 text-red-700 text-sm p-3 border-b">{readerError}</div>
+        <div className="bg-destructive/10 text-destructive text-sm p-3 border-b border-destructive/30">
+          {readerError}
+        </div>
       )}
 
       <div className="flex-1 relative">
