@@ -1,46 +1,19 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
-import { usePronounce } from "@/lib/api/queries";
 import {
   PronounceDeckPlayer,
-  type DeckPlayerHandle,
 } from "@/components/pronounce-deck-player";
 import { PronounceDeckControls } from "@/components/pronounce-deck-controls";
 import { Highlighted } from "@/lib/reader/pronounce-highlight";
 import { LoadingScreen } from "@/components/ui/loading-screen";
-
-// ---------------------------------------------------------------------------
-// Constants + localStorage helpers (defined outside component to keep
-// SSR-safe with typeof window guard and avoid re-creation on render).
-// ---------------------------------------------------------------------------
-
-const AUTO_PLAYS_PER_CLIP = 3;
-
-type Speed = 0.5 | 0.75 | 1 | 1.25;
-const VALID_SPEEDS: ReadonlyArray<Speed> = [0.5, 0.75, 1, 1.25];
-
-type Mode = "manual" | "repeat" | "auto";
-
-function readSpeedFromLS(): Speed {
-  if (typeof window === "undefined") return 1;
-  const raw = window.localStorage.getItem("pronounce-deck-speed");
-  const n = raw ? Number(raw) : 1;
-  return (VALID_SPEEDS as ReadonlyArray<number>).includes(n) ? (n as Speed) : 1;
-}
-
-function readModeFromLS(): Mode {
-  if (typeof window === "undefined") return "repeat";
-  const raw = window.localStorage.getItem("pronounce-deck-mode");
-  if (raw === "auto") return "auto";
-  if (raw === "manual") return "manual";
-  return "repeat";
-}
+import { useDeckController } from "@/lib/pronounce/use-deck-controller";
+import type { Speed } from "@/lib/pronounce/deck-types";
 
 // ---------------------------------------------------------------------------
 // withQuery helper
@@ -52,7 +25,9 @@ function withQuery(path: string, sp: URLSearchParams): string {
 }
 
 // ---------------------------------------------------------------------------
-// Page component
+// Page component — owns URL routing + keyboard shortcuts + layout. All
+// player runtime state (speed/mode/repCount/etc.) lives in the controller
+// hook so the same logic powers the in-reader sheet without duplication.
 // ---------------------------------------------------------------------------
 
 export default function PronounceDeckPage({
@@ -68,127 +43,76 @@ export default function PronounceDeckPage({
   const accent = sp.get("accent") ?? undefined;
   const channel = sp.get("channel") ?? undefined;
 
-  const { data, isLoading, isError, error } = usePronounce(word, {
-    accent,
-    channel,
-    limit: 50,
+  // Forward reference for `onAdvance`. The controller fires onAdvance from
+  // its segment-loop handler in 'auto' mode; that callback needs to call
+  // handleGoNext, but handleGoNext requires the controller's clipMap/clips
+  // to compute the next clip id. We break the circular dependency with a
+  // ref that's bound after both exist. The controller stabilises onAdvance
+  // internally via its own ref, so passing the inline `() => goNextRef.current()`
+  // is safe across renders.
+  const goNextRef = useRef<() => void>(() => undefined);
+  const stableOnAdvance = useCallback(() => goNextRef.current(), []);
+
+  const ctrl = useDeckController({
+    word,
+    filters: { accent, channel, limit: 50 },
+    currentClipId: clipId,
+    onAdvance: stableOnAdvance,
   });
 
-  // O(1) lookup map. Recompute only when the clips array reference changes.
-  const clipMap = useMemo(() => {
-    const m = new Map<string, number>();
-    data?.clips.forEach((c, i) => m.set(c.id, i));
-    return m;
-  }, [data?.clips]);
+  const total = ctrl.total;
+
+  const handleGoPrev = useCallback(() => {
+    if (total === 0) return;
+    const cur = ctrl.clipMap.get(clipId) ?? 0;
+    const prev = ctrl.clips[(cur - 1 + total) % total];
+    if (!prev) return;
+    router.replace(withQuery(`/pronounce/${wordEnc}/play/${prev.id}`, sp));
+  }, [total, ctrl.clipMap, ctrl.clips, clipId, wordEnc, sp, router]);
+
+  const handleGoNext = useCallback(() => {
+    if (total === 0) return;
+    const cur = ctrl.clipMap.get(clipId) ?? 0;
+    const next = ctrl.clips[(cur + 1) % total];
+    if (!next) return;
+    router.replace(withQuery(`/pronounce/${wordEnc}/play/${next.id}`, sp));
+  }, [total, ctrl.clipMap, ctrl.clips, clipId, wordEnc, sp, router]);
+
+  // Keep the forward ref aligned with the latest handleGoNext.
+  useEffect(() => {
+    goNextRef.current = handleGoNext;
+  }, [handleGoNext]);
 
   // ---------------------------------------------------------------------------
-  // Page-level state (spec §4)
-  // ---------------------------------------------------------------------------
-
-  const [speed, setSpeed] = useState<Speed>(() => readSpeedFromLS());
-  const [mode, setMode] = useState<Mode>(() => readModeFromLS());
-  const [repCount, setRepCount] = useState(0);
-  // pulseKey drives sentence-pulse animation; incremented on each loop.
-  const [pulseKey, setPulseKey] = useState(0);
-  // Tracks YT player state. Drives the "▶ Reproducir" overlay shown when
-  // the player is paused (manual mode after segment end, autoplay blocked,
-  // user clicked pause inside the iframe).
-  const [playing, setPlaying] = useState(false);
-
-  const playerRef = useRef<DeckPlayerHandle | null>(null);
-
-  // Persist speed + mode to localStorage on change.
-  useEffect(() => {
-    if (typeof window !== "undefined")
-      window.localStorage.setItem("pronounce-deck-speed", String(speed));
-  }, [speed]);
-  useEffect(() => {
-    if (typeof window !== "undefined")
-      window.localStorage.setItem("pronounce-deck-mode", mode);
-  }, [mode]);
-
-  // Reset visual state on clipId change to avoid 1-frame flash.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    setRepCount(0);
-  }, [clipId]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // ---------------------------------------------------------------------------
-  // Side effects: redirects + toasts in useEffect to be StrictMode-safe.
+  // Side effects: redirects (StrictMode-safe)
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    if (!data) return;
-    if (data.clips.length === 0) {
+    if (ctrl.status === "empty") {
       router.replace(withQuery(`/pronounce/${wordEnc}`, sp));
       return;
     }
-    if (!clipMap.has(clipId)) {
+    if (ctrl.status === "invalid") {
       toast.error("Clip no encontrado, mostrando el primero.", { duration: 3000 });
-      router.replace(
-        withQuery(`/pronounce/${wordEnc}/play/${data.clips[0].id}`, sp),
-      );
+      const first = ctrl.clips[0];
+      if (first) {
+        router.replace(
+          withQuery(`/pronounce/${wordEnc}/play/${first.id}`, sp),
+        );
+      }
     }
-  }, [data, clipId, wordEnc, sp, router, clipMap]);
-
-  // ---------------------------------------------------------------------------
-  // Navigation helpers + prefetch
-  // ---------------------------------------------------------------------------
-
-  const total = data?.clips.length ?? 0;
-
-  const goPrev = useCallback(() => {
-    if (!data || total === 0) return;
-    const cur = clipMap.get(clipId) ?? 0;
-    const prev = data.clips[(cur - 1 + total) % total];
-    router.replace(withQuery(`/pronounce/${wordEnc}/play/${prev.id}`, sp));
-  }, [data, total, clipMap, clipId, wordEnc, sp, router]);
-
-  const goNext = useCallback(() => {
-    if (!data || total === 0) return;
-    const cur = clipMap.get(clipId) ?? 0;
-    const next = data.clips[(cur + 1) % total];
-    router.replace(withQuery(`/pronounce/${wordEnc}/play/${next.id}`, sp));
-  }, [data, total, clipMap, clipId, wordEnc, sp, router]);
+  }, [ctrl.status, ctrl.clips, wordEnc, sp, router]);
 
   // Prefetch the next clip's route HTML (instant feel for keyboard nav).
   useEffect(() => {
-    if (!data || total <= 1) return;
-    const cur = clipMap.get(clipId);
+    if (total <= 1) return;
+    const cur = ctrl.clipMap.get(clipId);
     if (cur === undefined) return;
-    const nextId = data.clips[(cur + 1) % total].id;
-    router.prefetch(withQuery(`/pronounce/${wordEnc}/play/${nextId}`, sp));
-  }, [data, total, clipMap, clipId, wordEnc, sp, router]);
-
-  const handleRepeatManual = useCallback(() => {
-    setPulseKey((k) => k + 1);
-    if (mode === "auto") setRepCount((c) => c + 1);
-    playerRef.current?.repeat();
-  }, [mode]);
-
-  // Loop-boundary handler — fired by the player on each segment-duration
-  // tick. Drives the pulse animation and the Auto-mode play counter.
-  // Reads mode/repCount via a ref so this stays a stable identity (the
-  // player's onSegmentLoopRef would still pick up changes, but stable is
-  // easier to reason about).
-  const stateRef = useRef({ mode, repCount });
-  useEffect(() => {
-    stateRef.current = { mode, repCount };
-  }, [mode, repCount]);
-
-  const handleSegmentLoop = useCallback(() => {
-    setPulseKey((k) => k + 1);
-    const { mode: curMode, repCount: curCount } = stateRef.current;
-    if (curMode === "auto") {
-      const next = curCount + 1;
-      if (next >= AUTO_PLAYS_PER_CLIP) {
-        goNext();
-      } else {
-        setRepCount(next);
-      }
+    const nextId = ctrl.clips[(cur + 1) % total]?.id;
+    if (nextId) {
+      router.prefetch(withQuery(`/pronounce/${wordEnc}/play/${nextId}`, sp));
     }
-  }, [goNext]);
+  }, [total, ctrl.clipMap, ctrl.clips, clipId, wordEnc, sp, router]);
 
   // Keyboard shortcuts (spec §7).
   useEffect(() => {
@@ -209,46 +133,40 @@ export default function PronounceDeckPage({
         case "j":
         case "J":
           e.preventDefault();
-          goPrev();
+          handleGoPrev();
           break;
         case "ArrowRight":
         case "l":
         case "L":
           e.preventDefault();
-          goNext();
+          handleGoNext();
           break;
         case " ":
         case "r":
         case "R":
           e.preventDefault(); // Space NO debe scrollear
-          handleRepeatManual();
+          ctrl.handleRepeat();
           break;
         case "1":
           e.preventDefault();
-          setSpeed(0.5);
+          ctrl.setSpeed(0.5 as Speed);
           break;
         case "2":
           e.preventDefault();
-          setSpeed(0.75);
+          ctrl.setSpeed(0.75 as Speed);
           break;
         case "3":
           e.preventDefault();
-          setSpeed(1);
+          ctrl.setSpeed(1 as Speed);
           break;
         case "4":
           e.preventDefault();
-          setSpeed(1.25);
+          ctrl.setSpeed(1.25 as Speed);
           break;
         case "m":
         case "M":
           e.preventDefault();
-          // Cycle through the 3 modes: manual → repeat → auto → manual.
-          setMode((m) => {
-            setRepCount(0);
-            if (m === "manual") return "repeat";
-            if (m === "repeat") return "auto";
-            return "manual";
-          });
+          ctrl.cycleMode();
           break;
         case "Escape":
           e.preventDefault();
@@ -258,27 +176,50 @@ export default function PronounceDeckPage({
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [goPrev, goNext, handleRepeatManual, router, wordEnc, sp, mode]);
+  }, [handleGoPrev, handleGoNext, ctrl, router, wordEnc, sp]);
 
   // ---------------------------------------------------------------------------
   // Early returns (after all hooks)
   // ---------------------------------------------------------------------------
 
-  if (isLoading || !data)
+  if (ctrl.status === "loading")
     return <LoadingScreen title="Pronunciación" subtitle="Cargando los clips." />;
-  if (isError) {
+
+  if (ctrl.status === "error") {
     return (
       <div className="max-w-4xl mx-auto p-6">
         <p className="text-sm text-destructive">
-          {(error as Error).message || "No se pudo cargar el clip."}
+          {ctrl.error?.message || "No se pudo cargar el clip."}
         </p>
       </div>
     );
   }
-  if (data.clips.length === 0) return null; // useEffect bounces to gallery
-  const idx = clipMap.get(clipId) ?? -1;
-  if (idx < 0) return null;                  // useEffect bounces to first clip
-  const clip = data.clips[idx];
+
+  if (ctrl.status === "empty" || ctrl.status === "invalid") return null; // useEffect redirects
+
+  // Destructure controller before render. The `react-hooks/refs` rule flags
+  // any property access on an object that contains a ref (here: playerRef)
+  // during render, so we extract every value used in JSX into its own
+  // local. Identical pattern to the reader page.
+  const {
+    playerRef,
+    currentClip,
+    currentIdx,
+    speed,
+    mode,
+    repCount,
+    autoPlaysPerClip,
+    pulseKey,
+    playing,
+    setSpeed,
+    setMode,
+    setPlaying,
+    handleRepeat,
+    handleSegmentLoop,
+  } = ctrl;
+
+  const clip = currentClip!;
+  const idx = currentIdx;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -317,7 +258,7 @@ export default function PronounceDeckPage({
       <div className="grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-4 items-center">
         <button
           type="button"
-          onClick={goPrev}
+          onClick={handleGoPrev}
           aria-label="Clip anterior"
           title="Anterior (←)"
           className="hidden lg:inline-flex items-center justify-center w-12 h-32 rounded-md bg-muted hover:bg-accent text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -337,7 +278,7 @@ export default function PronounceDeckPage({
           {!playing && (
             <button
               type="button"
-              onClick={handleRepeatManual}
+              onClick={handleRepeat}
               aria-label="Reproducir clip"
               className="absolute inset-0 flex items-center justify-center bg-black/40 hover:bg-black/50 transition-colors rounded-lg group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -357,7 +298,7 @@ export default function PronounceDeckPage({
 
         <button
           type="button"
-          onClick={goNext}
+          onClick={handleGoNext}
           aria-label="Clip siguiente"
           title="Siguiente (→)"
           className="hidden lg:inline-flex items-center justify-center w-12 h-32 rounded-md bg-muted hover:bg-accent text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -375,7 +316,7 @@ export default function PronounceDeckPage({
       <div className="flex justify-center gap-2 mt-4 lg:hidden">
         <button
           type="button"
-          onClick={goPrev}
+          onClick={handleGoPrev}
           aria-label="Clip anterior"
           className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-md bg-muted hover:bg-accent text-foreground"
         >
@@ -383,7 +324,7 @@ export default function PronounceDeckPage({
         </button>
         <button
           type="button"
-          onClick={goNext}
+          onClick={handleGoNext}
           aria-label="Clip siguiente"
           className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-md bg-muted hover:bg-accent text-foreground"
         >
@@ -394,15 +335,12 @@ export default function PronounceDeckPage({
       {/* Controls: mode toggle, speed chips, repeat */}
       <PronounceDeckControls
         mode={mode}
-        onModeChange={(m) => {
-          setMode(m);
-          setRepCount(0);
-        }}
+        onModeChange={setMode}
         repCount={repCount}
-        autoPlaysPerClip={AUTO_PLAYS_PER_CLIP}
+        autoPlaysPerClip={autoPlaysPerClip}
         speed={speed}
         onSpeedChange={setSpeed}
-        onRepeat={handleRepeatManual}
+        onRepeat={handleRepeat}
         meta={`${clip.channel}${clip.accent ? ` · ${clip.accent}` : ""}`}
       />
 
@@ -413,4 +351,3 @@ export default function PronounceDeckPage({
     </div>
   );
 }
-
