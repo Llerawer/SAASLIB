@@ -8,6 +8,7 @@
  * ready, and on every settings change thereafter).
  */
 import { HIGHLIGHT_THEME } from "./highlight";
+import { applyInlineTheme } from "./inline-theme";
 import {
   FONT_FAMILY_STACKS,
   type ReaderSettings,
@@ -27,6 +28,7 @@ type RenditionLike = {
   // epub.js types both forms (with and without args). We invoke without
   // args to trigger a no-op layout refresh; both call signatures match.
   resize?: ((width: number, height: number) => void) | (() => void);
+  getContents?: () => Array<{ document?: Document }>;
 };
 
 function resolveTheme(id: ReaderSettings["theme"]) {
@@ -54,6 +56,23 @@ export function applyReaderSettings(
     extraRules: HIGHLIGHT_THEME,
   });
   rendition.themes.default(rules);
+
+  // 2b. Nuclear: walk every already-rendered chapter and force-apply
+  // foreground + font-family as inline styles with !important. EPUBs ship
+  // their own stylesheets with high-specificity !important rules that
+  // beat ours regardless of selector tricks. Inline style with !important
+  // always wins. New chapters loaded after this call get the same
+  // treatment via use-epub-reader's hooks.content callback.
+  const fontFamily = FONT_FAMILY_STACKS[settings.fontFamily];
+  if (rendition.getContents) {
+    try {
+      for (const c of rendition.getContents()) {
+        applyInlineTheme(c.document, theme.foreground, fontFamily);
+      }
+    } catch {
+      // Pre-display: no contents yet; hooks.content will paint on first render.
+    }
+  }
 
   // 3. Spread mode. epub.js values: 'none' | 'always' | 'auto'.
   // We map our 'single'/'double' to forced values so the user sees what

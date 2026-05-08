@@ -42,7 +42,9 @@ import {
   type GestureMode,
 } from "@/lib/reader/gestures";
 import type { Highlight } from "@/lib/api/queries";
-import type { ReaderSettings } from "@/lib/reader/settings";
+import { applyInlineTheme } from "@/lib/reader/inline-theme";
+import { FONT_FAMILY_STACKS, type ReaderSettings } from "@/lib/reader/settings";
+import { READER_THEMES } from "@/lib/reader/themes";
 import type { TocItem } from "@/components/reader/reader-toc-sheet";
 import { extractContextSentence } from "@/lib/reader/context-sentence";
 import {
@@ -530,6 +532,19 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
             // specificity via `html body.lr-themed.lr-themed p` — beats
             // EPUB-level !important rules with class selectors.
             doc.body?.classList.add("lr-themed");
+
+            // Nuclear: walk the just-rendered chapter and force inline
+            // styles. Some EPUBs (Gutenberg's x-ebookmaker among them)
+            // ship !important rules that beat any external selector we
+            // can craft. Inline `style="color: …!important"` always wins.
+            const s = settingsRef.current;
+            const themeForFrame =
+              READER_THEMES.find((t) => t.id === s.theme) ?? READER_THEMES[0];
+            applyInlineTheme(
+              doc,
+              themeForFrame.foreground,
+              FONT_FAMILY_STACKS[s.fontFamily],
+            );
 
             const isInteractiveTarget = (target: EventTarget | null): boolean => {
               const el = target as HTMLElement | null;
