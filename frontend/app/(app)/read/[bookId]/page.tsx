@@ -10,6 +10,7 @@ import { ReaderProgressBar } from "@/components/reader/reader-progress-bar";
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar";
 import { ReaderHighlightNoteDialog } from "@/components/reader/reader-highlight-note-dialog";
 import { ReaderHighlightPopover } from "@/components/reader/reader-highlight-popover";
+import CubeLoader from "@/components/ui/cube-loader";
 
 import {
   useBookmarks,
@@ -181,6 +182,7 @@ export default function ReadPage({
   // readerRangeToCfi is defined before use (avoids use-before-define).
   const {
     viewerRef,
+    status: readerStatus,
     error: readerError,
     toc: readerToc,
     progress: readerProgress,
@@ -358,6 +360,11 @@ export default function ReadPage({
 
       <div className="flex-1 relative">
         <div ref={viewerRef} className="absolute inset-0" />
+        {readerStatus !== "ready" && readerStatus !== "error" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <CubeLoader title="Cargando libro" subtitle={title} />
+          </div>
+        )}
         <ReaderProgressBar pct={progressPct} />
       </div>
 
