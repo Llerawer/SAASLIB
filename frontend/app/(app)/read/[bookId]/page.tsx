@@ -323,7 +323,7 @@ export default function ReadPage({
 
   if (registerError) {
     return (
-      <div className="h-[calc(100vh-57px)] flex flex-col items-center justify-center p-6">
+      <div className="h-screen flex flex-col items-center justify-center p-6">
         <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3 rounded-md">
           {registerError}
         </div>
@@ -332,7 +332,7 @@ export default function ReadPage({
   }
 
   return (
-    <div className="h-[calc(100vh-57px)] flex flex-col">
+    <div className="h-screen flex flex-col">
       <ReaderToolbar
         title={title}
         pageLabel={pageLabel}
