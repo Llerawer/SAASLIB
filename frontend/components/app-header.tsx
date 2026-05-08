@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, BookOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,10 +19,45 @@ import LogoutButton from "@/components/logout-button";
 
 export function AppHeader({ userEmail }: { userEmail: string }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Auto-hide while reading: distraction-free reading mode. Header slides
+  // out of view; a thin top-edge trigger zone reveals it on mouse-enter.
+  // Desktop only (md+) — touch devices don't have hover; on mobile the
+  // header stays sticky as usual.
+  const pathname = usePathname();
+  const isReader = pathname?.startsWith("/read/") ?? false;
+  const [revealed, setRevealed] = useState(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reveal = () => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setRevealed(true);
+  };
+  const scheduleHide = () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    // Small delay so crossing between trigger and header doesn't flicker.
+    hideTimerRef.current = setTimeout(() => setRevealed(false), 180);
+  };
+  const autohide = isReader && !revealed;
 
   return (
-    <header className="border-b bg-background/85 backdrop-blur-sm sticky top-0 z-30">
-      <div className="px-4 h-14 flex items-center gap-3">
+    <>
+      {isReader && (
+        <div
+          aria-hidden="true"
+          className="fixed inset-x-0 top-0 h-3 z-40 hidden md:block"
+          onMouseEnter={reveal}
+        />
+      )}
+      <header
+        className={`border-b bg-background/85 backdrop-blur-sm sticky top-0 z-30 transition-transform duration-200 ${
+          autohide ? "md:-translate-y-full" : ""
+        }`}
+        onMouseEnter={isReader ? reveal : undefined}
+        onMouseLeave={isReader ? scheduleHide : undefined}
+      >
+        <div className="px-4 h-14 flex items-center gap-3">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger
             render={
@@ -81,5 +117,6 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
         </div>
       </div>
     </header>
+    </>
   );
 }
