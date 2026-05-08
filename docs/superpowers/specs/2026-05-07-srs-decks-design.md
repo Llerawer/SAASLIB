@@ -2,8 +2,8 @@
 
 **Fecha**: 2026-05-07
 **Branch origen**: `feature/repaso-v2` (implementación de Repaso v2 + polish ya merged ahí; HEAD `e0b5421`)
-**Branch implementación**: `feature/srs-decks` (worktree por crear con `superpowers:using-git-worktrees`)
-**Status**: Draft — pendiente review del founder
+**Branch implementación**: `feature/srs-decks` → merged a `feature/semana-2-core-loop` HEAD `e278121` (2026-05-08)
+**Status**: Implementado — 26 tasks ejecutados, 12/12 manual smoke verde, final code review approved con 7 Important + 6 Minor follow-ups documentados
 **Alcance**: Decks anidados estilo Anki sobre el módulo SRS, con landing visual tipo CardStack 3D, navegación drill-in, atajo "Repasar todo", y card browser por deck.
 
 ---
