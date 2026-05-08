@@ -82,10 +82,16 @@ export function buildThemeRules(opts: {
       "touch-action": "manipulation",
     },
     // Force the user's foreground colour AND font-family on the common
-    // text-containing tags. Many EPUBs (including most Gutenberg titles)
-    // set their own `color` and `font-family` on <p>/<span>/headings,
-    // which beat the inherited body cascade. !important is needed because
-    // some EPUBs use inline `style="color:..."`.
+    // text-containing tags. Many EPUBs (including Gutenberg) set their
+    // own `color` AND their own `!important` on <p>/<span>/headings.
+    // With same specificity (0,0,0,1) and both flagged !important, the
+    // EPUB's stylesheet wins because epub.js loads it after our
+    // themes.default() injection ("later !important wins" tie-break).
+    //
+    // The selector below is prefixed with `body ` to bump specificity
+    // to (0,0,0,2), so our rule beats any plain-tag !important from
+    // the EPUB regardless of load order. Inline `style="color:…"` is
+    // beaten by ANY !important external rule, so this also covers it.
     //
     // line-height stays off this list on purpose — pushing line-height per
     // tag has triggered reflow churn before (epub.js paginator measuring
@@ -96,7 +102,7 @@ export function buildThemeRules(opts: {
     // font-weight/font-style, independent of font-family, so this doesn't
     // strip emphasis. <code>/<pre> are NOT in the list so code blocks keep
     // their monospace styling regardless of the user's body font.
-    "p, span, li, blockquote, td, th, h1, h2, h3, h4, h5, h6, em, strong, i, b": {
+    "body p, body span, body li, body blockquote, body td, body th, body h1, body h2, body h3, body h4, body h5, body h6, body em, body strong, body i, body b": {
       color: `${theme.foreground} !important`,
       "font-family": `${fontFamily} !important`,
     },
