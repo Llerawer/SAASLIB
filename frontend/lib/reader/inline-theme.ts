@@ -12,18 +12,44 @@
  * (since we mutate elements directly, not the cascade).
  */
 
-const TEXT_TAGS =
-  "p,span,li,blockquote,td,th,h1,h2,h3,h4,h5,h6,em,strong,i,b";
+/**
+ * Selector strategy: target EVERY element under body. Gutenberg's
+ * x-ebookmaker pipeline puts text in unpredictable tags — divs,
+ * sections, custom wrappers, etc. — so a curated tag list misses
+ * cases. Inline style on every element costs ~ms per chapter and
+ * guarantees coverage.
+ *
+ * We exclude `script,style,link,meta,head` because applying color/font
+ * to them is meaningless and would rewrite their `style` attribute
+ * pointlessly. (Most aren't visible anyway.)
+ */
+const SKIP_TAGS = new Set([
+  "SCRIPT",
+  "STYLE",
+  "LINK",
+  "META",
+  "HEAD",
+  "TITLE",
+  "BASE",
+  "NOSCRIPT",
+]);
 
 export function applyInlineTheme(
   doc: Document | null | undefined,
   foreground: string,
   fontFamily: string,
 ): void {
-  if (!doc) return;
-  const els = doc.querySelectorAll<HTMLElement>(TEXT_TAGS);
-  for (const el of els) {
-    el.style.setProperty("color", foreground, "important");
-    el.style.setProperty("font-family", fontFamily, "important");
+  if (!doc?.body) return;
+  // body itself + all descendants. NodeIterator is faster than
+  // querySelectorAll('*') for large DOMs.
+  const it = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+  let node: Node | null = it.currentNode;
+  while (node) {
+    const el = node as HTMLElement;
+    if (!SKIP_TAGS.has(el.tagName)) {
+      el.style.setProperty("color", foreground, "important");
+      el.style.setProperty("font-family", fontFamily, "important");
+    }
+    node = it.nextNode();
   }
 }
