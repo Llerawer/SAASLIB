@@ -526,6 +526,11 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
             const doc = contents.document;
             const view = contents.window;
 
+            // Tag the iframe body so theme rules can reach (0,0,2,3)
+            // specificity via `html body.lr-themed.lr-themed p` — beats
+            // EPUB-level !important rules with class selectors.
+            doc.body?.classList.add("lr-themed");
+
             const isInteractiveTarget = (target: EventTarget | null): boolean => {
               const el = target as HTMLElement | null;
               return !!el?.closest?.("a,button,input,textarea,select,label");

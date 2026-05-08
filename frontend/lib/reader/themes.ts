@@ -102,7 +102,7 @@ export function buildThemeRules(opts: {
     // font-weight/font-style, independent of font-family, so this doesn't
     // strip emphasis. <code>/<pre> are NOT in the list so code blocks keep
     // their monospace styling regardless of the user's body font.
-    "body p, body span, body li, body blockquote, body td, body th, body h1, body h2, body h3, body h4, body h5, body h6, body em, body strong, body i, body b": {
+    "html body.lr-themed.lr-themed p, html body.lr-themed.lr-themed span, html body.lr-themed.lr-themed li, html body.lr-themed.lr-themed blockquote, html body.lr-themed.lr-themed td, html body.lr-themed.lr-themed th, html body.lr-themed.lr-themed h1, html body.lr-themed.lr-themed h2, html body.lr-themed.lr-themed h3, html body.lr-themed.lr-themed h4, html body.lr-themed.lr-themed h5, html body.lr-themed.lr-themed h6, html body.lr-themed.lr-themed em, html body.lr-themed.lr-themed strong, html body.lr-themed.lr-themed i, html body.lr-themed.lr-themed b": {
       color: `${theme.foreground} !important`,
       "font-family": `${fontFamily} !important`,
     },
