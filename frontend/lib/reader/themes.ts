@@ -81,15 +81,24 @@ export function buildThemeRules(opts: {
       // critical so dblclick → word capture is responsive on iPhone.
       "touch-action": "manipulation",
     },
-    // Force the foreground colour on the common text-containing tags.
-    // Many EPUBs set their own colours on <p>/<span>/etc. that would
-    // otherwise win over the inherited body colour. !important is needed
-    // because some EPUBs use inline `style="color:..."`. We deliberately
-    // DO NOT include line-height or font here — those flow through body
-    // inheritance and changing them per-tag triggered reflow issues last
-    // time. Only colour.
+    // Force the user's foreground colour AND font-family on the common
+    // text-containing tags. Many EPUBs (including most Gutenberg titles)
+    // set their own `color` and `font-family` on <p>/<span>/headings,
+    // which beat the inherited body cascade. !important is needed because
+    // some EPUBs use inline `style="color:..."`.
+    //
+    // line-height stays off this list on purpose — pushing line-height per
+    // tag has triggered reflow churn before (epub.js paginator measuring
+    // mid-frame). body's line-height inherits fine for the vast majority
+    // of EPUBs; exotic cases can live with the default.
+    //
+    // em/strong/i/b also get the font-family — bold and italic come from
+    // font-weight/font-style, independent of font-family, so this doesn't
+    // strip emphasis. <code>/<pre> are NOT in the list so code blocks keep
+    // their monospace styling regardless of the user's body font.
     "p, span, li, blockquote, td, th, h1, h2, h3, h4, h5, h6, em, strong, i, b": {
       color: `${theme.foreground} !important`,
+      "font-family": `${fontFamily} !important`,
     },
   };
   if (extraRules) Object.assign(rules, extraRules);
