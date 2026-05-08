@@ -51,9 +51,11 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
         />
       )}
       <header
-        className={`border-b bg-background/85 backdrop-blur-sm sticky top-0 z-30 transition-transform duration-200 ${
-          autohide ? "md:-translate-y-full" : ""
-        }`}
+        className={`border-b bg-background/85 backdrop-blur-sm z-30 transition-transform duration-200 ${
+          isReader
+            ? "fixed inset-x-0 top-0"
+            : "sticky top-0"
+        } ${autohide ? "md:-translate-y-full" : ""}`}
         onMouseEnter={isReader ? reveal : undefined}
         onMouseLeave={isReader ? scheduleHide : undefined}
       >
