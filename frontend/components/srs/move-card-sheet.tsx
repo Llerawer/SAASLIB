@@ -33,8 +33,7 @@ export function MoveCardSheet({ card, open, onOpenChange }: Props) {
           <SheetTitle>Mover &quot;{card?.word ?? ""}&quot; a…</SheetTitle>
         </SheetHeader>
         <div className="mt-4">
-          {/* TODO v1.5: pass card.deck_id once CardOut/Card type expose it */}
-          <DeckPicker currentId={undefined} onPick={pick} />
+          <DeckPicker currentId={card?.deck_id} onPick={pick} />
         </div>
       </SheetContent>
     </Sheet>

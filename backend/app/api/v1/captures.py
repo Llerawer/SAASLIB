@@ -33,6 +33,7 @@ def _ensure_book_deck(
         .select("id")
         .eq("user_id", user_id)
         .is_("parent_id", "null")
+        .eq("is_inbox", False)
         .eq("name", book_title)
         .limit(1)
         .execute()

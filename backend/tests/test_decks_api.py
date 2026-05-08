@@ -199,8 +199,12 @@ def test_queue_no_deck_id_returns_none():
 def test_promote_auto_assigns_book_deck():
     from app.api.v1.captures import _ensure_book_deck
     client = MagicMock()
-    # Chain: .eq("user_id").is_("parent_id", "null").eq("name").limit(1)
-    sel = client.table.return_value.select.return_value.eq.return_value.is_.return_value.eq.return_value.limit.return_value
+    # Chain: .eq("user_id").is_("parent_id", "null").eq("is_inbox", False).eq("name").limit(1)
+    sel = (
+        client.table.return_value.select.return_value
+        .eq.return_value.is_.return_value
+        .eq.return_value.eq.return_value.limit.return_value
+    )
     sel.execute.return_value.data = []
     ins = client.table.return_value.insert.return_value
     ins.execute.return_value.data = [{"id": "deck-new"}]

@@ -64,6 +64,6 @@ export function derivedHueForName(name: string): number {
     hash ^= name.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);
   }
-  const idx = Math.abs(hash) % HUE_PALETTE.length;
+  const idx = (hash >>> 0) % HUE_PALETTE.length;
   return HUE_PALETTE[idx]!;
 }
