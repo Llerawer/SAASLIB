@@ -67,7 +67,12 @@ export function applyReaderSettings(
   if (rendition.getContents) {
     try {
       for (const c of rendition.getContents()) {
-        applyInlineTheme(c.document, theme.foreground, fontFamily);
+        applyInlineTheme(
+          c.document,
+          theme.foreground,
+          fontFamily,
+          theme.background,
+        );
       }
     } catch {
       // Pre-display: no contents yet; hooks.content will paint on first render.

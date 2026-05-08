@@ -544,6 +544,7 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
               doc,
               themeForFrame.foreground,
               FONT_FAMILY_STACKS[s.fontFamily],
+              themeForFrame.background,
             );
 
             const isInteractiveTarget = (target: EventTarget | null): boolean => {

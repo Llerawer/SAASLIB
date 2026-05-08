@@ -38,9 +38,22 @@ export function applyInlineTheme(
   doc: Document | null | undefined,
   foreground: string,
   fontFamily: string,
+  background?: string,
 ): void {
   if (!doc?.body) return;
-  // body itself + all descendants. NodeIterator is faster than
+  // Force bg on iframe html + body (EPUB body is typically transparent;
+  // epub.js wraps the iframe in additional divs that don't inherit the
+  // outer viewer's bg, so the iframe shows whatever's behind unless we
+  // paint the iframe document itself).
+  if (background) {
+    doc.documentElement?.style.setProperty(
+      "background-color",
+      background,
+      "important",
+    );
+    doc.body.style.setProperty("background-color", background, "important");
+  }
+  // body + all descendants. NodeIterator is faster than
   // querySelectorAll('*') for large DOMs.
   const it = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
   let node: Node | null = it.currentNode;
