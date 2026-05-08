@@ -28,6 +28,12 @@ export type WordPopupProps = {
   alreadyCaptured: boolean;
   onClose: () => void;
   onSaved?: (wordNormalized: string) => void;
+  /**
+   * When provided, the Headphones icon opens an in-page handler instead
+   * of navigating to /pronounce/[word]. Used by the reader to open a
+   * compact pronounce sheet without leaving the book.
+   */
+  onListenNatives?: (normalized: string) => void;
 };
 
 const POPUP_WIDTH = 340;
@@ -44,6 +50,7 @@ export function WordPopup({
   alreadyCaptured,
   onClose,
   onSaved,
+  onListenNatives,
 }: WordPopupProps) {
   const popupRef = useRef<HTMLDivElement | null>(null);
   const saveBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -255,14 +262,26 @@ export function WordPopup({
                 <Volume2 className="h-3.5 w-3.5" />
               </button>
             )}
-            <Link
-              href={pronounceHref(normalizedClient || word)}
-              className="inline-flex items-center justify-center size-6 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-              aria-label={`Escuchar a nativos pronunciar ${word}`}
-              title="Escuchar nativos en YouTube"
-            >
-              <Headphones className="h-3.5 w-3.5" />
-            </Link>
+            {onListenNatives ? (
+              <button
+                type="button"
+                onClick={() => onListenNatives(normalizedClient || word)}
+                className="inline-flex items-center justify-center size-6 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                aria-label={`Escuchar a nativos pronunciar ${word}`}
+                title="Escuchar nativos sin salir"
+              >
+                <Headphones className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <Link
+                href={pronounceHref(normalizedClient || word)}
+                className="inline-flex items-center justify-center size-6 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                aria-label={`Escuchar a nativos pronunciar ${word}`}
+                title="Escuchar nativos en YouTube"
+              >
+                <Headphones className="h-3.5 w-3.5" />
+              </Link>
+            )}
           </div>
           {showLemma && (
             <div className="text-xs text-muted-foreground truncate mt-0.5">

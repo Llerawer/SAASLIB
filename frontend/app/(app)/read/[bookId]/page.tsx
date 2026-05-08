@@ -10,6 +10,10 @@ import { ReaderProgressBar } from "@/components/reader/reader-progress-bar";
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar";
 import { ReaderHighlightNoteDialog } from "@/components/reader/reader-highlight-note-dialog";
 import { ReaderHighlightPopover } from "@/components/reader/reader-highlight-popover";
+import {
+  ReaderPronounceSheet,
+  type ReaderPronounceSheetState,
+} from "@/components/reader/reader-pronounce-sheet";
 import CubeLoader from "@/components/ui/cube-loader";
 
 import {
@@ -97,6 +101,8 @@ export default function ReadPage({
 
   // ---------- UI state (NO va al hook) ----------
   const [popup, setPopup] = useState<PopupState | null>(null);
+  const [pronounceSheet, setPronounceSheet] =
+    useState<ReaderPronounceSheetState | null>(null);
   const [optimisticCaptured, setOptimisticCaptured] = useState<Set<string>>(new Set());
   const [selectionAnchor, setSelectionAnchor] = useState<{ x: number; y: number } | null>(null);
   const selectionContextRef = useRef<TextSelectionEvent | null>(null);
@@ -389,8 +395,19 @@ export default function ReadPage({
           alreadyCaptured={capturedMap.has(popup.normalizedClient)}
           onClose={() => setPopup(null)}
           onSaved={handleSavedWord}
+          onListenNatives={(normalized) => {
+            // Popup disappears immediately so there's no overlap with the
+            // sheet entrance — single focus surface, no double layer.
+            setPopup(null);
+            setPronounceSheet({ word: normalized, autoPlay: true });
+          }}
         />
       )}
+
+      <ReaderPronounceSheet
+        state={pronounceSheet}
+        onClose={() => setPronounceSheet(null)}
+      />
 
       <ReaderSelectionToolbar
         position={selectionAnchor}
