@@ -406,6 +406,28 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
       return () => clearTimeout(t);
     }
 
+    // epub.js' locations.generate() processes the spine via an internal
+    // .then() queue. Each section's load() can reject (malformed sections,
+    // particularly common in older Gutenberg EPUBs). The queue chains the
+    // outer promise but never awaits the per-section promises, so their
+    // rejections escape as "Uncaught (in promise) TypeError: Cannot read
+    // properties of undefined (reading 'content')" in the console even
+    // when our outer try/catch around generate() is in place. Filter
+    // those specific rejections to keep the console useful for real
+    // errors. Scoped to this hook's lifetime via add/remove.
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const msg = reason instanceof Error ? reason.message : String(reason);
+      const stack = reason instanceof Error ? reason.stack ?? "" : "";
+      if (
+        msg.includes("'content'") &&
+        (stack.includes("section.js") || stack.includes("locations.js"))
+      ) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+
     let cancelled = false;
     let cleanup: (() => void) | null = null;
 
@@ -715,6 +737,7 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
     return () => {
       cancelled = true;
       cleanup?.();
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
     };
   }, [epubUrl, initialCfi, repaintCapturedWords]);
 
