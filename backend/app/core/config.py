@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # External APIs (optional — services degrade gracefully if missing).
     DEEPL_API_KEY: str = ""
 
+    # ===== Admin gating =====
+    # Comma-separated Supabase user_ids allowed to hit /api/v1/admin/* endpoints.
+    # Empty string = no admin access (default — fail closed).
+    ADMIN_USER_IDS: str = ""
+
     # ===== Cache / distributed lock backend selection =====
     # auto   = use Redis if REDIS_URL is reachable, else in-memory.
     #          Convenient for dev. NOT recommended for prod (silent fallback
