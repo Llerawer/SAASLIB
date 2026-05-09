@@ -82,6 +82,11 @@ class CardOut(BaseModel):
     flag: int = 0
     user_image_url: str | None = None
     user_audio_url: str | None = None
+    # LLM-generated grammatical / pedagogical metadata. Permissive dict
+    # because the schema in supabase migration 22 is JSONB — frontend
+    # tolerates new fields gracefully without backend changes.
+    enrichment: dict | None = None
+    enriched_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

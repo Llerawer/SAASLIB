@@ -15,6 +15,7 @@ import { CardFrontRecognition } from "./card-front-recognition";
 import { CardFrontProduction } from "./card-front-production";
 import { CardFrontCloze } from "./card-front-cloze";
 import { CardBack } from "./card-back";
+import { EnrichmentChips } from "./enrichment-chips";
 
 const VARIANT_LABEL: Record<Variant, string> = {
   recognition: "Reconocer",
@@ -80,24 +81,29 @@ export function ReviewCard({
           : `Tarjeta: ${card.word}, click para ver respuesta`
       }
     >
-      <div className="px-6 pt-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <StateChip state={card.fsrs_state} />
-          <VariantChip variant={variant} />
-          {card.cefr && (
-            <span className="text-xs text-muted-foreground tabular ml-1">{card.cefr}</span>
-          )}
+      <div className="px-6 pt-4 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <StateChip state={card.fsrs_state} />
+            <VariantChip variant={variant} />
+            {card.cefr && (
+              <span className="text-xs text-muted-foreground tabular ml-1">{card.cefr}</span>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={(e) => { e.stopPropagation(); onOpenMenu(); }}
+            aria-label="Más acciones"
+            title="Acciones (E, S, R, F, B)"
+            className="bg-muted/50 hover:bg-muted shrink-0"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={(e) => { e.stopPropagation(); onOpenMenu(); }}
-          aria-label="Más acciones"
-          title="Acciones (E, S, R, F, B)"
-          className="bg-muted/50 hover:bg-muted"
-        >
-          <MoreVertical className="h-4 w-4" />
-        </Button>
+        {/* Enrichment chips render only if the worker has processed the
+            card. Stays out of the way until the data exists. */}
+        <EnrichmentChips enrichment={card.enrichment} />
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">

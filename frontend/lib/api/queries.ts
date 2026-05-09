@@ -397,6 +397,10 @@ export type Card = {
   flag: number;
   user_image_url: string | null;
   user_audio_url: string | null;
+  // Populated asynchronously by the backend enrichment worker. Null
+  // until processed; UI must render fine without it.
+  enrichment: import("@/lib/srs/enrichment").Enrichment | null;
+  enriched_at: string | null;
 };
 
 export type PromoteResult = {
@@ -502,6 +506,8 @@ export type ReviewQueueCard = {
   user_audio_url: string | null;
   flag: number;
   deck_id: string;
+  // Null until the backend enrichment worker processes the card.
+  enrichment: import("@/lib/srs/enrichment").Enrichment | null;
 };
 
 export type GradeResult = {

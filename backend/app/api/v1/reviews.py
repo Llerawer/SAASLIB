@@ -98,6 +98,7 @@ async def queue(
                 user_image_url=c.get("user_image_url") or None,
                 user_audio_url=c.get("user_audio_url") or None,
                 flag=int(c.get("flag") or 0),
+                enrichment=c.get("enrichment"),
             )
         )
     return out

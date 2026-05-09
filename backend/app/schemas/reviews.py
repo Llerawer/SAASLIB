@@ -29,6 +29,10 @@ class ReviewQueueCard(BaseModel):
     user_image_url: str | None = None
     user_audio_url: str | None = None
     flag: int = 0
+    # LLM enrichment payload (POS, tense, phrasal, register, etc.) —
+    # null until the cron worker processes the card. UI must render OK
+    # without it.
+    enrichment: dict | None = None
 
 
 class GradeResult(BaseModel):
