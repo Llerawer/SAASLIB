@@ -77,7 +77,6 @@ frequency:
   - { word: find, priority: 100 }
   - { word: tell, priority: 100 }
   - { word: ask, priority: 100 }
-  - { word: work, priority: 100 }
   - { word: seem, priority: 100 }
   - { word: feel, priority: 100 }
   - { word: try, priority: 100 }
@@ -148,7 +147,6 @@ frequency:
   - { word: money, priority: 100 }
   - { word: month, priority: 100 }
   - { word: lot, priority: 100 }
-  - { word: right, priority: 100 }
   - { word: study, priority: 100 }
   - { word: book, priority: 100 }
   - { word: job, priority: 100 }
@@ -217,7 +215,6 @@ frequency:
   - { word: death, priority: 100 }
   - { word: experience, priority: 100 }
   - { word: effect, priority: 100 }
-  - { word: use, priority: 100 }
   - { word: class, priority: 100 }
   - { word: control, priority: 100 }
   - { word: care, priority: 100 }

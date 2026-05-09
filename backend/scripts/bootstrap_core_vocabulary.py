@@ -70,8 +70,14 @@ def main() -> int:
     out_path = Path(__file__).resolve().parents[1] / "data" / "core_vocabulary.yaml"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # dict.fromkeys preserves insertion order while deduplicating —
+    # the curated _TOP_200_FREQUENCY list has a few accidental repeats
+    # ("work", "right", "use" appear twice) that the seed script would
+    # reject as duplicates-after-normalization. Dedupe here keeps the
+    # source list readable and the output clean.
+    unique_words = list(dict.fromkeys(_TOP_200_FREQUENCY))
     lines: list[str] = [_HEADER, "", "frequency:"]
-    for word in _TOP_200_FREQUENCY:
+    for word in unique_words:
         lines.append(f"  - {{ word: {word}, priority: 100 }}")
     lines.append("")
     lines.append("# academic: words like 'therefore', 'hypothesis', 'despite', 'approximately'")
@@ -84,7 +90,7 @@ def main() -> int:
     lines.append("")
 
     out_path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"Wrote {out_path} ({len(_TOP_200_FREQUENCY)} frequency words; academic/pain empty)")
+    print(f"Wrote {out_path} ({len(unique_words)} frequency words; academic/pain empty)")
     return 0
 
 
