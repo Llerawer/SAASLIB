@@ -73,7 +73,7 @@ Total: ~450-650 palabras. Crecible incrementalmente.
 
 ### 4.1 YAML en repo (source of truth versionado)
 
-```
+```text
 backend/data/core_vocabulary.yaml
 ```
 
@@ -165,13 +165,18 @@ Threshold de `ok` = 3 (alineado con tu frase "3-20 buenos ejemplos"). Configurab
 
 ### 5.3 Endpoint `GET /api/v1/admin/coverage`
 
-**Autenticación**: requiere user con rol admin (mismo guard que cualquier otro endpoint admin). NO es público.
+**Naturaleza**: este endpoint es **instrumento de observación**, no API de producto. Dashboard interno del corpus, no superficie para users. Implicaciones concretas:
 
-Query params:
+- ❌ No se diseña para escalar. Dataset bounded (~500 filas core_vocabulary), respuesta siempre cabe en una página.
+- ❌ No se cachea, no se paginar, no se rate-limita.
+- ❌ No tiene SLA. Si tarda 200ms está bien; si tarda 2s también.
+- ✅ Auth-gated (rol admin) — único acceso, no público.
+- ✅ Respuesta completa siempre. El cliente (CLI o futura admin page) filtra/aggrega lo que quiera.
 
-- `category=frequency|academic|pain` (opcional, filtra por capa)
-- `status=missing|thin|ok|dense` (opcional, filtra por estado derivado)
-- `limit=N` (default 100)
+Query params (opcionales, conveniencia para filtrar server-side):
+
+- `category=frequency|academic|pain` — filtra por capa
+- `status=missing|thin|ok|dense` — filtra por estado derivado
 
 Response (jsonb):
 
