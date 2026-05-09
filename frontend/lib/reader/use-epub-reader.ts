@@ -602,6 +602,14 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
               }
               const word = (text.match(WORD_RE)?.[0] ?? text).trim();
               fireWordCapture(word, range, event.clientX, event.clientY);
+              // The browser's native double-click selects the whole word.
+              // Without clearing it, the `selectionchange` handler below
+              // also fires and stacks the SelectionToolbar (color swatches)
+              // on top of the WordPopup — and the gray selection box stays
+              // behind after both close. The popup itself is already the
+              // visual marker for "you tapped here", so we don't lose any
+              // affordance by clearing.
+              sel.removeAllRanges();
             };
             doc.addEventListener("dblclick", onDblClick);
 
