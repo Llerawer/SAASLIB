@@ -1,13 +1,18 @@
 """Generate the initial backend/data/core_vocabulary.yaml.
 
+⚠️  ONE-SHOT script. After the initial bootstrap, the YAML is the source of
+truth and the founder edits it directly (or via PR). DO NOT re-run this —
+it overwrites the YAML, including any academic/pain words the founder added.
+
+If you need to add words, edit `backend/data/core_vocabulary.yaml` directly
+and run `scripts/seed_core_vocabulary.py` to push to the SQL table.
+
 Strategy:
   - Embeds a hardcoded list of ~200 high-frequency English content words
     (excluding stopwords already filtered by pronunciation._INDEX_STOP_WORDS,
     so every word has a chance to appear in pronunciation_word_index).
   - Leaves `academic` and `pain` sections empty with placeholder comments
     so the founder fills them incrementally in PRs.
-
-Idempotent — overwrites the YAML each run. Run once at project bootstrap.
 """
 from __future__ import annotations
 

@@ -28,6 +28,12 @@ create table if not exists public.core_vocabulary (
 create index if not exists idx_core_vocabulary_category_priority
     on public.core_vocabulary(category, priority);
 
+-- RLS: enabled, no policies. Effectively service_role-only since PostgREST
+-- auto-exposes tables to anon/authenticated by default. Vocabulary is not
+-- secret but reads should always go through the coverage_rows() RPC (which
+-- is grant-restricted to service_role) so the admin gate is the only path.
+alter table public.core_vocabulary enable row level security;
+
 -- -------------------------------------------------------------------------
 -- coverage_rows() RPC — single source of the JOIN against
 -- pronunciation_word_index. Used by both the API endpoint and the CLI.

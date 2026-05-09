@@ -35,8 +35,9 @@ def attach_status(rows: Iterable[dict]) -> list[dict]:
 
 
 def build_summary(rows: Iterable[dict]) -> dict:
-    """Aggregate counts by status. Expects rows WITHOUT a `status` field
-    (we derive it here so summary is always self-consistent)."""
+    """Aggregate counts by status. Rows may have a `status` field; it is
+    ignored. Status is always re-derived from `clips_count` so the summary
+    is self-consistent regardless of caller."""
     summary = {"total_words": 0, "missing": 0, "thin": 0, "ok": 0, "dense": 0}
     for row in rows:
         summary["total_words"] += 1
