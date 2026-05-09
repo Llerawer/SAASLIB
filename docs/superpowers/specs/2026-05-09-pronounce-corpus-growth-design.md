@@ -1,8 +1,16 @@
 # Pronounce Corpus Growth — Diseño
 
+> **⚠️ DEFERRED — POST-LAUNCH REFERENCE**
+>
+> Este spec describe el **sistema a escala** para cuando el producto ya esté en producción con tráfico real y el corpus crezca a millones de filas. Para V0 / pre-launch, el spec correcto es el más chico:
+>
+> → **[2026-05-09-pronounce-coverage-mvp-design.md](./2026-05-09-pronounce-coverage-mvp-design.md)** — radar de cobertura sobre core vocabulary curado.
+>
+> El error de scope que llevó a este doc: diseñar el *sistema de crecimiento* antes de validar el *mapa de palabras importantes*. La secuencia correcta es: mapa → workflow manual → coverage radar → (mucho después) automation. Este doc captura ese "mucho después" y queda como referencia de Phase 3, no del trabajo inmediato.
+
 **Fecha**: 2026-05-09
 **Branch origen**: `feature/semana-2-core-loop` (HEAD post `e1590b7` — inline pronounce sheet ya en producción)
-**Status**: Diseño — pendiente de plan de implementación
+**Status**: DEFERRED — superseded por `2026-05-09-pronounce-coverage-mvp-design.md` para V0
 **Alcance**: Sistema de crecimiento automatizado del corpus de pronounce, ranking de clips con explainability, y CLI operacional para curaduría editorial. NO incluye cola de demanda ni cambios al UX del lector/player.
 
 ---
