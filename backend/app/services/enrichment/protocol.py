@@ -43,3 +43,10 @@ class EnrichmentProvider(Protocol):
         failure — not an exception.
         """
         ...
+
+    def reset_keys(self) -> None:
+        """Restore every key to "live". Called by the worker at the start
+        of each batch — most provider rate limits renew per minute, so a
+        5-minute cron wait gives quotas time to come back. Without reset
+        the pool would stay drained until server restart."""
+        ...

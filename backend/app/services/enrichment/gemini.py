@@ -45,6 +45,9 @@ class GeminiProvider:
     def __len__(self) -> int:
         return len(self._pool)
 
+    def reset_keys(self) -> None:
+        self._pool.reset()
+
     async def enrich(
         self,
         word: str,
@@ -76,6 +79,12 @@ class GeminiProvider:
             response_mime_type="application/json",
             temperature=0.2,  # near-deterministic; we want consistent JSON, not creativity
         )
+
+        # If pool was already drained on entry, return silently — the
+        # batch-level "all exhausted" log fires once in the worker, not
+        # per-card here.
+        if self._pool.current() is None:
+            return None
 
         # Try each key in the pool until one succeeds or all are burned.
         for _ in range(len(self._pool)):
@@ -118,7 +127,8 @@ class GeminiProvider:
 
             return _parse_and_stamp(text)
 
-        log.warning("[gemini] all %d keys exhausted; skipping batch", len(self._pool))
+        # Pool drained DURING this call (we burned the last key just now).
+        # The batch-level worker logs once for the whole batch — quiet here.
         return None
 
 

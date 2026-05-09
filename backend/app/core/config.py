@@ -34,8 +34,11 @@ class Settings(BaseSettings):
     GROQ_API_KEYS: str = ""    # comma-separated, e.g. "gsk_...,gsk_..."
     # How often the enrichment cron runs (minutes). 5 is the V1 default.
     ENRICHMENT_INTERVAL_MIN: int = 5
-    # Max cards to enrich per cron tick. Caps cost/latency in case of a backlog.
-    ENRICHMENT_BATCH_SIZE: int = 20
+    # Max cards to enrich per cron tick. Calibrated for Gemini Flash free
+    # tier (15 req/min/key): 5 cards × 1 req each leaves headroom even on
+    # a single key. Bump if you have 4+ keys and want to drain backlogs
+    # faster, but watch the rate-limit logs first.
+    ENRICHMENT_BATCH_SIZE: int = 5
 
     # ===== Admin gating =====
     # Comma-separated Supabase user_ids allowed to hit /api/v1/admin/* endpoints.

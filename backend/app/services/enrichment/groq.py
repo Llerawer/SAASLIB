@@ -42,6 +42,9 @@ class GroqProvider:
     def __len__(self) -> int:
         return len(self._pool)
 
+    def reset_keys(self) -> None:
+        self._pool.reset()
+
     async def enrich(
         self,
         word: str,
@@ -66,6 +69,10 @@ class GroqProvider:
             {"role": "assistant", "content": EXAMPLE_OUTPUT},
             {"role": "user", "content": user_prompt},
         ]
+
+        # Quiet exit if pool was already drained on entry.
+        if self._pool.current() is None:
+            return None
 
         for _ in range(len(self._pool)):
             key = self._pool.current()
@@ -107,7 +114,7 @@ class GroqProvider:
 
             return _parse_and_stamp(text)
 
-        log.warning("[groq] all %d keys exhausted; skipping batch", len(self._pool))
+        # Pool drained during this call — batch-level worker logs once.
         return None
 
 

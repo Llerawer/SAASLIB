@@ -75,6 +75,12 @@ async def enrich_pending_batch() -> dict[str, int]:
     if provider is None:
         return stats  # disabled (logged once at factory level)
 
+    # Per-minute rate limits (Gemini Flash free tier = 15/min/key) renew
+    # naturally between cron ticks. Reset the key pool at the start of
+    # every batch so quotas that came back are visible again — without
+    # this the pool would stay drained until server restart.
+    provider.reset_keys()
+
     supabase = get_admin_client()
 
     # 1. Pending cards. Service role bypasses RLS — this is a system job.
@@ -149,4 +155,15 @@ async def enrich_pending_batch() -> dict[str, int]:
         stats["succeeded"],
         stats["skipped"],
     )
+    # If everything skipped AND the pool ended drained, surface a single
+    # actionable warning at batch level (instead of one log per card from
+    # inside the provider). Operator gets one signal per tick max.
+    if stats["succeeded"] == 0 and stats["skipped"] > 0 and len(provider) > 0:
+        log.warning(
+            "[enrichment] all %d %s key(s) exhausted this tick — "
+            "next cron in %d min will retry",
+            len(provider),
+            settings.ENRICHMENT_PROVIDER,
+            settings.ENRICHMENT_INTERVAL_MIN,
+        )
     return stats
