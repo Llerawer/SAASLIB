@@ -78,7 +78,12 @@ export function findActiveWordIndex(
   if (effectiveMs < startMs) return -1;
   if (effectiveMs >= endMs) return tokens.length - 1;
 
-  const weights = tokens.map((t) => Math.max(1, t.length));
+  // Floor at 3 so 1-2 character words ("I", "a", "is") get a fair share
+  // of screen time. Pure char-length weighting made articles fly past in
+  // ~50 ms on a normal-paced sentence; users perceived this as karaoke
+  // running ahead of the audio. Anything ≥ 3 chars uses its real length
+  // so the "subscriber gets more time than do" gradient still works.
+  const weights = tokens.map((t) => Math.max(3, t.length));
   const totalWeight = weights.reduce((a, b) => a + b, 0);
   const totalDuration = endMs - startMs;
 

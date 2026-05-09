@@ -67,7 +67,7 @@ type Props = {
   /** Fires once per detected segment end (polling on currentTime, with
    *  ENDED state as backup). 300ms debounce against double-fire. */
   onSegmentLoop?: () => void;
-  /** Fires every poll tick (~200 ms) with the player's currentTime in ms.
+  /** Fires every poll tick (~100 ms) with the player's currentTime in ms.
    *  Consumers use this for karaoke-style word highlighting. */
   onTimeUpdate?: (currentMs: number) => void;
 };
@@ -164,6 +164,12 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
             rel: 0,
             modestbranding: 1,
             playsinline: 1,
+            // Force the embedded YT closed-captions on so the user sees
+            // the speaker's own subtitle stream in addition to our karaoke
+            // caption below. Two cheaper sources of feedback are better
+            // than one for language learners.
+            cc_load_policy: 1,
+            cc_lang_pref: clip.language || "en",
           },
           events: {
             onReady: (e) => {
@@ -207,7 +213,7 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
                 } catch {
                   // ignore — player state transitions can throw briefly
                 }
-              }, 200);
+              }, 100);
             },
             onStateChange: (e) => {
               if (cancelled) return;

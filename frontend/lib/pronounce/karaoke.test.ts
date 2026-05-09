@@ -191,13 +191,26 @@ describe("findActiveWordIndex", () => {
   });
 
   it("weights longer words more time than short ones", () => {
-    // 'a' (weight 1) ends much earlier than 'subscriber' (weight 10)
+    // Weights are floored to 3 so 1-2 char words don't fly past too fast
+    // (was a perceived karaoke desync source on natural speech).
+    // 'a' (weight 3) and 'subscriber' (weight 10) → total 13, span 1300ms
+    //   'a'         : 0    →  300 ms
+    //   'subscriber': 300  → 1300 ms
     const phrase = ["a", "subscriber"];
-    // total weight 11, span 1100ms → 'a' ends at 100ms
     const start = 0;
-    const end = 1100;
+    const end = 1300;
     expect(findActiveWordIndex(phrase, 50, start, end)).toBe(0);
-    expect(findActiveWordIndex(phrase, 200, start, end)).toBe(1);
+    expect(findActiveWordIndex(phrase, 250, start, end)).toBe(0);
+    expect(findActiveWordIndex(phrase, 400, start, end)).toBe(1);
+  });
+
+  it("floors single-character word weight at 3", () => {
+    // "I", "a" — single chars used to scream past in <100ms on a normal-
+    // length sentence. Floor at 3 keeps them on screen long enough to
+    // perceive.
+    // ["I", "do"] weights 3+3=6, span 600ms → each gets 300ms
+    expect(findActiveWordIndex(["I", "do"], 100, 0, 600)).toBe(0);
+    expect(findActiveWordIndex(["I", "do"], 400, 0, 600)).toBe(1);
   });
 
   it("lead offset shifts the activation earlier (negative offset)", () => {
