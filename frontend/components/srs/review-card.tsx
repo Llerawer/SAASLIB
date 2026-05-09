@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Volume2, MoreVertical, Eye, PenLine, SquareDot, Sparkles, type LucideIcon } from "lucide-react";
+import { Volume2, MoreVertical, Eye, PenLine, SquareDot, Sparkles, Headphones, type LucideIcon } from "lucide-react";
 import type { ReviewQueueCard } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
 import { stateLabel, stateColorClass, STATE_ICON } from "@/lib/fsrs-preview";
@@ -35,6 +35,7 @@ export function ReviewCard({
   onFlip,
   onPlayAudio,
   onPlayUserAudio,
+  onListenNatives,
   onOpenMenu,
 }: {
   card: ReviewQueueCard;
@@ -42,6 +43,7 @@ export function ReviewCard({
   onFlip: () => void;
   onPlayAudio: () => void;
   onPlayUserAudio: () => void;
+  onListenNatives: () => void;
   onOpenMenu: () => void;
 }) {
   const variant = useMemo(
@@ -108,7 +110,11 @@ export function ReviewCard({
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
         {variant === "recognition" && (
-          <CardFrontRecognition card={card} onPlayAudio={onPlayAudio} />
+          <CardFrontRecognition
+            card={card}
+            onPlayAudio={onPlayAudio}
+            onListenNatives={onListenNatives}
+          />
         )}
         {variant === "production" && <CardFrontProduction card={card} />}
         {variant === "cloze" && masked && (
@@ -125,6 +131,15 @@ export function ReviewCard({
                     <Volume2 className="h-5 w-5" />
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={(e) => { e.stopPropagation(); onListenNatives(); }}
+                  aria-label={`Escuchar a nativos pronunciar ${card.word}`}
+                  title="Escuchar nativos"
+                >
+                  <Headphones className="h-5 w-5" />
+                </Button>
                 {card.user_audio_url && (
                   <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); onPlayUserAudio(); }}>
                     Tu grabación

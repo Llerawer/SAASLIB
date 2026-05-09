@@ -18,6 +18,10 @@ import { BreakOverlay } from "./break-overlay";
 import { KeyboardHint } from "./keyboard-hint";
 import { UndoBanner } from "./undo-banner";
 import { Button } from "@/components/ui/button";
+import {
+  ReaderPronounceSheet,
+  type ReaderPronounceSheetState,
+} from "@/components/reader/reader-pronounce-sheet";
 
 type GradeKey = 1 | 2 | 3 | 4;
 
@@ -40,6 +44,11 @@ export function Reviewer({
   const [editOpen, setEditOpen] = useState(false);
   const [breakActive, setBreakActive] = useState(false);
   const [moveDeckOpen, setMoveDeckOpen] = useState(false);
+  // Pronounce sheet (escuchar nativos) — same component as the in-reader
+  // sheet, anchored at the Reviewer level so it overlays the card without
+  // affecting layout / focus / keyboard handlers below.
+  const [pronounceSheet, setPronounceSheet] =
+    useState<ReaderPronounceSheetState | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set in the per-card useEffect below before any user interaction can fire.
   const cardShownAtRef = useRef<number>(0);
@@ -144,6 +153,9 @@ export function Reviewer({
           onFlip={flip}
           onPlayAudio={playAudio}
           onPlayUserAudio={playUserAudio}
+          onListenNatives={() =>
+            setPronounceSheet({ word: card.word, autoPlay: true })
+          }
           onOpenMenu={openMenu}
         />
         <SrsGradeButtons
@@ -174,6 +186,10 @@ export function Reviewer({
         card={card as never}
         open={moveDeckOpen}
         onOpenChange={setMoveDeckOpen}
+      />
+      <ReaderPronounceSheet
+        state={pronounceSheet}
+        onClose={() => setPronounceSheet(null)}
       />
 
       {throttle.shouldShow && !breakActive && (

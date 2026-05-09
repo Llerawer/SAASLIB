@@ -1,13 +1,15 @@
-import { Volume2 } from "lucide-react";
+import { Headphones, Volume2 } from "lucide-react";
 import type { ReviewQueueCard } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
 
 export function CardFrontRecognition({
   card,
   onPlayAudio,
+  onListenNatives,
 }: {
   card: ReviewQueueCard;
   onPlayAudio: () => void;
+  onListenNatives: () => void;
 }) {
   return (
     <div className="flex flex-col items-center">
@@ -23,6 +25,15 @@ export function CardFrontRecognition({
             <Volume2 className="h-5 w-5" />
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={(e) => { e.stopPropagation(); onListenNatives(); }}
+          aria-label={`Escuchar a nativos pronunciar ${card.word}`}
+          title="Escuchar nativos"
+        >
+          <Headphones className="h-5 w-5" />
+        </Button>
       </div>
       {card.ipa && <p className="font-mono text-muted-foreground">{card.ipa}</p>}
     </div>
