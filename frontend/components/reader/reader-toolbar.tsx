@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Settings2, BookOpen, ListTree } from "lucide-react";
+import {
+  Settings2,
+  BookOpen,
+  ListTree,
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ReaderTocSheet, type TocItem } from "@/components/reader/reader-toc-sheet";
@@ -64,10 +71,15 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
 
   return (
     <div className="border-b px-4 py-2 flex items-center gap-2">
-      <Link href="/library">
-        <Button variant="ghost" size="sm">← Biblioteca</Button>
+      <Link href="/library" aria-label="Volver a la biblioteca">
+        <Button variant="ghost" size="sm" className="gap-1.5">
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">Biblioteca</span>
+        </Button>
       </Link>
-      <h2 className="text-sm font-semibold flex-1 truncate">{title}</h2>
+      <h2 className="font-serif text-base sm:text-lg font-semibold flex-1 truncate leading-tight">
+        {title}
+      </h2>
       <ReaderTocSheet
         toc={toc}
         progressPct={progressPct}
@@ -85,7 +97,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs gap-1.5 tabular-nums"
+            className="gap-1.5 tabular-nums"
             aria-label="Navegación e índice"
             title="Índice + saltar a página"
           >
@@ -129,8 +141,22 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           </Button>
         }
       />
-      <Button variant="outline" size="sm" onClick={onPrev}>←</Button>
-      <Button variant="outline" size="sm" onClick={onNext}>→</Button>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        onClick={onPrev}
+        aria-label="Página anterior"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        onClick={onNext}
+        aria-label="Página siguiente"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
     </div>
   );
 }
