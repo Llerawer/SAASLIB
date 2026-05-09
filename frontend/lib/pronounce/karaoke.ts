@@ -1,3 +1,8 @@
+import {
+  SEGMENT_END_PAD_MS_COMPLETE,
+  SEGMENT_END_PAD_MS_OPEN,
+} from "./deck-types";
+
 /**
  * Karaoke-style word timing for pronounce-deck captions.
  *
@@ -108,4 +113,17 @@ export function targetMatchesToken(token: string, target: string): boolean {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Picks the right tail-trim padding for a clip based on whether the cue
+ * text closes a sentence or leaves it open. Sentence-final punctuation
+ * (`.`, `!`, `?`) optionally followed by a closing quote/paren counts
+ * as "complete"; anything else (comma, conjunction, dangling word,
+ * empty, whitespace) counts as "open" and gets the longer padding so
+ * the speaker can finish the thought audibly.
+ */
+export function endPaddingForCue(sentenceText: string): number {
+  const isComplete = /[.!?][\s"'\)\]]*$/.test(sentenceText.trim());
+  return isComplete ? SEGMENT_END_PAD_MS_COMPLETE : SEGMENT_END_PAD_MS_OPEN;
 }

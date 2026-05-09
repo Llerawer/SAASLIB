@@ -5,7 +5,12 @@ import {
   findActiveWordIndex,
   targetMatchesToken,
   decodeHtmlEntities,
+  endPaddingForCue,
 } from "./karaoke";
+import {
+  SEGMENT_END_PAD_MS_COMPLETE,
+  SEGMENT_END_PAD_MS_OPEN,
+} from "./deck-types";
 
 describe("tokenize", () => {
   it("returns [] for empty string", () => {
@@ -87,6 +92,55 @@ describe("decodeHtmlEntities", () => {
 
   it("returns empty string for empty input", () => {
     expect(decodeHtmlEntities("")).toBe("");
+  });
+});
+
+describe("endPaddingForCue", () => {
+  it("uses the short padding when sentence ends in a period", () => {
+    expect(endPaddingForCue("It's actually terrible.")).toBe(
+      SEGMENT_END_PAD_MS_COMPLETE,
+    );
+  });
+
+  it("uses the short padding for ! and ?", () => {
+    expect(endPaddingForCue("Hello world!")).toBe(SEGMENT_END_PAD_MS_COMPLETE);
+    expect(endPaddingForCue("Are you there?")).toBe(
+      SEGMENT_END_PAD_MS_COMPLETE,
+    );
+  });
+
+  it("tolerates trailing whitespace before terminal punctuation", () => {
+    expect(endPaddingForCue("Bye.   ")).toBe(SEGMENT_END_PAD_MS_COMPLETE);
+  });
+
+  it("tolerates a closing quote or paren after terminal punctuation", () => {
+    expect(endPaddingForCue('She said "hello!"')).toBe(
+      SEGMENT_END_PAD_MS_COMPLETE,
+    );
+    expect(endPaddingForCue("He sighed (yes.)")).toBe(
+      SEGMENT_END_PAD_MS_COMPLETE,
+    );
+  });
+
+  it("uses the long padding when the cue ends mid-sentence", () => {
+    // Verbatim from a real captured Crash Course clip
+    expect(
+      endPaddingForCue(
+        "Which is delicious, by the way. It's actually terrible. And it's very cold. And I wish I",
+      ),
+    ).toBe(SEGMENT_END_PAD_MS_OPEN);
+  });
+
+  it("uses the long padding when ending in a comma or other non-terminal", () => {
+    expect(endPaddingForCue("if you're not already a subscriber,")).toBe(
+      SEGMENT_END_PAD_MS_OPEN,
+    );
+    expect(endPaddingForCue("hello world")).toBe(SEGMENT_END_PAD_MS_OPEN);
+  });
+
+  it("uses the long padding for empty input (defensive)", () => {
+    expect(endPaddingForCue("")).toBe(SEGMENT_END_PAD_MS_OPEN);
+    expect(endPaddingForCue("   ")).toBe(SEGMENT_END_PAD_MS_OPEN);
   });
 });
 

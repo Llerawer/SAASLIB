@@ -22,18 +22,26 @@ export type Mode = "manual" | "repeat" | "auto";
 export const AUTO_PLAYS_PER_CLIP = 3;
 
 /**
- * Padding in milliseconds added to `sentence_end_ms` before the polling
- * loop decides the clip is done. YouTube auto-caption VTT cues usually
- * close at the *onset* of the last word, not its offset, so without
- * padding the polling cuts before the final consonant lands ("meal" got
- * clipped to "mea-" in repro from 2026-05-09).
+ * How long to keep playing past `sentence_end_ms` before stopping the
+ * clip. Two values because real cues come in two shapes:
  *
- * 400 ms is generous: covers slow speakers and long final words
- * ("subscriber", "meal", "considered"), still leaves headroom before any
- * follow-up cue. Pronounce clips are isolated (one cue per clip), so
- * bleeding into "next" content isn't a risk in this player.
+ * - **Complete sentence** (cue ends in `.`/`!`/`?`): only need to capture
+ *   the tail of the final word. 400 ms covers slow speakers + long final
+ *   words like "subscriber", "considered".
+ *
+ * - **Open / mid-sentence** (cue ends in a comma, conjunction, dangling
+ *   word, or no punctuation at all — typical of YouTube auto-captions
+ *   that split mid-thought): the speaker keeps going. Stopping at the
+ *   cue boundary leaves the user mid-air. 1500 ms lets the next ~3-4
+ *   words land so the thought completes audibly. Pronounce clips are
+ *   isolated (no consecutive cues to bleed into) so the extra tail is
+ *   free.
+ *
+ * Use `endPaddingForCue(sentenceText)` from `karaoke.ts` to pick the
+ * right one per clip.
  */
-export const SEGMENT_END_PAD_MS = 400;
+export const SEGMENT_END_PAD_MS_COMPLETE = 400;
+export const SEGMENT_END_PAD_MS_OPEN = 1500;
 
 /**
  * How many milliseconds to anticipate the karaoke word highlight relative

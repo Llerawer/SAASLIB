@@ -9,7 +9,7 @@ import {
 
 import type { PronounceClip } from "@/lib/api/queries";
 import type { YTPlayer } from "@/lib/youtube/types";
-import { SEGMENT_END_PAD_MS } from "@/lib/pronounce/deck-types";
+import { endPaddingForCue } from "@/lib/pronounce/karaoke";
 
 // ---------------------------------------------------------------------------
 // YT IFrame API loader — single global script tag, idempotent.
@@ -149,7 +149,11 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
           0,
           Math.floor(clip.sentence_start_ms / 1000) - 2,
         );
-        const endSec = Math.ceil(clip.sentence_end_ms / 1000) + 1;
+        // YT's `end` param hard-stops the player; it must outrun our
+        // polling cutoff or YT pauses before we decide we're done. Use
+        // the cue-aware padding plus 1 s of headroom.
+        const padMs = endPaddingForCue(clip.sentence_text);
+        const endSec = Math.ceil((clip.sentence_end_ms + padMs) / 1000) + 1;
 
         createdPlayer = new window.YT.Player(containerRef.current, {
           videoId: clip.video_id,
@@ -186,7 +190,8 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
                   // last word still highlights on the final tick.
                   onTimeUpdateRef.current?.(cur * 1000);
                   const segEnd =
-                    (clipRef.current.sentence_end_ms + SEGMENT_END_PAD_MS) /
+                    (clipRef.current.sentence_end_ms +
+                      endPaddingForCue(clipRef.current.sentence_text)) /
                     1000;
                   if (cur >= segEnd) {
                     fireSegmentLoop();
