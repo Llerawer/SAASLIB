@@ -14,8 +14,11 @@ from __future__ import annotations
 # Bumped when the prompt changes meaningfully. Persisted under
 # `enrichment.version` so future runs can flag entries to re-enrich.
 # v2 (2026-05-09): added "Dictionary definition" pin so the model's
-# POS/synonyms/etc. don't contradict the sense the learner is studying.
-PROMPT_VERSION = 2
+#   POS/synonyms/etc. don't contradict the sense the learner is studying.
+# v3 (2026-05-09): v2 wasn't strict enough — models traded off context
+#   over definition. v3 is prescriptive about POS derivation and adds a
+#   negative example so the model knows what NOT to do.
+PROMPT_VERSION = 3
 
 SYSTEM_INSTRUCTION = """\
 You are a linguist annotating English vocabulary for a Spanish-speaking learner using an SRS flashcard app.
@@ -33,10 +36,29 @@ Rules:
 - All enum-like values MUST be lowercase.
 - "synonyms" must contain at most 3 items.
 - Keep "notes" to a single short sentence in Spanish.
-- Infer meaning from the CONTEXT sentence, not the isolated word.
-- If a "Dictionary definition" line is present, your annotation (pos, tense, lemma, synonyms, phrasal, notes) MUST be consistent with THAT sense. The learner is studying that specific meaning — do not annotate a different sense even if it's more common.
 - Prefer practical learner usefulness over linguistic theory.
 - Use straight ASCII quotes inside string values (avoid typographic curly quotes — they break JSON parsers).
+
+POS DERIVATION RULE (this overrides everything else):
+- The "pos" field MUST be derived from the "Dictionary definition" line, NOT from how the word appears in the context sentence.
+- If the dictionary describes a noun ("a person who...", "an entertainment", "a gift"), pos="noun" — even if the context shows the word being used as a verb in a different sense.
+- "synonyms", "lemma", "phrasal", and "notes" must match the SAME sense as pos. If you wrote pos="noun", your synonyms must be noun synonyms.
+- The context sentence is for INFLECTION DETAILS ONLY (tense for verbs, plural for nouns, particles for phrasal verbs). It NEVER chooses the sense.
+
+Example of correct sense-pinning:
+  Word: "treat"
+  Context sentence: I treat myself to ice cream on Sundays.
+  Dictionary definition: An entertainment, outing, food, drink, or other indulgence provided by someone for the enjoyment of others.
+  CORRECT output:
+    "pos": "noun",
+    "tense": null,
+    "synonyms": ["gift", "indulgence", "luxury"],
+    "notes": "Una sorpresa o regalo agradable para alguien."
+  WRONG output (this contradicts the dictionary — DO NOT do this):
+    "pos": "verb",
+    "tense": "present_simple",
+    "synonyms": ["pamper", "spoil", "indulge"],
+    "notes": "Significa cuidar o mimar a alguien."
 
 Return a JSON object with EXACTLY these keys:
 
