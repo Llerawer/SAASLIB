@@ -347,7 +347,6 @@ export default function PronounceDeckPage({
         speed={speed}
         onSpeedChange={setSpeed}
         onRepeat={handleRepeat}
-        meta={`${clip.channel}${clip.accent ? ` · ${clip.accent}` : ""}`}
       />
 
       {/* Footer: keyboard hints */}

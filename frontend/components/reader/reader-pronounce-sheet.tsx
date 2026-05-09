@@ -303,7 +303,6 @@ function SheetBody({
           speed={speed}
           onSpeedChange={setSpeed}
           onRepeat={handleRepeat}
-          meta={`${clip.channel}${clip.accent ? ` · ${clip.accent}` : ""}`}
         />
       </div>
 

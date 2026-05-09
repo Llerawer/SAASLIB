@@ -1,6 +1,6 @@
 "use client";
 
-import { Hand, Repeat, RotateCcw, Repeat1, FastForward } from "lucide-react";
+import { Hand, Repeat1, RotateCcw, FastForward } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -17,9 +17,23 @@ type Props = {
   speed: Speed;
   onSpeedChange: (s: Speed) => void;
   onRepeat: () => void;
-  meta: string;       // e.g. "TED · US"
 };
 
+/**
+ * Two rows of controls — distilled from the original 4-row stack:
+ *
+ *   Row 1: mode pills  (Manual · Repetir · Auto)
+ *   Row 2: speed segmented · replay icon · auto counter (when mode=auto)
+ *
+ * What was removed in this distill pass:
+ *   - `meta` prop (source string) — duplicated the sheet header. Now
+ *     lives only in the header.
+ *   - "loop" indicator badge — not interactive, just restated the active
+ *     mode from row 1. Confusing affordance next to the replay button.
+ *   - Per-mode microcopy ("Reproduce una vez. Pulsá Repetir...") — moved
+ *     into the title attribute of the replay button for hover discovery,
+ *     not occupying a permanent line of vertical space.
+ */
 export function PronounceDeckControls({
   mode,
   onModeChange,
@@ -28,12 +42,24 @@ export function PronounceDeckControls({
   speed,
   onSpeedChange,
   onRepeat,
-  meta,
 }: Props) {
+  // Hint surfaces in the replay button's tooltip — explains the mode's
+  // playback behaviour without taking up a permanent line.
+  const replayHint =
+    mode === "manual"
+      ? "Reproduce una vez · pulsá R para repetir"
+      : mode === "auto"
+        ? `Auto: ${autoPlaysPerClip} reproducciones y avanza · R repite`
+        : "Loop continuo · R reinicia";
+
   return (
     <div className="mt-4 flex flex-col items-center gap-3">
-      {/* Mode toggle — pill group, mutually exclusive (3 modes) */}
-      <div role="group" aria-label="Modo de reproducción" className="flex gap-1.5 flex-wrap justify-center">
+      {/* Row 1 — Mode pills */}
+      <div
+        role="group"
+        aria-label="Modo de reproducción"
+        className="flex gap-1.5 flex-wrap justify-center"
+      >
         <ModePill
           active={mode === "manual"}
           onClick={() => onModeChange("manual")}
@@ -45,38 +71,28 @@ export function PronounceDeckControls({
           active={mode === "repeat"}
           onClick={() => onModeChange("repeat")}
           icon={<Repeat1 className="h-3.5 w-3.5" />}
-          label="Repetir continuo"
+          label="Repetir"
           ariaLabel="Modo repetir continuo"
         />
         <ModePill
           active={mode === "auto"}
           onClick={() => onModeChange("auto")}
           icon={<FastForward className="h-3.5 w-3.5" />}
-          label="Auto (siguiente clip)"
+          label="Auto"
           ariaLabel={`Modo auto: ${autoPlaysPerClip} repeticiones y avanzar`}
         />
       </div>
 
-      {/* Microcopy explaining current mode */}
-      {mode === "manual" && (
-        <p className="text-xs text-muted-foreground">
-          Reproduce una vez. Pulsá Repetir (R) para volver a oír.
-        </p>
-      )}
-      {mode === "auto" && (
-        <p className="text-xs text-muted-foreground">
-          Avanza después de {autoPlaysPerClip} reproducciones
-        </p>
-      )}
-
-      {/* Repeat button + repCount chip + meta */}
+      {/* Row 2 — Speed segmented + replay + auto counter */}
       <div className="flex items-center gap-3">
+        <SpeedSegmented value={speed} onChange={onSpeedChange} />
+
         <button
           type="button"
           onClick={onRepeat}
-          className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-md bg-muted hover:bg-accent text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex items-center justify-center h-9 w-9 rounded-md bg-muted hover:bg-accent text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Repetir clip"
-          title="Repetir (R)"
+          title={replayHint}
         >
           <RotateCcw className="h-4 w-4" />
         </button>
@@ -87,45 +103,9 @@ export function PronounceDeckControls({
             aria-live="polite"
             aria-label={`Repetición ${Math.min(repCount + 1, autoPlaysPerClip)} de ${autoPlaysPerClip}`}
           >
-            ↻ {Math.min(repCount + 1, autoPlaysPerClip)}/{autoPlaysPerClip}
+            {Math.min(repCount + 1, autoPlaysPerClip)}/{autoPlaysPerClip}
           </span>
         )}
-
-        <span
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground"
-          aria-label="Auto-loop activo"
-          title="Auto-loop activo"
-        >
-          <Repeat className="h-3 w-3" /> loop
-        </span>
-
-        {meta && (
-          <span className="text-xs text-muted-foreground">{meta}</span>
-        )}
-      </div>
-
-      {/* Speed chips */}
-      <div role="group" aria-label="Velocidad de reproducción" className="flex flex-wrap gap-1.5 justify-center">
-        {SPEEDS.map((s) => {
-          const active = s === speed;
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onSpeedChange(s)}
-              aria-pressed={active}
-              aria-label={`Velocidad ${s}x`}
-              className={cn(
-                "min-h-11 min-w-11 px-3 rounded-md text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                active
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted hover:bg-accent text-foreground",
-              )}
-            >
-              {s}×
-            </button>
-          );
-        })}
       </div>
     </div>
   );
@@ -151,7 +131,7 @@ function ModePill({
       aria-pressed={active}
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex items-center gap-1.5 px-4 min-h-11 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "inline-flex items-center gap-1.5 px-4 h-10 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-muted hover:bg-accent text-foreground",
@@ -160,5 +140,49 @@ function ModePill({
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+/**
+ * Segmented speed control — 4 buttons fused into one bordered group with
+ * dividers between, instead of 4 floating pills with gaps. Visually reads
+ * as "this is one decision with 4 mutually-exclusive values" and saves
+ * ~30 % horizontal space vs the previous gap-1.5 layout.
+ */
+function SpeedSegmented({
+  value,
+  onChange,
+}: {
+  value: Speed;
+  onChange: (s: Speed) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Velocidad de reproducción"
+      className="inline-flex rounded-md overflow-hidden border border-border"
+    >
+      {SPEEDS.map((s, i) => {
+        const active = s === value;
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onChange(s)}
+            aria-pressed={active}
+            aria-label={`Velocidad ${s}x`}
+            className={cn(
+              "h-9 px-3 text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:relative focus-visible:z-10",
+              active
+                ? "bg-primary text-primary-foreground"
+                : "bg-card hover:bg-muted text-foreground",
+              i > 0 && "border-l border-border",
+            )}
+          >
+            {s}×
+          </button>
+        );
+      })}
+    </div>
   );
 }
