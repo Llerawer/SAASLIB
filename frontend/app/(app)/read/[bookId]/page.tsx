@@ -10,6 +10,7 @@ import { ReaderProgressBar } from "@/components/reader/reader-progress-bar";
 import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar";
 import { ReaderHighlightNoteDialog } from "@/components/reader/reader-highlight-note-dialog";
 import { ReaderHighlightPopover } from "@/components/reader/reader-highlight-popover";
+import { ReaderLastWordMark } from "@/components/reader/reader-last-word-mark";
 import {
   ReaderPronounceSheet,
   type ReaderPronounceSheetState,
@@ -109,6 +110,12 @@ export default function ReadPage({
   const [highlightPopover, setHighlightPopover] = useState<HighlightPopoverState | null>(null);
   const [pendingNoteHighlightId, setPendingNoteHighlightId] = useState<string | null>(null);
   const [pendingNoteExcerpt, setPendingNoteExcerpt] = useState<string | null>(null);
+  // Rect of the last inspected word — drives the fading "you were here"
+  // marker so the user doesn't lose their place in the prose after
+  // closing the popup or pronounce sheet.
+  const [lastInspectedRect, setLastInspectedRect] = useState<
+    { left: number; top: number; width: number; height: number } | null
+  >(null);
 
   // ---------- Settings (localStorage hook) ----------
   const { settings, update, incFontSize, decFontSize, reset } = useReaderSettings();
@@ -146,6 +153,7 @@ export default function ReadPage({
         pageOrLocation: null,
         position: e.iframeCoords,
       });
+      setLastInspectedRect(e.wordRect);
     },
     onTextSelection: (e) => {
       selectionContextRef.current = e;
@@ -168,6 +176,7 @@ export default function ReadPage({
       setPopup(null);
       setHighlightPopover(null);
       setSelectionAnchor(null);
+      setLastInspectedRect(null);
       // F6: persistencia desacoplada del cómputo de progress
       if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
       if (!internalBookId) return;
@@ -410,10 +419,23 @@ export default function ReadPage({
       />
 
       <ReaderSelectionToolbar
-        position={selectionAnchor}
+        // Suppress while a WordPopup is open: a double-click natively
+        // selects the word too, which would otherwise pop the swatches
+        // up behind the WordPopup for one frame (visible flash).
+        position={popup ? null : selectionAnchor}
         onPickColor={handleSelectionColor}
         onAddNote={handleSelectionAddNote}
       />
+
+      {/* "You were here" — only rendered after the popup AND sheet are
+          closed, so the user gets the visual breadcrumb exactly when
+          they need it (returning to reading), not stacked behind UI. */}
+      {!popup && !pronounceSheet && (
+        <ReaderLastWordMark
+          rect={lastInspectedRect}
+          onFaded={() => setLastInspectedRect(null)}
+        />
+      )}
 
       <ReaderHighlightNoteDialog
         excerpt={pendingNoteExcerpt}

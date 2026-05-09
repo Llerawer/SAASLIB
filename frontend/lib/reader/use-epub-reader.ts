@@ -60,6 +60,10 @@ export type WordCaptureEvent = {
   normalized: string;
   contextSentence: string | null;
   iframeCoords: { x: number; y: number };
+  /** Bounding rect of the captured word in viewport coords. Lets the
+   *  consumer fade in a "you were here" marker after closing the popup
+   *  so the user doesn't lose their place in the prose. */
+  wordRect: { left: number; top: number; width: number; height: number } | null;
 };
 
 export type TextSelectionEvent = {
@@ -577,11 +581,28 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
               const x = (rect?.left ?? 0) + clientX;
               const y = (rect?.top ?? 0) + clientY;
 
+              // Bounding rect of the matched word, translated from
+              // iframe-local coords to viewport coords. Used by the
+              // consumer to draw the "you were here" marker.
+              let wordRect: WordCaptureEvent["wordRect"] = null;
+              if (range && rect) {
+                const r = range.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) {
+                  wordRect = {
+                    left: rect.left + r.left,
+                    top: rect.top + r.top,
+                    width: r.width,
+                    height: r.height,
+                  };
+                }
+              }
+
               onWordCaptureRef.current?.({
                 word,
                 normalized,
                 contextSentence,
                 iframeCoords: { x, y },
+                wordRect,
               });
             };
 
