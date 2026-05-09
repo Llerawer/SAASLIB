@@ -127,23 +127,43 @@ async def upsert_reading_info_many(rows: list[dict[str, Any]]) -> None:
 # ============================================================================
 
 
+async def _bump_search_cache_hit(topic: str) -> None:
+    """Fire-and-forget hit_count bump. Swallows any error — we don't care
+    if a stat counter fails. Crucially, this does NOT block the read path."""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE public.gutendex_search_cache "
+                "SET hit_count = hit_count + 1 WHERE topic = $1",
+                topic,
+            )
+    except Exception:
+        pass
+
+
 async def select_search_cache(topic: str) -> tuple[dict, float] | None:
     """Returns (response_json, age_seconds) or None if missing.
-    Bumps hit_count atomically on read so we have a cheap signal for which
-    topics are actually used (useful for future smart-warmup ranking)."""
+
+    The hit_count bump is scheduled as a background task so the read path
+    does not block on a write. Concurrent warmup loops on the same topic
+    were occasionally piling up on the row lock and timing out the whole
+    UPDATE...RETURNING — moving the SET to a fire-and-forget task removes
+    the lock from the hot path entirely."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            UPDATE public.gutendex_search_cache
-               SET hit_count = hit_count + 1
+            SELECT response,
+                   EXTRACT(EPOCH FROM (now() - fetched_at)) AS age_seconds
+              FROM public.gutendex_search_cache
              WHERE topic = $1
-         RETURNING response, EXTRACT(EPOCH FROM (now() - fetched_at)) AS age_seconds
             """,
             topic,
         )
     if row is None:
         return None
+    asyncio.create_task(_bump_search_cache_hit(topic))
     raw = row["response"]
     response = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
     return response, float(row["age_seconds"])
@@ -172,26 +192,45 @@ async def upsert_search_cache(topic: str, response: dict) -> None:
 # ============================================================================
 
 
+async def _bump_metadata_cache_hit(gutenberg_id: int) -> None:
+    """Fire-and-forget hit_count + last_hit_at bump. Same rationale as
+    `_bump_search_cache_hit`: keep the row-locking write off the read path."""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE public.gutendex_metadata_cache "
+                "SET hit_count = hit_count + 1, last_hit_at = now() "
+                "WHERE gutenberg_id = $1",
+                gutenberg_id,
+            )
+    except Exception:
+        pass
+
+
 async def select_metadata_cache(
     gutenberg_id: int,
 ) -> tuple[dict, float] | None:
-    """Returns (payload, age_seconds) or None if missing. Bumps hit_count
-    AND last_hit_at on read — last_hit_at is what feeds the decay-weighted
-    warmup ranking so books not viewed recently lose priority automatically."""
+    """Returns (payload, age_seconds) or None if missing.
+
+    `last_hit_at` (the input to the decay-weighted warmup ranking) and
+    `hit_count` are bumped via a background task, not in this read path.
+    The pool's transaction-mode pooler has been observed to time out
+    UPDATE...RETURNING during warmup spikes; SELECT-only is reliably fast."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            UPDATE public.gutendex_metadata_cache
-               SET hit_count = hit_count + 1,
-                   last_hit_at = now()
+            SELECT payload,
+                   EXTRACT(EPOCH FROM (now() - fetched_at)) AS age_seconds
+              FROM public.gutendex_metadata_cache
              WHERE gutenberg_id = $1
-         RETURNING payload, EXTRACT(EPOCH FROM (now() - fetched_at)) AS age_seconds
             """,
             gutenberg_id,
         )
     if row is None:
         return None
+    asyncio.create_task(_bump_metadata_cache_hit(gutenberg_id))
     raw = row["payload"]
     payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
     return payload, float(row["age_seconds"])
