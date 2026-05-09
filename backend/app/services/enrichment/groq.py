@@ -50,6 +50,7 @@ class GroqProvider:
         word: str,
         context: str | None,
         language: str,  # noqa: ARG002 — accepted for API symmetry
+        definition: str | None = None,
     ) -> dict | None:
         if len(self._pool) == 0:
             return None
@@ -61,7 +62,7 @@ class GroqProvider:
             log.warning("groq SDK not installed; enrichment disabled")
             return None
 
-        user_prompt = build_user_prompt(word, context)
+        user_prompt = build_user_prompt(word, context, definition)
         # OpenAI-style chat with system + few-shot example + real query.
         messages = [
             {"role": "system", "content": SYSTEM_INSTRUCTION},

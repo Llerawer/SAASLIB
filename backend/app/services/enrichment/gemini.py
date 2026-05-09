@@ -53,6 +53,7 @@ class GeminiProvider:
         word: str,
         context: str | None,
         language: str,  # noqa: ARG002 — accepted for API symmetry; Gemini infers
+        definition: str | None = None,
     ) -> dict | None:
         if len(self._pool) == 0:
             return None
@@ -66,7 +67,7 @@ class GeminiProvider:
             log.warning("google-genai not installed; enrichment disabled")
             return None
 
-        user_prompt = build_user_prompt(word, context)
+        user_prompt = build_user_prompt(word, context, definition)
         # Few-shot example as a prior turn pair — the model treats it as
         # canonical output shape rather than as instruction text.
         contents = [

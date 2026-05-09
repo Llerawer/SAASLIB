@@ -34,8 +34,15 @@ class EnrichmentProvider(Protocol):
         word: str,
         context: str | None,
         language: str,
+        definition: str | None = None,
     ) -> dict | None:
         """Annotate a word in (optional) sentence context.
+
+        `definition`, when provided (typically from the existing
+        word_lookup row), pins the model's analysis to that specific
+        sense. Without it the model is free to pick whichever sense
+        looks most likely from the context — a real source of
+        noun/verb mismatch on polysemous words.
 
         Returns a JSON-serialisable dict on success, or None if every key
         in the pool is exhausted, the model rejected the request, or the

@@ -44,11 +44,12 @@ class ChainProvider:
         word: str,
         context: str | None,
         language: str,
+        definition: str | None = None,
     ) -> dict | None:
         for p in self._providers:
             if len(p) == 0:
                 continue  # provider disabled (no keys); skip to next
-            result = await p.enrich(word, context, language)
+            result = await p.enrich(word, context, language, definition)
             if result is not None:
                 return result
         return None

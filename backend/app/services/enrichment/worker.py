@@ -84,9 +84,13 @@ async def enrich_pending_batch() -> dict[str, int]:
     supabase = get_admin_client()
 
     # 1. Pending cards. Service role bypasses RLS — this is a system job.
+    # `definition` is pulled here so the LLM can be pinned to the same
+    # sense the learner already sees on the card front (avoids the
+    # "treat-as-noun in dictionary, treat-as-verb in enrichment" mismatch
+    # we hit on polysemous words).
     pending_res = (
         supabase.table("cards")
-        .select("id, word_normalized, source_capture_ids")
+        .select("id, word_normalized, source_capture_ids, definition")
         .is_("enrichment", "null")
         .order("created_at")
         .limit(settings.ENRICHMENT_BATCH_SIZE)
@@ -130,6 +134,7 @@ async def enrich_pending_batch() -> dict[str, int]:
             word=card["word_normalized"],
             context=context,
             language="en",
+            definition=card.get("definition"),
         )
         if result is None:
             stats["skipped"] += 1

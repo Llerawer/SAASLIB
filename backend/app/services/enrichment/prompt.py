@@ -13,7 +13,9 @@ from __future__ import annotations
 
 # Bumped when the prompt changes meaningfully. Persisted under
 # `enrichment.version` so future runs can flag entries to re-enrich.
-PROMPT_VERSION = 1
+# v2 (2026-05-09): added "Dictionary definition" pin so the model's
+# POS/synonyms/etc. don't contradict the sense the learner is studying.
+PROMPT_VERSION = 2
 
 SYSTEM_INSTRUCTION = """\
 You are a linguist annotating English vocabulary for a Spanish-speaking learner using an SRS flashcard app.
@@ -32,6 +34,7 @@ Rules:
 - "synonyms" must contain at most 3 items.
 - Keep "notes" to a single short sentence in Spanish.
 - Infer meaning from the CONTEXT sentence, not the isolated word.
+- If a "Dictionary definition" line is present, your annotation (pos, tense, lemma, synonyms, phrasal, notes) MUST be consistent with THAT sense. The learner is studying that specific meaning — do not annotate a different sense even if it's more common.
 - Prefer practical learner usefulness over linguistic theory.
 - Use straight ASCII quotes inside string values (avoid typographic curly quotes — they break JSON parsers).
 
@@ -65,7 +68,8 @@ Allowed examples:
 # improves JSON consistency across providers.
 EXAMPLE_INPUT = """\
 Word: "wished"
-Context sentence: I wished for a quieter house when I moved.\
+Context sentence: I wished for a quieter house when I moved.
+Dictionary definition: To desire something or hope that something will happen.\
 """
 
 EXAMPLE_OUTPUT = """\
@@ -92,16 +96,32 @@ Annotate this English word for the learner's flashcard.
 
 Word: "{word}"
 Context sentence: {context}
+Dictionary definition: {definition}
 
 Output JSON only.\
 """
 
 
-def build_user_prompt(word: str, context: str | None) -> str:
-    """Render the per-card user prompt. Empty/None context becomes
-    "(no context provided ...)" so the model knows it has only the
-    lemma to work with — accuracy on tense/phrasal naturally drops."""
+def build_user_prompt(
+    word: str,
+    context: str | None,
+    definition: str | None,
+) -> str:
+    """Render the per-card user prompt.
+
+    Missing context becomes "(no context provided ...)" so the model knows
+    it has only the lemma to work with — accuracy on tense/phrasal drops.
+
+    Missing definition becomes "(unknown — infer from context)". When a
+    definition IS provided, the SYSTEM_INSTRUCTION rules pin the model's
+    annotation to that sense, fixing the noun/verb mismatch we saw on
+    polysemous words like "treat" (Free Dictionary returned the noun
+    sense, the LLM had been free to pick the verb sense).
+    """
     ctx = context.strip() if context else ""
     if not ctx:
         ctx = "(no context provided — analyze word in isolation)"
-    return USER_PROMPT_TEMPLATE.format(word=word, context=ctx)
+    defn = definition.strip() if definition else ""
+    if not defn:
+        defn = "(unknown — infer the sense from context)"
+    return USER_PROMPT_TEMPLATE.format(word=word, context=ctx, definition=defn)

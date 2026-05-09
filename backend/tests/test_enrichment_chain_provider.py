@@ -26,9 +26,14 @@ class FakeProvider:
         self.reset_count += 1
 
     async def enrich(
-        self, word: str, context: str | None, language: str
+        self,
+        word: str,
+        context: str | None,
+        language: str,
+        definition: str | None = None,
     ) -> dict | None:
         self.call_count += 1
+        self.last_definition = definition  # so a test can assert pass-through
         return self._result
 
 
@@ -121,3 +126,15 @@ def test_name_lists_underlying_providers() -> None:
 async def test_empty_chain_returns_none() -> None:
     chain = ChainProvider([])
     assert await chain.enrich("hello", None, "en") is None
+
+
+@pytest.mark.asyncio
+async def test_definition_propagates_to_underlying_provider() -> None:
+    """The chain must forward the definition arg verbatim — without it
+    the LLM can't pin its analysis to the same sense the card shows."""
+    a = FakeProvider("a", 1, {"pos": "noun"})
+    chain = ChainProvider([a])
+
+    await chain.enrich("treat", "have a treat", "en", "An entertainment...")
+
+    assert a.last_definition == "An entertainment..."
