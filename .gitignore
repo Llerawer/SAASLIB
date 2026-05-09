@@ -36,7 +36,8 @@ Thumbs.db
 backend/.env
 frontend/.env*.local
 backend/data/epub_cache/
-backend/data/
+backend/data/*
+!backend/data/core_vocabulary.yaml
 
 # Superpowers brainstorming sessions
 .superpowers/
