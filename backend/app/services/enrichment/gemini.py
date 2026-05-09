@@ -64,7 +64,10 @@ class GeminiProvider:
             from google.genai import errors as genai_errors
             from google.genai import types as genai_types
         except ImportError:
-            log.warning("google-genai not installed; enrichment disabled")
+            print(
+                "[gemini] SDK not installed; install with: pip install google-genai",
+                flush=True,
+            )
             return None
 
         user_prompt = build_user_prompt(word, context, definition)

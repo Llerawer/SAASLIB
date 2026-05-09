@@ -39,11 +39,14 @@ async def run_enrichment_loop() -> None:
     except asyncio.CancelledError:
         return
 
-    log.info(
-        "[enrichment] worker started — providers=%s interval=%ds batch=%d",
-        settings.ENRICHMENT_PROVIDERS,
-        interval_seconds,
-        settings.ENRICHMENT_BATCH_SIZE,
+    # Lifecycle events use print() instead of log.info() so they're visible
+    # even when the global log level filters INFO. Matches the gutenberg
+    # warmup pattern already in this codebase — operator needs to see
+    # "worker started" without configuring log levels.
+    print(
+        f"[enrichment] worker started — providers={settings.ENRICHMENT_PROVIDERS} "
+        f"interval={interval_seconds}s batch={settings.ENRICHMENT_BATCH_SIZE}",
+        flush=True,
     )
 
     while True:
@@ -154,11 +157,10 @@ async def enrich_pending_batch() -> dict[str, int]:
             )
             stats["skipped"] += 1
 
-    log.info(
-        "[enrichment] batch done: processed=%d succeeded=%d skipped=%d",
-        stats["processed"],
-        stats["succeeded"],
-        stats["skipped"],
+    print(
+        f"[enrichment] batch done: processed={stats['processed']} "
+        f"succeeded={stats['succeeded']} skipped={stats['skipped']}",
+        flush=True,
     )
     # If everything skipped AND the pool ended drained, surface a single
     # actionable warning at batch level (instead of one log per card from

@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 def get_provider() -> EnrichmentProvider | None:
     names = [n.strip() for n in settings.ENRICHMENT_PROVIDERS.split(",") if n.strip()]
     if not names:
-        log.info("[enrichment] ENRICHMENT_PROVIDERS empty — disabled")
+        print("[enrichment] ENRICHMENT_PROVIDERS empty — disabled", flush=True)
         return None
 
     providers: list[EnrichmentProvider] = []
@@ -45,15 +45,15 @@ def get_provider() -> EnrichmentProvider | None:
             log.warning("[enrichment] unknown provider %r — skipping", name)
             continue
         if len(p) == 0:
-            log.info(
-                "[enrichment] provider %s has 0 keys configured — skipped",
-                name,
+            print(
+                f"[enrichment] provider {name} has 0 keys configured — skipped",
+                flush=True,
             )
             continue
         providers.append(p)
 
     if not providers:
-        log.info("[enrichment] no providers with keys — worker disabled")
+        print("[enrichment] no providers with keys — worker disabled", flush=True)
         return None
     if len(providers) == 1:
         return providers[0]  # avoid wrapper overhead

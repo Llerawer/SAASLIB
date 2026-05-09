@@ -59,7 +59,12 @@ class GroqProvider:
             from groq import APIError as GroqAPIError
             from groq import AsyncGroq
         except ImportError:
-            log.warning("groq SDK not installed; enrichment disabled")
+            # Visible without log-level config — operator needs to know
+            # the worker is silently no-op'ing because of a missing dep.
+            print(
+                "[groq] SDK not installed; install with: pip install groq",
+                flush=True,
+            )
             return None
 
         user_prompt = build_user_prompt(word, context, definition)
