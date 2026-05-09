@@ -23,6 +23,20 @@ class Settings(BaseSettings):
     # External APIs (optional — services degrade gracefully if missing).
     DEEPL_API_KEY: str = ""
 
+    # ===== Card enrichment (LLM-powered POS / tense / phrasal / CEFR / etc.) =====
+    # Background worker pulls cards with NULL enrichment every N minutes and
+    # asks the configured provider. Multiple keys per provider are supported
+    # (comma-separated) for fan-out across free-tier accounts. If the entire
+    # pool is exhausted the card stays NULL and the next cron run retries —
+    # capture and study flow are never blocked by enrichment availability.
+    ENRICHMENT_PROVIDER: Literal["gemini", "groq"] = "gemini"
+    GEMINI_API_KEYS: str = ""  # comma-separated, e.g. "AIza...,AIza...,AIza..."
+    GROQ_API_KEYS: str = ""    # comma-separated, e.g. "gsk_...,gsk_..."
+    # How often the enrichment cron runs (minutes). 5 is the V1 default.
+    ENRICHMENT_INTERVAL_MIN: int = 5
+    # Max cards to enrich per cron tick. Caps cost/latency in case of a backlog.
+    ENRICHMENT_BATCH_SIZE: int = 20
+
     # ===== Admin gating =====
     # Comma-separated Supabase user_ids allowed to hit /api/v1/admin/* endpoints.
     # Empty string = no admin access (default — fail closed).
