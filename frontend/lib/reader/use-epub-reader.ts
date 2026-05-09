@@ -642,7 +642,18 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
               }
               const range = sel.rangeCount ? sel.getRangeAt(0) : null;
               if (!range || range.collapsed) return;
-              if (range.toString().trim().length < 2) return;
+              const text = range.toString().trim();
+              // Single-word selections are almost always a native
+              // double-click — the dblclick handler owns those (opens
+              // WordPopup). Don't also fire onTextSelection here, or
+              // the SelectionToolbar swatches flash for one frame
+              // before the dblclick handler can clear them. Treat as
+              // "no selection" so any stale toolbar from a previous
+              // multi-word selection also tears down.
+              if (text.length < 2 || !/\s/.test(text)) {
+                onTextSelectionRef.current?.(null);
+                return;
+              }
               const rect = range.getBoundingClientRect();
               if (rect.width === 0 && rect.height === 0) return;
               const iframe = view.frameElement as HTMLIFrameElement | null;

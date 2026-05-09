@@ -419,10 +419,7 @@ export default function ReadPage({
       />
 
       <ReaderSelectionToolbar
-        // Suppress while a WordPopup is open: a double-click natively
-        // selects the word too, which would otherwise pop the swatches
-        // up behind the WordPopup for one frame (visible flash).
-        position={popup ? null : selectionAnchor}
+        position={selectionAnchor}
         onPickColor={handleSelectionColor}
         onAddNote={handleSelectionAddNote}
       />
