@@ -10,6 +10,7 @@ from starlette.responses import Response
 import asyncio
 
 from app.api.v1 import (
+    admin_enrichment,
     books,
     bookmarks,
     captures,
@@ -32,6 +33,7 @@ from app.core.db import close_pool
 from app.core.http import close_client
 from app.core.rate_limit import limiter
 from app.core.redis_client import close_redis, ensure_redis_ready
+from app.services.enrichment.worker import run_enrichment_loop
 from app.services.gutenberg import warmup_popular
 
 
@@ -56,6 +58,13 @@ async def lifespan(_app: FastAPI):
     warmup_task = asyncio.create_task(warmup_popular(), name="gutenberg-warmup")
     _background_tasks.add(warmup_task)
     warmup_task.add_done_callback(_background_tasks.discard)
+
+    # Card-enrichment worker: drips pending cards to the configured LLM
+    # provider every ENRICHMENT_INTERVAL_MIN minutes. No-op if the provider
+    # has zero keys configured.
+    enrich_task = asyncio.create_task(run_enrichment_loop(), name="enrichment-worker")
+    _background_tasks.add(enrich_task)
+    enrich_task.add_done_callback(_background_tasks.discard)
 
     yield
 
@@ -132,6 +141,7 @@ async def me(user_id: str = Depends(get_current_user_id)):
     return {"user_id": user_id}
 
 
+app.include_router(admin_enrichment.router)
 app.include_router(books.router)
 app.include_router(bookmarks.router)
 app.include_router(captures.router)
