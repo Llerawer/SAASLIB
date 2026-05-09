@@ -17,6 +17,7 @@ import {
 import type { DeckPlayerHandle } from "@/components/pronounce-deck-player";
 import {
   AUTO_PLAYS_PER_CLIP,
+  KARAOKE_LEAD_OFFSET_MS,
   readModeFromLS,
   readSpeedFromLS,
   writeModeToLS,
@@ -24,6 +25,7 @@ import {
   type Mode,
   type Speed,
 } from "./deck-types";
+import { findActiveWordIndex, tokenize } from "./karaoke";
 
 /**
  * Controller hook for the pronounce-deck experience. Owns:
@@ -83,6 +85,13 @@ export type UseDeckControllerOutput = {
   pulseKey: number;
   playing: boolean;
 
+  // Karaoke state — derived from currentMs + current clip's sentence span.
+  /** Word tokens of the current clip's sentence (empty if no clip). */
+  tokens: string[];
+  /** Index of the word being spoken right now, or -1 before the sentence
+   *  starts. The presentational caption renders styles based on this. */
+  activeWordIndex: number;
+
   // Setters
   setSpeed: (s: Speed) => void;
   setMode: (m: Mode) => void;
@@ -95,6 +104,8 @@ export type UseDeckControllerOutput = {
   handleRepeat: () => void;
   /** Player calls this on each segment-loop tick. */
   handleSegmentLoop: () => void;
+  /** Player calls this on each poll tick with currentTime in ms. */
+  handleTimeUpdate: (currentMs: number) => void;
   /** Cycles manual → repeat → auto → manual. Resets repCount. */
   cycleMode: () => void;
 };
@@ -126,6 +137,7 @@ export function useDeckController(
   const [repCount, setRepCount] = useState(0);
   const [pulseKey, setPulseKey] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [currentMs, setCurrentMs] = useState(0);
 
   const playerRef = useRef<DeckPlayerHandle | null>(null);
 
@@ -137,11 +149,13 @@ export function useDeckController(
     writeModeToLS(mode);
   }, [mode]);
 
-  // Reset repCount when the current clip changes (avoids 1-frame flash of
-  // "3/3" on a fresh clip in auto mode).
+  // Reset repCount + karaoke time when the current clip changes (avoids
+  // 1-frame flash of "3/3" on a fresh clip in auto mode + a one-tick stale
+  // word highlight from the previous clip).
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setRepCount(0);
+    setCurrentMs(0);
   }, [currentClipId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -197,6 +211,28 @@ export function useDeckController(
     });
   }, []);
 
+  // ---------- Karaoke ----------
+
+  const handleTimeUpdate = useCallback((ms: number) => {
+    setCurrentMs(ms);
+  }, []);
+
+  const tokens = useMemo<string[]>(
+    () => (currentClip ? tokenize(currentClip.sentence_text) : []),
+    [currentClip],
+  );
+
+  const activeWordIndex = useMemo(() => {
+    if (!currentClip || tokens.length === 0) return -1;
+    return findActiveWordIndex(
+      tokens,
+      currentMs,
+      currentClip.sentence_start_ms,
+      currentClip.sentence_end_ms,
+      KARAOKE_LEAD_OFFSET_MS,
+    );
+  }, [tokens, currentMs, currentClip]);
+
   // ---------- Derive status ----------
 
   const status: DeckControllerStatus = useMemo(() => {
@@ -234,6 +270,9 @@ export function useDeckController(
     pulseKey,
     playing,
 
+    tokens,
+    activeWordIndex,
+
     setSpeed,
     setMode,
     setPlaying,
@@ -241,6 +280,7 @@ export function useDeckController(
     playerRef,
     handleRepeat,
     handleSegmentLoop,
+    handleTimeUpdate,
     cycleMode,
   };
 }

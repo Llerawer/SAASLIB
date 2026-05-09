@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { PronounceDeckPlayer } from "@/components/pronounce-deck-player";
 import { PronounceDeckControls } from "@/components/pronounce-deck-controls";
-import { Highlighted } from "@/lib/reader/pronounce-highlight";
+import { KaraokeCaption } from "@/components/karaoke-caption";
 import { useDeckController } from "@/lib/pronounce/use-deck-controller";
 import type { Speed } from "@/lib/pronounce/deck-types";
 import { LoadingScreen } from "@/components/ui/loading-screen";
@@ -196,12 +196,14 @@ function SheetBody({
     mode,
     repCount,
     autoPlaysPerClip,
-    pulseKey,
+    tokens,
+    activeWordIndex,
     setSpeed,
     setMode,
     setPlaying,
     handleRepeat,
     handleSegmentLoop,
+    handleTimeUpdate,
   } = ctrl;
 
   if (ctrl.status === "loading" || ctrl.status === "invalid") {
@@ -282,12 +284,16 @@ function SheetBody({
             autoLoop={mode !== "manual"}
             onPlayingChange={setPlaying}
             onSegmentLoop={handleSegmentLoop}
+            onTimeUpdate={handleTimeUpdate}
           />
         </div>
 
-        <p className="text-base font-serif text-center leading-snug max-w-prose mx-auto">
-          <Highlighted text={clip.sentence_text} word={word} pulseKey={pulseKey} />
-        </p>
+        <KaraokeCaption
+          tokens={tokens}
+          activeIndex={activeWordIndex}
+          targetWord={word}
+          className="text-base font-serif text-center max-w-prose mx-auto"
+        />
 
         <PronounceDeckControls
           mode={mode}

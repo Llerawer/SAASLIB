@@ -9,6 +9,7 @@ import {
 
 import type { PronounceClip } from "@/lib/api/queries";
 import type { YTPlayer } from "@/lib/youtube/types";
+import { SEGMENT_END_PAD_MS } from "@/lib/pronounce/deck-types";
 
 // ---------------------------------------------------------------------------
 // YT IFrame API loader — single global script tag, idempotent.
@@ -66,11 +67,22 @@ type Props = {
   /** Fires once per detected segment end (polling on currentTime, with
    *  ENDED state as backup). 300ms debounce against double-fire. */
   onSegmentLoop?: () => void;
+  /** Fires every poll tick (~200 ms) with the player's currentTime in ms.
+   *  Consumers use this for karaoke-style word highlighting. */
+  onTimeUpdate?: (currentMs: number) => void;
 };
 
 export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
   function PronounceDeckPlayer(
-    { clip, speed, autoLoop = true, onReady, onPlayingChange, onSegmentLoop },
+    {
+      clip,
+      speed,
+      autoLoop = true,
+      onReady,
+      onPlayingChange,
+      onSegmentLoop,
+      onTimeUpdate,
+    },
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +94,7 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
     const onReadyRef = useRef(onReady);
     const onPlayingChangeRef = useRef(onPlayingChange);
     const onSegmentLoopRef = useRef(onSegmentLoop);
+    const onTimeUpdateRef = useRef(onTimeUpdate);
     const loopLockRef = useRef(false);
 
     // Sync refs so the mount-only player effect always sees the latest.
@@ -110,6 +123,9 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
     useEffect(() => {
       onSegmentLoopRef.current = onSegmentLoop;
     }, [onSegmentLoop]);
+    useEffect(() => {
+      onTimeUpdateRef.current = onTimeUpdate;
+    }, [onTimeUpdate]);
 
     function fireSegmentLoop() {
       if (loopLockRef.current) return;
@@ -166,8 +182,13 @@ export const PronounceDeckPlayer = forwardRef<DeckPlayerHandle, Props>(
                 if (cancelled) return;
                 try {
                   const cur = e.target.getCurrentTime();
-                  const segEnd = clipRef.current.sentence_end_ms / 1000;
-                  if (cur >= segEnd - 0.05) {
+                  // Karaoke tick — fire BEFORE the segment-end check so the
+                  // last word still highlights on the final tick.
+                  onTimeUpdateRef.current?.(cur * 1000);
+                  const segEnd =
+                    (clipRef.current.sentence_end_ms + SEGMENT_END_PAD_MS) /
+                    1000;
+                  if (cur >= segEnd) {
                     fireSegmentLoop();
                     if (autoLoopRef.current) {
                       const segStart =

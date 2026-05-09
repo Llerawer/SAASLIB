@@ -21,6 +21,27 @@ export type Mode = "manual" | "repeat" | "auto";
 
 export const AUTO_PLAYS_PER_CLIP = 3;
 
+/**
+ * Padding in milliseconds added to `sentence_end_ms` before the polling
+ * loop decides the clip is done. YouTube auto-caption VTT cues usually
+ * close at the *onset* of the last word, not its offset, so without
+ * padding the polling cuts before the final consonant lands ("meal" got
+ * clipped to "mea-" in repro from 2026-05-09).
+ *
+ * 400 ms is generous: covers slow speakers and long final words
+ * ("subscriber", "meal", "considered"), still leaves headroom before any
+ * follow-up cue. Pronounce clips are isolated (one cue per clip), so
+ * bleeding into "next" content isn't a risk in this player.
+ */
+export const SEGMENT_END_PAD_MS = 400;
+
+/**
+ * How many milliseconds to anticipate the karaoke word highlight relative
+ * to audio. Negative = highlight fires *before* the audio reaches the word.
+ * 80 ms feels snappy without looking buggy. Tweak in one place.
+ */
+export const KARAOKE_LEAD_OFFSET_MS = -80;
+
 const SPEED_LS_KEY = "pronounce-deck-speed";
 const MODE_LS_KEY = "pronounce-deck-mode";
 

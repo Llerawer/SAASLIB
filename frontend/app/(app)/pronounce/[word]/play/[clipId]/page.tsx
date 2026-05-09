@@ -10,7 +10,7 @@ import {
   PronounceDeckPlayer,
 } from "@/components/pronounce-deck-player";
 import { PronounceDeckControls } from "@/components/pronounce-deck-controls";
-import { Highlighted } from "@/lib/reader/pronounce-highlight";
+import { KaraokeCaption } from "@/components/karaoke-caption";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 import { useDeckController } from "@/lib/pronounce/use-deck-controller";
 import type { Speed } from "@/lib/pronounce/deck-types";
@@ -209,13 +209,15 @@ export default function PronounceDeckPage({
     mode,
     repCount,
     autoPlaysPerClip,
-    pulseKey,
     playing,
+    tokens,
+    activeWordIndex,
     setSpeed,
     setMode,
     setPlaying,
     handleRepeat,
     handleSegmentLoop,
+    handleTimeUpdate,
   } = ctrl;
 
   const clip = currentClip!;
@@ -274,6 +276,7 @@ export default function PronounceDeckPage({
             autoLoop={mode !== "manual"}
             onPlayingChange={setPlaying}
             onSegmentLoop={handleSegmentLoop}
+            onTimeUpdate={handleTimeUpdate}
           />
           {!playing && (
             <button
@@ -307,10 +310,13 @@ export default function PronounceDeckPage({
         </button>
       </div>
 
-      {/* Sentence with pulsing highlight */}
-      <p className="text-2xl font-serif text-center leading-snug mt-6 max-w-3xl mx-auto">
-        <Highlighted text={clip.sentence_text} word={word} pulseKey={pulseKey} />
-      </p>
+      {/* Karaoke caption — current word lights up as audio plays. */}
+      <KaraokeCaption
+        tokens={tokens}
+        activeIndex={activeWordIndex}
+        targetWord={word}
+        className="text-2xl font-serif text-center mt-6 max-w-3xl mx-auto"
+      />
 
       {/* Mobile prev/next row (above controls) */}
       <div className="flex justify-center gap-2 mt-4 lg:hidden">
