@@ -40,8 +40,8 @@ async def run_enrichment_loop() -> None:
         return
 
     log.info(
-        "[enrichment] worker started — provider=%s interval=%ds batch=%d",
-        settings.ENRICHMENT_PROVIDER,
+        "[enrichment] worker started — providers=%s interval=%ds batch=%d",
+        settings.ENRICHMENT_PROVIDERS,
         interval_seconds,
         settings.ENRICHMENT_BATCH_SIZE,
     )
@@ -160,10 +160,10 @@ async def enrich_pending_batch() -> dict[str, int]:
     # inside the provider). Operator gets one signal per tick max.
     if stats["succeeded"] == 0 and stats["skipped"] > 0 and len(provider) > 0:
         log.warning(
-            "[enrichment] all %d %s key(s) exhausted this tick — "
+            "[enrichment] all %d key(s) across %s exhausted this tick — "
             "next cron in %d min will retry",
             len(provider),
-            settings.ENRICHMENT_PROVIDER,
+            provider.name,
             settings.ENRICHMENT_INTERVAL_MIN,
         )
     return stats

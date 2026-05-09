@@ -25,11 +25,16 @@ class Settings(BaseSettings):
 
     # ===== Card enrichment (LLM-powered POS / tense / phrasal / CEFR / etc.) =====
     # Background worker pulls cards with NULL enrichment every N minutes and
-    # asks the configured provider. Multiple keys per provider are supported
-    # (comma-separated) for fan-out across free-tier accounts. If the entire
-    # pool is exhausted the card stays NULL and the next cron run retries —
+    # asks the configured providers in order. If a provider's keys are all
+    # exhausted, the chain falls through to the next one. If every provider
+    # is exhausted the card stays NULL and the next cron run retries —
     # capture and study flow are never blocked by enrichment availability.
-    ENRICHMENT_PROVIDER: Literal["gemini", "groq"] = "gemini"
+    #
+    # Comma-separated CSV; order = priority. Default `gemini,groq` so when
+    # Gemini's daily quota burns through, Groq picks up automatically (if
+    # GROQ_API_KEYS is configured). Single-provider setups still work — the
+    # chain trivially collapses to one element.
+    ENRICHMENT_PROVIDERS: str = "gemini,groq"
     GEMINI_API_KEYS: str = ""  # comma-separated, e.g. "AIza...,AIza...,AIza..."
     GROQ_API_KEYS: str = ""    # comma-separated, e.g. "gsk_...,gsk_..."
     # How often the enrichment cron runs (minutes). 5 is the V1 default.
