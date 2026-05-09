@@ -20,15 +20,15 @@ type Props = {
  * Karaoke-style caption: highlights the current word as audio plays, while
  * keeping the target word (the one being studied) visually anchored.
  *
- * Three independent visual axes per token:
- *   - target match   → persistent `bg-captured` background, always visible
- *   - karaoke active → accent text + soft glow (drives the moving highlight)
- *   - karaoke past   → unchanged readability (per design spec from 2026-05-09)
- *   - karaoke future → 50% opacity (signals "not yet")
- *
- * When target AND active overlap, both styles compose: the target keeps its
- * captured background and gains the accent glow on top — that's the "ahí
- * va" moment for the learner.
+ * Per-token visual states (resolved in order, last match wins on conflict):
+ *   - !active && !target           → normal (readable, neutral)
+ *   - target only                  → `bg-captured` translucent + foreground
+ *   - karaoke active on non-target → accent text + glow (the moving cursor)
+ *   - target + karaoke active      → solid `bg-accent` + stronger glow.
+ *     Translucent + accent text was illegible because both colors share
+ *     the warm hue — there was no visible "ahí va" moment. Solid bg
+ *     swap reads as a real arrival event.
+ *   - karaoke future               → 50% opacity layered on top
  */
 export function KaraokeCaption({
   tokens,
@@ -45,15 +45,24 @@ export function KaraokeCaption({
         const isTarget = targetMatchesToken(tok, targetWord);
         const isActive = i === activeIndex;
         const isFuture = activeIndex >= 0 && i > activeIndex;
+        const isTargetActive = isTarget && isActive;
         return (
           <Fragment key={i}>
             <span
               className={cn(
-                "transition-[color,opacity,text-shadow] duration-200 ease-out motion-reduce:transition-none",
-                isTarget &&
-                  "bg-captured text-foreground rounded px-0.5 font-medium [box-decoration-break:clone] [-webkit-box-decoration-break:clone]",
-                isActive &&
+                "transition-[color,background-color,opacity,text-shadow,box-shadow] duration-200 ease-out motion-reduce:transition-none",
+                "rounded px-0.5 [box-decoration-break:clone] [-webkit-box-decoration-break:clone]",
+                // target (still / past): translucent captured bg
+                isTarget && !isActive &&
+                  "bg-captured text-foreground font-medium",
+                // karaoke active on a non-target word: accent text + glow
+                isActive && !isTarget &&
                   "text-accent font-semibold [text-shadow:0_0_12px_var(--accent)]",
+                // target + active: solid accent swap, stronger glow.
+                // The "ahí va" beat — distinct from both the resting target
+                // and the moving karaoke cursor.
+                isTargetActive &&
+                  "bg-accent text-accent-foreground font-semibold [box-shadow:0_0_18px_var(--accent)]",
                 isFuture && "opacity-50",
               )}
             >
