@@ -14,6 +14,7 @@ from app.api.v1 import (
     bookmarks,
     captures,
     cards,
+    coverage,
     decks,
     dictionary,
     highlights,
@@ -135,6 +136,7 @@ app.include_router(books.router)
 app.include_router(bookmarks.router)
 app.include_router(captures.router)
 app.include_router(cards.router)
+app.include_router(coverage.router)
 app.include_router(decks.router)
 app.include_router(dictionary.router)
 app.include_router(highlights.router)
