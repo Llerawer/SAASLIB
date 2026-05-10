@@ -186,9 +186,14 @@ export function CardStack({
 // Stack itself — separated so the loading/error wrapper above stays clean.
 // ---------------------------------------------------------------------------
 
-const VISIBLE_DEPTH = 5; // Cards beyond this index don't render.
+// Visual stack tuning. Calibrated to match the demo the user shared:
+// offsets big enough that 6+ layers register as a real stack, with the
+// back cards showing as 25-30 px slivers above the front card.
+const VISIBLE_DEPTH = 7;
 const SWIPE_THRESHOLD = 60;
 const VELOCITY_THRESHOLD = 500;
+const STACK_OFFSET_PCT = 7; // % of card height each layer rises by
+const STACK_SCALE_STEP = 0.05; // scale shrink per layer
 
 function Stack({
   cards,
@@ -280,7 +285,11 @@ function Stack({
 
   return (
     <div
-      className="relative w-80 sm:w-96 aspect-[4/5] max-w-full mx-auto"
+      // aspect-[5/4] = slightly landscape. Wider than tall so the stack
+      // offsets read as separate "cards" stacked, not a single tall
+      // column. Still gives word + image + translation room. Padded
+      // top so the back layers have room to peek above the front card.
+      className="relative w-80 sm:w-96 aspect-[5/4] max-w-full mx-auto pt-16 sm:pt-20"
       onDragEnter={onFileDragEnter}
       onDragLeave={onFileDragLeave}
       onDragOver={onFileDragOver}
@@ -294,7 +303,7 @@ function Stack({
           // contrast readable while still creating clear depth — opacity
           // makes the back cards look "almost gone" which doesn't read
           // as a stack.
-          const brightness = Math.max(0.45, 1 - i * 0.15);
+          const brightness = Math.max(0.4, 1 - i * 0.13);
           return (
             <motion.div
               key={card.id}
@@ -311,11 +320,11 @@ function Stack({
                 touchAction: "none",
               }}
               animate={{
-                // Bigger offset so the stack actually reads as a stack
-                // (was 1.5%; that's why "no se animaba" — there was
-                // barely any visible movement when cards rotated).
-                top: `${i * -4}%`,
-                scale: 1 - i * 0.06,
+                // Layers stack up by rising 7 % of card height each
+                // and shrinking 5 % each — matches the demo the user
+                // referenced where 6+ layers register as a real stack.
+                top: `${i * -STACK_OFFSET_PCT}%`,
+                scale: 1 - i * STACK_SCALE_STEP,
                 filter: `brightness(${brightness})`,
                 zIndex: baseZ,
                 // Front card fades out briefly during a confirmed swipe
