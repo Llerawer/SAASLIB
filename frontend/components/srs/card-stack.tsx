@@ -202,7 +202,15 @@ function Stack({
   onRetreat: () => void;
 }) {
   const dragY = useMotionValue(0);
-  const rotateX = useTransform(dragY, [-200, 0, 200], [12, 0, -12]);
+  const rotateX = useTransform(dragY, [-200, 0, 200], [15, 0, -15]);
+
+  // Direction of the swipe-out animation that runs *before* the front
+  // card is rotated to the back of the stack. Without this brief
+  // opacity:0 frame the rotation feels "snappy with no feedback" —
+  // exactly what the user reported as "no tiene animación".
+  const [dragDirection, setDragDirection] = useState<"up" | "down" | null>(
+    null,
+  );
 
   const visible = cards.slice(0, VISIBLE_DEPTH);
   const front = cards[0] ?? null;
@@ -282,13 +290,20 @@ function Stack({
         {visible.map((card, i) => {
           const isFront = i === 0;
           const baseZ = visible.length - i;
+          // Brightness instead of opacity for the back cards: keeps text
+          // contrast readable while still creating clear depth — opacity
+          // makes the back cards look "almost gone" which doesn't read
+          // as a stack.
+          const brightness = Math.max(0.45, 1 - i * 0.15);
           return (
             <motion.div
               key={card.id}
               className={cn(
                 "absolute inset-0 rounded-xl border bg-card overflow-hidden",
-                isFront ? "shadow-lg" : "shadow",
-                isFront ? "cursor-grab active:cursor-grabbing" : "pointer-events-none",
+                isFront ? "shadow-xl" : "shadow",
+                isFront
+                  ? "cursor-grab active:cursor-grabbing"
+                  : "pointer-events-none",
               )}
               style={{
                 rotateX: isFront ? rotateX : 0,
@@ -296,15 +311,30 @@ function Stack({
                 touchAction: "none",
               }}
               animate={{
-                top: `${i * -1.5}%`,
-                scale: 1 - i * 0.04,
-                opacity: 1 - i * 0.18,
+                // Bigger offset so the stack actually reads as a stack
+                // (was 1.5%; that's why "no se animaba" — there was
+                // barely any visible movement when cards rotated).
+                top: `${i * -4}%`,
+                scale: 1 - i * 0.06,
+                filter: `brightness(${brightness})`,
                 zIndex: baseZ,
+                // Front card fades out briefly during a confirmed swipe
+                // before the array rotates underneath it.
+                opacity: dragDirection && isFront ? 0 : 1,
               }}
-              transition={{ type: "spring", stiffness: 220, damping: 28 }}
+              exit={{
+                opacity: 0,
+                scale: 0.85,
+                transition: { duration: 0.18 },
+              }}
+              transition={{
+                type: "spring",
+                stiffness: 170,
+                damping: 26,
+              }}
               drag={isFront ? "y" : false}
               dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={0.6}
+              dragElastic={0.7}
               onDrag={(_, info) => {
                 if (isFront) dragY.set(info.offset.y);
               }}
@@ -316,11 +346,34 @@ function Stack({
                   Math.abs(off) > SWIPE_THRESHOLD ||
                   Math.abs(vel) > VELOCITY_THRESHOLD
                 ) {
-                  if (off < 0 || vel < 0) onAdvance();
-                  else onRetreat();
+                  // Two-stage commit: fade out first, then rotate the
+                  // array. The 150 ms window is long enough that the
+                  // user perceives the swipe-out before the next card
+                  // pops to the front.
+                  if (off < 0 || vel < 0) {
+                    setDragDirection("up");
+                    setTimeout(() => {
+                      onAdvance();
+                      setDragDirection(null);
+                    }, 150);
+                  } else {
+                    setDragDirection("down");
+                    setTimeout(() => {
+                      onRetreat();
+                      setDragDirection(null);
+                    }, 150);
+                  }
                 }
                 dragY.set(0);
               }}
+              whileDrag={
+                isFront
+                  ? {
+                      scale: 1.04,
+                      cursor: "grabbing",
+                    }
+                  : undefined
+              }
               onClick={(e) => {
                 if (!isFront) return;
                 // Suppress click that immediately follows a drag —
