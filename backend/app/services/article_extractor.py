@@ -65,11 +65,14 @@ class ExtractionError(Exception):
 
 
 import asyncio
+import logging
 import re
 
 import cloudscraper
 import httpx
 import trafilatura
+
+log = logging.getLogger(__name__)
 
 
 _HTTP_TIMEOUT_S = 15.0
@@ -138,26 +141,43 @@ async def _fetch_html(url: str) -> tuple[str, str]:
             resp = await client.get(url)
         # Don't raise_for_status here — let the WAF check decide.
         if _looks_waf_blocked(resp.status_code, resp.text):
+            log.info("[extract] httpx %s → WAF body markers, falling back to cloudscraper for %s", resp.status_code, url)
             waf_blocked = True
         elif 400 <= resp.status_code < 600:
+            log.info("[extract] httpx %s → hard error (no fallback) for %s", resp.status_code, url)
             raise ExtractionError(
                 f"El sitio devolvió HTTP {resp.status_code}. "
                 f"Probablemente requiere login, está caído, o bloquea bots."
             )
         else:
+            log.info("[extract] httpx %s → OK fast path (%d bytes) for %s", resp.status_code, len(resp.text), url)
             return resp.text, resp.headers.get("content-type", "")
     except ExtractionError:
         raise
     except httpx.TimeoutException as e:
+        log.info("[extract] httpx timeout, falling back to cloudscraper for %s", url)
         httpx_err = e
         waf_blocked = True
     except httpx.HTTPError as e:
+        log.info("[extract] httpx HTTPError %s (no fallback) for %s", type(e).__name__, url)
         httpx_err = e
 
     if waf_blocked:
         try:
-            return await asyncio.to_thread(_fetch_via_cloudscraper, url)
+            html, ctype = await asyncio.to_thread(_fetch_via_cloudscraper, url)
+            log.info("[extract] cloudscraper → OK (%d bytes) for %s", len(html), url)
+            # Even cloudscraper can hit a hard JS challenge — check the body.
+            if _looks_waf_blocked(200, html):
+                raise ExtractionError(
+                    "Este sitio tiene protección WAF avanzada (Cloudflare "
+                    "Turnstile o similar) que cloudscraper no logra pasar. "
+                    "Necesitaríamos un browser headless o una extensión."
+                )
+            return html, ctype
+        except ExtractionError:
+            raise
         except Exception as e:
+            log.info("[extract] cloudscraper FAILED (%s: %s) for %s", type(e).__name__, e, url)
             raise ExtractionError(
                 f"Fetch failed (httpx + cloudscraper): {e}"
             ) from e
@@ -205,9 +225,14 @@ async def extract(url: str) -> ExtractionResult:
     )
 
     if not extracted_text or len(extracted_text) < _MIN_TEXT_LEN:
+        log.info(
+            "[extract] trafilatura returned %d chars (need %d) for %s",
+            len(extracted_text or ""), _MIN_TEXT_LEN, url,
+        )
         raise ExtractionError(
             "No readable content found (paywall, JS-only, or empty page)"
         )
+    log.info("[extract] trafilatura → %d chars OK for %s", len(extracted_text), url)
 
     metadata = trafilatura.extract_metadata(html) or None
     title = (
