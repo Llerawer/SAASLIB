@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthInfo, get_auth
+from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.db.supabase_client import get_admin_client, get_user_client
 from app.schemas.cards import (
@@ -70,6 +71,28 @@ class ParseAiResult(BaseModel):
 router = APIRouter(prefix="/api/v1/cards", tags=["cards"])
 
 
+_STORAGE_BUCKET = "cards-media"
+
+
+def _media_path_to_url(path: str | None) -> str | None:
+    """Convert a stored Supabase Storage object path into a public URL.
+
+    The DB column holds the path relative to the bucket
+    (e.g. "<user_id>/<card_id>/image.jpg") because that's what
+    create_signed_upload_url and the frontend's PUT both round-trip on.
+    The browser <img src> needs an absolute URL, so prefix it with the
+    bucket's public endpoint here. Idempotent: if a row already holds
+    a fully-qualified URL (legacy data, manual fix-ups), leave it
+    alone.
+    """
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    base = settings.SUPABASE_URL.rstrip("/")
+    return f"{base}/storage/v1/object/public/{_STORAGE_BUCKET}/{path}"
+
+
 def _row_to_card(row: dict) -> CardOut:
     return CardOut(
         id=row["id"],
@@ -87,8 +110,8 @@ def _row_to_card(row: dict) -> CardOut:
         source_capture_ids=row.get("source_capture_ids") or [],
         deck_id=row["deck_id"],
         flag=row.get("flag", 0),
-        user_image_url=row.get("user_image_url") or None,
-        user_audio_url=row.get("user_audio_url") or None,
+        user_image_url=_media_path_to_url(row.get("user_image_url")),
+        user_audio_url=_media_path_to_url(row.get("user_audio_url")),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

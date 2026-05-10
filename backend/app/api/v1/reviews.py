@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from app.api.v1.cards import _media_path_to_url
 from app.api.v1.decks import _resolve_subtree_ids
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
@@ -95,8 +96,8 @@ async def queue(
                 fsrs_state=int(s["fsrs_state"]),
                 fsrs_difficulty=s.get("fsrs_difficulty"),
                 fsrs_stability=s.get("fsrs_stability"),
-                user_image_url=c.get("user_image_url") or None,
-                user_audio_url=c.get("user_audio_url") or None,
+                user_image_url=_media_path_to_url(c.get("user_image_url")),
+                user_audio_url=_media_path_to_url(c.get("user_audio_url")),
                 flag=int(c.get("flag") or 0),
                 enrichment=c.get("enrichment"),
             )
