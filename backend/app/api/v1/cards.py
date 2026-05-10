@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
-from app.db.supabase_client import get_user_client
+from app.db.supabase_client import get_admin_client, get_user_client
 from app.schemas.cards import (
     CardActionResult,
     CardCreate,
@@ -397,8 +397,13 @@ async def media_upload_url(
         raise HTTPException(404, "Card not found")
     ext = _ext_from_mime(body.mime)
     path = f"{auth.user_id}/{card_id}/{body.type}.{ext}"
-    # Supabase signed upload URL: returns {"signedUrl": ..., "path": ..., "token": ...}
-    signed = client.storage.from_("cards-media").create_signed_upload_url(path)
+    # Storage operations bypass RLS via service-role: ownership of the
+    # destination path was already verified above (user owns this card_id).
+    # Letting the user-scoped client do this would require maintaining
+    # storage.objects RLS policies that mirror what we already check here,
+    # which is duplication that gets out of sync.
+    admin = get_admin_client()
+    signed = admin.storage.from_("cards-media").create_signed_upload_url(path)
     return MediaUploadUrlResult(
         upload_url=signed["signedUrl"],
         path=path,
@@ -421,9 +426,12 @@ async def media_confirm(
     )
     if not expected.match(body.path):
         raise HTTPException(403, "Path does not match user or canonical shape")
-    # Descargar bytes para sniff.
+    # Descargar bytes para sniff. Storage ops bypass RLS via service-role —
+    # the path regex above already enforces "user can only confirm objects
+    # under their own folder", which is the same invariant RLS would enforce.
+    admin = get_admin_client()
     try:
-        data = client.storage.from_("cards-media").download(body.path)
+        data = admin.storage.from_("cards-media").download(body.path)
     except Exception as e:
         raise HTTPException(404, f"Storage object not found: {e}") from e
     sniffed = _sniff_mime(data)
@@ -431,7 +439,7 @@ async def media_confirm(
     if sniffed not in allowed:
         # Borra el archivo subido y rechaza.
         try:
-            client.storage.from_("cards-media").remove([body.path])
+            admin.storage.from_("cards-media").remove([body.path])
         except Exception:
             pass
         raise HTTPException(422, f"detected mime not allowed: {sniffed}")
@@ -476,8 +484,10 @@ async def media_delete(
         raise HTTPException(404, "Card not found")
     current = rows[0].get(column)
     if current:
+        # Service-role for storage delete (RLS bypass); ownership was already
+        # checked via cards.user_id above.
         try:
-            client.storage.from_("cards-media").remove([current])
+            get_admin_client().storage.from_("cards-media").remove([current])
         except Exception as e:
             # Storage borrado falló → loguear pero seguir nullando la columna.
             logger.warning("storage remove failed for path=%s: %s", current, e)
