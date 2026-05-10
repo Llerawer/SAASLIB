@@ -195,16 +195,18 @@ export function CardStack({
 // Stack itself — separated so the loading/error wrapper above stays clean.
 // ---------------------------------------------------------------------------
 
-// Visual stack tuning. Pixel offsets (not %) so the visible separation
-// stays the same regardless of card aspect ratio. Calibrated with
-// transform-origin:top so the per-layer scale-down doesn't eat into
-// the visible offset (a center-origin scale of 0.95 was hiding ~7 px
-// of the 18 px sliver).
+// Visual stack tuning. Fixed pixel dimensions everywhere so the
+// browser doesn't have to negotiate aspect-ratio + bottom-anchoring
+// (that combination produced a degenerate layout where the back cards
+// silently lost their offset).
 const VISIBLE_DEPTH = 7;
 const SWIPE_THRESHOLD = 60;
 const VELOCITY_THRESHOLD = 500;
-const STACK_OFFSET_PX = 22; // each back layer rises by this many px
-const STACK_SCALE_STEP = 0.04; // scale shrink per layer (smaller now that origin is top)
+const STACK_OFFSET_PX = 24; // each back layer rises by this many px
+const STACK_SCALE_STEP = 0.04;
+const CARD_WIDTH_PX = 360;
+const CARD_HEIGHT_PX = 280;
+const HEADROOM_PX = VISIBLE_DEPTH * STACK_OFFSET_PX + 16; // room above front for back layers
 
 function Stack({
   cards,
@@ -296,16 +298,14 @@ function Stack({
 
   return (
     <div
-      // The container reserves space ABOVE the front card so the
-      // back layers (each rising by STACK_OFFSET_PX) have room to
-      // peek without bleeding outside. Aspect on the inner card area
-      // is enforced via min-h on the front card itself, not on the
-      // container — this lets the container grow to fit the stack.
-      className="relative w-80 sm:w-96 max-w-full mx-auto pt-32"
+      // Fixed dimensions: width = card width, height = card + headroom
+      // for the stack. The cards inside are absolutely positioned with
+      // explicit pixel sizes (no aspect-ratio negotiation) so the
+      // back-layer offsets work predictably.
+      className="relative max-w-full mx-auto"
       style={{
-        // Inner card area: a 4:3 box. The pt-32 above gives 128 px of
-        // headroom which fits the 7 × 18 = 126 px tallest stack.
-        height: "calc(min(100vw - 2rem, 24rem) * 0.75 + 8rem)",
+        width: CARD_WIDTH_PX,
+        height: CARD_HEIGHT_PX + HEADROOM_PX,
       }}
       onDragEnter={onFileDragEnter}
       onDragLeave={onFileDragLeave}
@@ -325,15 +325,7 @@ function Stack({
             <motion.div
               key={card.id}
               className={cn(
-                // Position: fill the container's inner box but with the
-                // bottom anchored, so layers rising by STACK_OFFSET_PX
-                // peek out the top.
-                "absolute left-0 right-0 bottom-0 rounded-xl border-2 bg-card overflow-hidden",
-                "aspect-[4/3]",
-                // Stronger borders + shadows on back layers help the
-                // monochromatic stack read as separate cards (without
-                // image diversity to do that for us, the eye needs the
-                // edge to be obvious).
+                "absolute rounded-xl border-2 bg-card overflow-hidden",
                 isFront
                   ? "border-border shadow-2xl"
                   : "border-border/70 shadow-lg",
@@ -342,13 +334,17 @@ function Stack({
                   : "pointer-events-none",
               )}
               style={{
+                // Explicit pixel dimensions + top anchor — back cards
+                // rise by translating Y, no aspect-ratio negotiation.
+                width: CARD_WIDTH_PX,
+                height: CARD_HEIGHT_PX,
+                top: HEADROOM_PX,
+                left: 0,
                 rotateX: isFront ? rotateX : 0,
                 transformPerspective: 1000,
                 touchAction: "none",
                 // top-origin keeps the per-layer scale from cutting
-                // into the offset — back cards shrink toward their
-                // own bottom edge instead of toward their center, so
-                // the full STACK_OFFSET_PX of sliver stays visible.
+                // into the offset.
                 transformOrigin: "top center",
               }}
               animate={{
