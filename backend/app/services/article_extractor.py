@@ -99,8 +99,20 @@ async def extract(url: str) -> ExtractionResult:
         try:
             resp = await client.get(url)
             resp.raise_for_status()
+        except httpx.TimeoutException as e:
+            raise ExtractionError(
+                "El sitio tardó demasiado en responder (>15s). Esto suele "
+                "pasar con sitios protegidos por Cloudflare u otros WAFs "
+                "que bloquean lectores automáticos."
+            ) from e
+        except httpx.HTTPStatusError as e:
+            raise ExtractionError(
+                f"El sitio devolvió HTTP {e.response.status_code}. "
+                f"Probablemente requiere login, está caído, o bloquea bots."
+            ) from e
         except httpx.HTTPError as e:
-            raise ExtractionError(f"Fetch failed: {e}") from e
+            msg = str(e) or type(e).__name__
+            raise ExtractionError(f"Fetch failed: {msg}") from e
 
         ctype = resp.headers.get("content-type", "").lower()
         if "application/pdf" in ctype or url.lower().endswith(".pdf"):
