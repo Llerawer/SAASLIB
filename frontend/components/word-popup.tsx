@@ -16,7 +16,8 @@ import { pronounceHref } from "@/lib/reader/pronounce-link";
 
 export type CaptureSource =
   | { kind: "book"; bookId: string | null; pageOrLocation: string | null }
-  | { kind: "video"; videoId: string; timestampSeconds: number };
+  | { kind: "video"; videoId: string; timestampSeconds: number }
+  | { kind: "article"; articleId: string };
 
 export type WordPopupProps = {
   word: string;
