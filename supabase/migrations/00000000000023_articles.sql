@@ -77,15 +77,12 @@ create policy "article_highlights_self" on public.article_highlights
     with check (user_id = auth.uid());
 
 -- =========================================================================
--- Extend captures with source_kind = 'article'.
+-- Extend captures with article_id. Source disambiguation follows the
+-- existing convention: presence of book_id / video_id / article_id
+-- (mutually exclusive at the API layer, not enforced by DB CHECK because
+-- adding a fourth source kind would require migrating the constraint —
+-- the API model validator is sufficient).
 -- =========================================================================
-
-alter table public.captures
-    drop constraint if exists captures_source_kind_check;
-
-alter table public.captures
-    add constraint captures_source_kind_check
-        check (source_kind in ('book', 'video', 'article'));
 
 alter table public.captures
     add column article_id uuid references public.articles(id) on delete set null;

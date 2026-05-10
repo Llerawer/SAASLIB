@@ -95,6 +95,7 @@ def _row_to_capture(row: dict, enrichment: dict | None = None) -> CaptureOut:
         "book_id": row.get("book_id"),
         "video_id": row.get("video_id"),
         "video_timestamp_s": row.get("video_timestamp_s"),
+        "article_id": row.get("article_id"),
         "tags": row.get("tags") or [],
         "note": row.get("note"),
         "promoted_to_card": row.get("promoted_to_card", False),
@@ -136,6 +137,7 @@ async def create_capture(
         "book_id": body.book_id,
         "video_id": body.video_id,
         "video_timestamp_s": body.video_timestamp_s,
+        "article_id": body.article_id,
         "tags": body.tags,
         "note": body.note,
     }

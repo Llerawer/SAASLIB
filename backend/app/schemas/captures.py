@@ -11,6 +11,7 @@ _MAX_LOCATION_LEN = 200
 _MAX_BOOK_ID_LEN = 64
 _MAX_NOTE_LEN = 2000
 _MAX_VIDEO_ID_LEN = 16  # YouTube IDs are 11 chars; some buffer for future formats
+_MAX_ARTICLE_ID_LEN = 64
 
 
 class CaptureCreate(BaseModel):
@@ -20,6 +21,7 @@ class CaptureCreate(BaseModel):
     book_id: str | None = Field(default=None, max_length=_MAX_BOOK_ID_LEN)
     video_id: str | None = Field(default=None, max_length=_MAX_VIDEO_ID_LEN)
     video_timestamp_s: int | None = Field(default=None, ge=0)
+    article_id: str | None = Field(default=None, max_length=_MAX_ARTICLE_ID_LEN)
     language: str = Field(default="en", min_length=2, max_length=5)
     tags: list[str] = Field(default_factory=list, max_length=_MAX_TAGS)
     note: str | None = Field(default=None, max_length=_MAX_NOTE_LEN)
@@ -36,9 +38,12 @@ class CaptureCreate(BaseModel):
     def _validate_source_exclusivity(self) -> "CaptureCreate":
         has_book = self.book_id is not None
         has_video = self.video_id is not None or self.video_timestamp_s is not None
-        if has_book and has_video:
+        has_article = self.article_id is not None
+        sources = sum([has_book, has_video, has_article])
+        if sources > 1:
             raise ValueError(
-                "captures may have at most one of (book_id) or (video_id + video_timestamp_s)"
+                "captures may have at most one source of (book_id) | "
+                "(video_id + video_timestamp_s) | (article_id)"
             )
         if has_video and (self.video_id is None or self.video_timestamp_s is None):
             raise ValueError(
@@ -74,6 +79,7 @@ class CaptureOut(BaseModel):
     book_id: str | None
     video_id: str | None = None
     video_timestamp_s: int | None = None
+    article_id: str | None = None
     tags: list[str]
     note: str | None = None
     promoted_to_card: bool
