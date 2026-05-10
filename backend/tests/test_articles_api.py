@@ -93,3 +93,44 @@ def test_excerpt_built_from_text_clean_slice():
     article = {**_existing_article_row(), "text_clean": "Hello world. Bye."}
     assert _build_excerpt(article, 0, 5) == "Hello"
     assert _build_excerpt(article, 6, 11) == "world"
+
+
+def test_highlight_create_returns_excerpt_from_text_clean():
+    """POST /articles/{id}/highlights computes excerpt server-side from
+    text_clean — client-supplied excerpt is ignored to prevent forgery."""
+    from app.api.v1.articles import _build_highlight_payload
+    article = {**_existing_article_row(), "text_clean": "Hello world. Bye."}
+    payload = _build_highlight_payload(
+        article=article,
+        user_id="u1",
+        start=0,
+        end=5,
+        color="green",
+        note=None,
+    )
+    assert payload["excerpt"] == "Hello"
+    assert payload["color"] == "green"
+    assert payload["start_offset"] == 0
+
+
+def test_highlight_create_payload_normalizes_empty_note_to_null():
+    from app.api.v1.articles import _build_highlight_payload
+    article = {**_existing_article_row(), "text_clean": "Hi."}
+    payload = _build_highlight_payload(
+        article=article, user_id="u1", start=0, end=2,
+        color="yellow", note="   ",
+    )
+    assert payload["note"] is None
+
+
+def test_highlight_update_normalizes_empty_note_to_null():
+    from app.api.v1.articles import _build_highlight_update
+    update = _build_highlight_update(color="blue", note="")
+    assert update == {"color": "blue", "note": None}
+
+
+def test_highlight_update_omits_unset_fields():
+    from app.api.v1.articles import _build_highlight_update
+    update = _build_highlight_update(color="blue", note=None)
+    assert "color" in update
+    assert "note" not in update

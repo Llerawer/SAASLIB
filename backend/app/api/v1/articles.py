@@ -201,3 +201,139 @@ async def update_progress(
     if not res.data:
         raise HTTPException(404, "Article not found")
     return ArticleOut(**res.data[0])
+
+
+# ---------- Highlight helpers ----------
+
+
+def _build_highlight_payload(
+    *,
+    article: dict,
+    user_id: str,
+    start: int,
+    end: int,
+    color: str,
+    note: str | None,
+) -> dict[str, Any]:
+    cleaned_note = note.strip() if isinstance(note, str) else None
+    return {
+        "article_id": article["id"],
+        "user_id": user_id,
+        "start_offset": start,
+        "end_offset": end,
+        "excerpt": _build_excerpt(article, start, end),
+        "color": color,
+        "note": cleaned_note or None,
+    }
+
+
+def _build_highlight_update(
+    *,
+    color: str | None,
+    note: str | None,
+) -> dict[str, Any]:
+    update: dict[str, Any] = {}
+    if color is not None:
+        update["color"] = color
+    if note is not None:
+        update["note"] = note.strip() or None
+    return update
+
+
+# ---------- Highlight endpoints ----------
+
+
+@router.get("/{article_id}/highlights", response_model=list[ArticleHighlightOut])
+@limiter.limit("60/minute")
+async def list_highlights(
+    request: Request,
+    article_id: str = Path(..., min_length=1, max_length=64),
+    auth: AuthInfo = Depends(get_auth),
+):
+    client = get_user_client(auth.jwt)
+    _authorize_article(client, article_id, auth.user_id)
+    rows = (
+        client.table("article_highlights")
+        .select(_HL_COLS)
+        .eq("article_id", article_id)
+        .order("start_offset")
+        .execute()
+        .data
+        or []
+    )
+    return [ArticleHighlightOut(**r) for r in rows]
+
+
+@router.post("/{article_id}/highlights", response_model=ArticleHighlightOut)
+@limiter.limit("60/minute")
+async def create_highlight(
+    request: Request,
+    body: ArticleHighlightCreate,
+    article_id: str = Path(..., min_length=1, max_length=64),
+    auth: AuthInfo = Depends(get_auth),
+):
+    client = get_user_client(auth.jwt)
+    article = _authorize_article(client, article_id, auth.user_id)
+    _validate_highlight_offsets(article, body.start_offset, body.end_offset)
+    payload = _build_highlight_payload(
+        article=article,
+        user_id=auth.user_id,
+        start=body.start_offset,
+        end=body.end_offset,
+        color=body.color,
+        note=body.note,
+    )
+    inserted = (
+        client.table("article_highlights").insert(payload).execute().data
+    )
+    if not inserted:
+        raise HTTPException(500, "Failed to insert highlight")
+    return ArticleHighlightOut(**inserted[0])
+
+
+@router.patch("/highlights/{highlight_id}", response_model=ArticleHighlightOut)
+@limiter.limit("60/minute")
+async def update_highlight(
+    request: Request,
+    body: ArticleHighlightUpdate,
+    highlight_id: str = Path(..., min_length=1, max_length=64),
+    auth: AuthInfo = Depends(get_auth),
+):
+    raw = body.model_dump(exclude_unset=True)
+    if not raw:
+        raise HTTPException(422, "No fields to update")
+    update = _build_highlight_update(
+        color=raw.get("color"),
+        note=raw.get("note"),
+    )
+    update["updated_at"] = "now()"
+    client = get_user_client(auth.jwt)
+    res = (
+        client.table("article_highlights")
+        .update(update)
+        .eq("id", highlight_id)
+        .eq("user_id", auth.user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Highlight not found")
+    return ArticleHighlightOut(**res.data[0])
+
+
+@router.delete("/highlights/{highlight_id}", status_code=204)
+@limiter.limit("60/minute")
+async def delete_highlight(
+    request: Request,
+    highlight_id: str = Path(..., min_length=1, max_length=64),
+    auth: AuthInfo = Depends(get_auth),
+):
+    client = get_user_client(auth.jwt)
+    res = (
+        client.table("article_highlights")
+        .delete()
+        .eq("id", highlight_id)
+        .eq("user_id", auth.user_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "Highlight not found")
