@@ -23,6 +23,9 @@ export type Capture = {
   context_sentence: string | null;
   page_or_location: string | null;
   book_id: string | null;
+  video_id?: string | null;
+  video_timestamp_s?: number | null;
+  article_id?: string | null;
   tags: string[];
   note: string | null;
   promoted_to_card: boolean;
@@ -53,7 +56,8 @@ export type CaptureCreateInput = {
 
 type CreateCaptureSource =
   | { kind: "book"; bookId: string | null; pageOrLocation: string | null }
-  | { kind: "video"; videoId: string; timestampSeconds: number };
+  | { kind: "video"; videoId: string; timestampSeconds: number }
+  | { kind: "article"; articleId: string };
 
 type CreateCaptureInput = {
   word: string;
@@ -105,10 +109,14 @@ export function useCreateCapture(callbacks?: CreateCaptureCallbacks) {
   return useMutation<Capture, Error, CreateCaptureInput>({
     mutationFn: ({ word, context_sentence, language, source }) => {
       const base = { word, context_sentence, language: language ?? "en" };
-      const payload =
-        source.kind === "book"
-          ? { ...base, book_id: source.bookId, page_or_location: source.pageOrLocation }
-          : { ...base, video_id: source.videoId, video_timestamp_s: source.timestampSeconds };
+      let payload: Record<string, unknown>;
+      if (source.kind === "book") {
+        payload = { ...base, book_id: source.bookId, page_or_location: source.pageOrLocation };
+      } else if (source.kind === "video") {
+        payload = { ...base, video_id: source.videoId, video_timestamp_s: source.timestampSeconds };
+      } else {
+        payload = { ...base, article_id: source.articleId };
+      }
       return api.post<Capture>("/api/v1/captures", payload);
     },
     onSuccess: (data, variables) => {
@@ -1257,6 +1265,160 @@ export function useSaveProgress(bookId: string | null) {
         return Promise.reject(new Error("No bookId"));
       }
       return api.put<void>(`/api/v1/books/${bookId}/progress`, input);
+    },
+  });
+}
+
+// ===========================================================================
+// Articles
+// ===========================================================================
+
+export type Article = {
+  id: string;
+  user_id: string;
+  url: string;
+  title: string;
+  author: string | null;
+  language: string | null;
+  html_clean: string;
+  text_clean: string;
+  word_count: number;
+  fetched_at: string;
+  read_pct: number;
+};
+
+export type ArticleListItem = Omit<Article, "user_id" | "html_clean" | "text_clean">;
+
+export type ArticleHighlightColor = "yellow" | "green" | "blue" | "pink" | "orange";
+
+export type ArticleHighlight = {
+  id: string;
+  article_id: string;
+  user_id: string;
+  start_offset: number;
+  end_offset: number;
+  excerpt: string;
+  color: ArticleHighlightColor;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const articleKeys = {
+  all: ["articles"] as const,
+  list: () => [...articleKeys.all, "list"] as const,
+  detail: (id: string) => [...articleKeys.all, "detail", id] as const,
+  highlights: (id: string) => [...articleKeys.all, id, "highlights"] as const,
+};
+
+export function useArticles() {
+  return useQuery({
+    queryKey: articleKeys.list(),
+    queryFn: () => api.get<ArticleListItem[]>("/api/v1/articles"),
+  });
+}
+
+export function useArticle(id: string | null) {
+  return useQuery({
+    queryKey: id ? articleKeys.detail(id) : ["articles", "noop"],
+    queryFn: () => api.get<Article>(`/api/v1/articles/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateArticle(opts?: {
+  onSuccess?: (a: Article) => void;
+  onError?: (err: Error) => void;
+}) {
+  const qc = useQueryClient();
+  return useMutation<Article, Error, { url: string }>({
+    mutationFn: (body) => api.post<Article>("/api/v1/articles", body),
+    onSuccess: (article) => {
+      qc.invalidateQueries({ queryKey: articleKeys.list() });
+      qc.setQueryData(articleKeys.detail(article.id), article);
+      opts?.onSuccess?.(article);
+    },
+    onError: opts?.onError,
+  });
+}
+
+export function useDeleteArticle() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.del(`/api/v1/articles/${id}`),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: articleKeys.list() });
+      qc.removeQueries({ queryKey: articleKeys.detail(id) });
+    },
+  });
+}
+
+export function useUpdateArticleProgress() {
+  const qc = useQueryClient();
+  return useMutation<Article, Error, { id: string; read_pct: number }>({
+    mutationFn: ({ id, read_pct }) =>
+      api.patch<Article>(`/api/v1/articles/${id}/progress`, { read_pct }),
+    onSuccess: (article) => {
+      qc.setQueryData(articleKeys.detail(article.id), article);
+    },
+  });
+}
+
+export function useArticleHighlights(articleId: string | null) {
+  return useQuery({
+    queryKey: articleId
+      ? articleKeys.highlights(articleId)
+      : ["articles", "highlights", "noop"],
+    queryFn: () =>
+      api.get<ArticleHighlight[]>(`/api/v1/articles/${articleId}/highlights`),
+    enabled: !!articleId,
+  });
+}
+
+export function useCreateArticleHighlight(articleId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    ArticleHighlight,
+    Error,
+    {
+      start_offset: number;
+      end_offset: number;
+      color: ArticleHighlightColor;
+      note?: string | null;
+    }
+  >({
+    mutationFn: (body) =>
+      api.post<ArticleHighlight>(`/api/v1/articles/${articleId}/highlights`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: articleKeys.highlights(articleId) });
+    },
+  });
+}
+
+export function useUpdateArticleHighlight(articleId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    ArticleHighlight,
+    Error,
+    {
+      id: string;
+      patch: { color?: ArticleHighlightColor; note?: string | null };
+    }
+  >({
+    mutationFn: ({ id, patch }) =>
+      api.patch<ArticleHighlight>(`/api/v1/articles/highlights/${id}`, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: articleKeys.highlights(articleId) });
+    },
+  });
+}
+
+export function useDeleteArticleHighlight(articleId: string) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.del(`/api/v1/articles/highlights/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: articleKeys.highlights(articleId) });
     },
   });
 }
