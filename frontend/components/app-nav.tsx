@@ -9,6 +9,7 @@ import {
   BarChart3,
   Headphones,
   Video,
+  FileText,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ import { useCapturesList, useReviewQueue } from "@/lib/api/queries";
 type NavItemKey =
   | "library"
   | "videos"
+  | "articles"
   | "vocabulary"
   | "pronounce"
   | "srs"
@@ -30,6 +32,7 @@ const NAV_ITEMS: {
 }[] = [
   { key: "library", href: "/library", label: "Biblioteca", icon: Library },
   { key: "videos", href: "/videos", label: "Videos", icon: Video },
+  { key: "articles", href: "/articles", label: "Artículos", icon: FileText },
   {
     key: "vocabulary",
     href: "/vocabulary",
