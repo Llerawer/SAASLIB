@@ -564,8 +564,12 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
             viewerEl,
             () => gestureModeRef.current,
             {
-              onPrev: () => renditionRef.current?.prev(),
-              onNext: () => renditionRef.current?.next(),
+              // Use the locations-aware navigateRelative so wheel
+              // navigation respects the same per-virtual-page semantics
+              // as the toolbar chevrons. Native rendition.prev() lands
+              // mid-book on long-spine EPUBs (Gutenberg Jekyll & Hyde).
+              onPrev: () => navigateRelative(-1),
+              onNext: () => navigateRelative(1),
             },
           );
           gestureCleanups.push(detachHostWheel);
@@ -758,8 +762,11 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
               doc,
               () => gestureModeRef.current,
               {
-                onPrev: () => renditionRef.current?.prev(),
-                onNext: () => renditionRef.current?.next(),
+                // Same locations-aware nav as the toolbar + host wheel.
+                // Without this, swipes / edge-taps inside the iframe
+                // would still trigger the buggy native rendition.prev().
+                onPrev: () => navigateRelative(-1),
+                onNext: () => navigateRelative(1),
                 onLongPress: handleLongPress,
               },
             );
