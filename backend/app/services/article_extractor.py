@@ -64,68 +64,129 @@ class ExtractionError(Exception):
     PDF, network failure). The API layer maps these to HTTP 422."""
 
 
+import asyncio
 import re
 
+import cloudscraper
 import httpx
 import trafilatura
 
 
 _HTTP_TIMEOUT_S = 15.0
+_CLOUDSCRAPER_TIMEOUT_S = 25.0  # Slower because it negotiates JS challenges.
 _MAX_HTML_BYTES = 5_000_000
 _MIN_TEXT_LEN = 300
 
-_USER_AGENT = "LinguaReader/1.0 (+articles; contact gerardo@nedi.mx)"
+# Use a real Chrome UA — many sites block "LinguaReader" outright. The
+# attribution stays in the request via `Via` / contact info isn't standard
+# enough to be worth a header (and would itself trigger more blocking).
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/130.0.0.0 Safari/537.36"
+)
 
 
 def _count_words(text: str) -> int:
     return len(re.findall(r"\b\w+\b", text))
 
 
+def _looks_waf_blocked(status_code: int, body: str) -> bool:
+    """Heuristic: response looks like a Cloudflare / WAF challenge page,
+    not real content. Used to decide whether to retry via cloudscraper."""
+    if status_code in (403, 429, 503):
+        return True
+    lower = body.lower()
+    waf_markers = (
+        "cf-chl",                # Cloudflare challenge
+        "cf-ray:",
+        "checking your browser", # Cloudflare interstitial
+        "challenge-platform",    # Cloudflare turnstile
+        "_incapsula_",           # Imperva/Incapsula
+        "akamai",                # Akamai bot manager (when in body)
+    )
+    return any(m in lower for m in waf_markers)
+
+
+def _fetch_via_cloudscraper(url: str) -> tuple[str, str]:
+    """Sync — runs in a thread from `extract()`. Returns (html, content_type)."""
+    scraper = cloudscraper.create_scraper(
+        browser={"browser": "chrome", "platform": "windows", "mobile": False},
+    )
+    r = scraper.get(url, timeout=_CLOUDSCRAPER_TIMEOUT_S, allow_redirects=True)
+    r.raise_for_status()
+    ctype = r.headers.get("content-type", "")
+    return r.text, ctype
+
+
+async def _fetch_html(url: str) -> tuple[str, str]:
+    """Two-stage fetch: httpx first (fast), cloudscraper on timeout / 403 /
+    429 / WAF challenge body (slower but bypasses Cloudflare basic).
+
+    Returns (html, content_type). Raises ExtractionError with a message a
+    human can act on.
+    """
+    waf_blocked = False
+    httpx_err: Exception | None = None
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=_HTTP_TIMEOUT_S,
+            follow_redirects=True,
+            headers={"User-Agent": _USER_AGENT},
+        ) as client:
+            resp = await client.get(url)
+        # Don't raise_for_status here — let the WAF check decide.
+        if _looks_waf_blocked(resp.status_code, resp.text):
+            waf_blocked = True
+        elif 400 <= resp.status_code < 600:
+            raise ExtractionError(
+                f"El sitio devolvió HTTP {resp.status_code}. "
+                f"Probablemente requiere login, está caído, o bloquea bots."
+            )
+        else:
+            return resp.text, resp.headers.get("content-type", "")
+    except ExtractionError:
+        raise
+    except httpx.TimeoutException as e:
+        httpx_err = e
+        waf_blocked = True
+    except httpx.HTTPError as e:
+        httpx_err = e
+
+    if waf_blocked:
+        try:
+            return await asyncio.to_thread(_fetch_via_cloudscraper, url)
+        except Exception as e:
+            raise ExtractionError(
+                f"Fetch failed (httpx + cloudscraper): {e}"
+            ) from e
+
+    msg = str(httpx_err) or (type(httpx_err).__name__ if httpx_err else "unknown")
+    raise ExtractionError(f"Fetch failed: {msg}")
+
+
 async def extract(url: str) -> ExtractionResult:
     """Fetch `url`, run trafilatura, return cleaned content + metadata.
 
-    Raises ExtractionError on:
-      - network failure / timeout / HTTP error status
-      - Content-Type indicates PDF or other non-HTML
-      - HTML body exceeds _MAX_HTML_BYTES (likely garbage / DoS)
-      - trafilatura returns < _MIN_TEXT_LEN chars (paywall, JS-only SPA,
-        cookie banner, error page)
+    Two-stage fetch: httpx (fast) → cloudscraper fallback on Cloudflare /
+    timeout / 4xx-5xx-marked-as-WAF. Then content-type / size guards, then
+    trafilatura extraction.
+
+    Raises ExtractionError on any failure with a message safe to surface
+    to the user (mapped to HTTP 422 by the API layer).
     """
-    async with httpx.AsyncClient(
-        timeout=_HTTP_TIMEOUT_S,
-        follow_redirects=True,
-        headers={"User-Agent": _USER_AGENT},
-    ) as client:
-        try:
-            resp = await client.get(url)
-            resp.raise_for_status()
-        except httpx.TimeoutException as e:
-            raise ExtractionError(
-                "El sitio tardó demasiado en responder (>15s). Esto suele "
-                "pasar con sitios protegidos por Cloudflare u otros WAFs "
-                "que bloquean lectores automáticos."
-            ) from e
-        except httpx.HTTPStatusError as e:
-            raise ExtractionError(
-                f"El sitio devolvió HTTP {e.response.status_code}. "
-                f"Probablemente requiere login, está caído, o bloquea bots."
-            ) from e
-        except httpx.HTTPError as e:
-            msg = str(e) or type(e).__name__
-            raise ExtractionError(f"Fetch failed: {msg}") from e
+    html, ctype = await _fetch_html(url)
+    ctype = ctype.lower()
 
-        ctype = resp.headers.get("content-type", "").lower()
-        if "application/pdf" in ctype or url.lower().endswith(".pdf"):
-            raise ExtractionError("PDFs are not supported yet")
+    if "application/pdf" in ctype or url.lower().endswith(".pdf"):
+        raise ExtractionError("PDFs are not supported yet")
 
-        if "text/html" not in ctype and "application/xhtml" not in ctype:
-            raise ExtractionError(
-                f"Non-HTML content-type: {ctype or 'unknown'}"
-            )
+    if ctype and "text/html" not in ctype and "application/xhtml" not in ctype:
+        raise ExtractionError(f"Non-HTML content-type: {ctype}")
 
-        html = resp.text
-        if len(html) > _MAX_HTML_BYTES:
-            raise ExtractionError("HTML payload too large")
+    if len(html) > _MAX_HTML_BYTES:
+        raise ExtractionError("HTML payload too large")
 
     extracted_html = trafilatura.extract(
         html,

@@ -165,4 +165,26 @@ def test_extract_word_count_matches_re():
     assert _count_words("hyphen-word") == 2  # `\b\w+\b` splits on `-`
 
 
+def test_looks_waf_blocked_status_codes():
+    from app.services.article_extractor import _looks_waf_blocked
+    # 403 / 429 / 503 always look WAF-y regardless of body.
+    assert _looks_waf_blocked(403, "anything")
+    assert _looks_waf_blocked(429, "anything")
+    assert _looks_waf_blocked(503, "anything")
+    # 200/404 don't trigger fallback even with empty body.
+    assert not _looks_waf_blocked(200, "<html>real content</html>")
+    assert not _looks_waf_blocked(404, "Not Found")
+
+
+def test_looks_waf_blocked_body_markers():
+    from app.services.article_extractor import _looks_waf_blocked
+    # Cloudflare challenge interstitial.
+    assert _looks_waf_blocked(200, "<html>Checking your browser before...</html>")
+    assert _looks_waf_blocked(200, '<script src="/cdn-cgi/challenge-platform/h/g/orchestrate/jsch/v1?ray=cf-chl"></script>')
+    # Imperva.
+    assert _looks_waf_blocked(200, "var _Incapsula_Resource = ...")
+    # Plain content doesn't trigger.
+    assert not _looks_waf_blocked(200, "<html><body><p>Real article text here.</p></body></html>")
+
+
 import httpx  # noqa: E402  -- needed for the network failure test above
