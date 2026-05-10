@@ -1058,7 +1058,17 @@ type CardUpdatePatch = {
 export function useUpdateCard() {
   const qc = useQueryClient();
   return useMutation<Card, Error, { id: string; patch: CardUpdatePatch }>({
-    mutationFn: ({ id, patch }) => api.put<Card>(`/api/v1/cards/${id}`, patch),
+    mutationFn: ({ id, patch }) => {
+      // Guard: callers occasionally pass undefined when card state hasn't
+      // settled (race between sheet open and queue refetch). Without this
+      // the request goes out as PUT /cards/undefined and the DB rejects
+      // with a uuid syntax 500. Fail fast on the client with a real
+      // error so we can trace the call site.
+      if (!id || id === "undefined") {
+        throw new Error("useUpdateCard: missing card id");
+      }
+      return api.put<Card>(`/api/v1/cards/${id}`, patch);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cards"] });
       qc.invalidateQueries({ queryKey: ["reviews-queue"] });

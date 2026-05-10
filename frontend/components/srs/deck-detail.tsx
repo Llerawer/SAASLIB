@@ -89,7 +89,7 @@ export function DeckDetail({ deckId, onSelectDeck, onStartReview }: Props) {
       />
       {editing && (
         <EditCardSheet
-          card={editing as never}
+          card={editing}
           open={true}
           onOpenChange={(v) => !v && setEditing(null)}
         />

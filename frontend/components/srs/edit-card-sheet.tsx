@@ -16,16 +16,36 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { useUpdateCard, type ReviewQueueCard } from "@/lib/api/queries";
+import { useUpdateCard, type Card, type ReviewQueueCard } from "@/lib/api/queries";
 import { DeckField } from "./deck-field";
 import { MediaUpload } from "./media-upload";
+
+/**
+ * Accept either shape — ReviewQueueCard (from /reviews/queue, key `card_id`)
+ * or Card (from /cards, key `id`). The deck-detail browser hands us Card,
+ * the reviewer hands us ReviewQueueCard. Resolve the actual UUID once
+ * here so downstream code stops needing `as never` casts to bypass the
+ * type mismatch (which is exactly what caused the silent
+ * `PUT /cards/undefined` 500 we just chased).
+ */
+type EditableCard = ReviewQueueCard | Card;
+
+function resolveCardId(card: EditableCard): string | null {
+  if ("card_id" in card && card.card_id) return card.card_id;
+  if ("id" in card && card.id) return card.id;
+  return null;
+}
+
+function resolveDeckId(card: EditableCard): string {
+  return card.deck_id;
+}
 
 export function EditCardSheet({
   card,
   open,
   onOpenChange,
 }: {
-  card: ReviewQueueCard | null;
+  card: EditableCard | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -34,6 +54,8 @@ export function EditCardSheet({
   const [definition, setDefinition] = useState("");
   const [mnemonic, setMnemonic] = useState("");
   const [notes, setNotes] = useState("");
+
+  const cardId = card ? resolveCardId(card) : null;
 
   // Re-seed local state when the card identity changes (user opens edit on a
   // different card). Set-state-in-effect intentional here.
@@ -45,14 +67,17 @@ export function EditCardSheet({
       setMnemonic(card.mnemonic ?? "");
       setNotes(card.notes ?? "");
     }
-  }, [card?.card_id]);
+  }, [cardId]);
   /* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
   async function save() {
-    if (!card) return;
+    if (!card || !cardId) {
+      toast.error("Tarjeta sin identificador");
+      return;
+    }
     try {
       await update.mutateAsync({
-        id: card.card_id,
+        id: cardId,
         patch: {
           translation: translation.trim() || null,
           definition: definition.trim() || null,
@@ -126,7 +151,7 @@ export function EditCardSheet({
           </Field>
 
           {card && (
-            <DeckField cardId={card.card_id} deckId={card.deck_id} />
+            <DeckField cardId={cardId ?? ""} deckId={resolveDeckId(card)} />
           )}
 
           {card && (
@@ -135,7 +160,7 @@ export function EditCardSheet({
                 Multimedia
               </h3>
               <MediaUpload
-                cardId={card.card_id}
+                cardId={cardId ?? ""}
                 imageUrl={card.user_image_url}
                 audioUrl={card.user_audio_url}
               />
