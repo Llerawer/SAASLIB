@@ -156,6 +156,7 @@ type Book = {
     length: number;
     cfiFromPercentage: (pct: number) => string;
     locationFromCfi: (cfi: string) => number;
+    cfiFromLocation: (loc: number) => string;
   };
   navigation?: { toc: TocItem[] };
   getRange?: (cfi: string) => Range | null;
@@ -197,6 +198,9 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
   const [currentLocation, setCurrentLocation] = useState<number | null>(null);
   const [totalLocations, setTotalLocations] = useState<number | null>(null);
   const [currentCfi, setCurrentCfi] = useState<string | null>(null);
+  // Mirror of currentCfi readable inside stable callbacks (prev / next) so
+  // they don't need to depend on the state and re-create on every page.
+  const currentCfiRef = useRef<string | null>(null);
   const [toc, setToc] = useState<TocItem[]>([]);
 
   // ---------- Live mirrors of inputs (refs read by long-lived listeners) ----------
@@ -270,8 +274,45 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
 
   // ---------- Imperative actions ----------
 
-  const prev = useCallback(() => renditionRef.current?.prev(), []);
-  const next = useCallback(() => renditionRef.current?.next(), []);
+  // Locations-aware navigation. Native rendition.prev() / .next() snap to
+  // the next/prev VIEWPORT inside the current spine item. For EPUBs where
+  // the last chapter is one giant XHTML file (common in Gutenberg
+  // dumps — Jekyll & Hyde, Moreau, etc.) calling prev() near the end of
+  // the book lands the reader at the start of that chapter — could be
+  // hundreds of virtual pages back. Navigate by virtual location instead
+  // when book.locations is generated; fall back to native otherwise (cold
+  // start or short books where it doesn't matter).
+  const navigateRelative = useCallback((delta: -1 | 1) => {
+    const r = renditionRef.current;
+    const b = bookRef.current;
+    if (!r) return;
+
+    if (b?.locations?.length && currentCfiRef.current) {
+      try {
+        const idx = b.locations.locationFromCfi(currentCfiRef.current);
+        if (typeof idx === "number") {
+          const total = b.locations.length;
+          const target = idx + delta;
+          if (target >= 0 && target < total) {
+            const cfi = b.locations.cfiFromLocation(target);
+            if (cfi) {
+              r.display(cfi).catch(() => undefined);
+              return;
+            }
+          }
+        }
+      } catch {
+        // Locations lookup can throw on malformed CFIs from older Gutenberg
+        // EPUBs — fall through to native navigation.
+      }
+    }
+
+    if (delta < 0) r.prev();
+    else r.next();
+  }, []);
+
+  const prev = useCallback(() => navigateRelative(-1), [navigateRelative]);
+  const next = useCallback(() => navigateRelative(1), [navigateRelative]);
 
   const jumpToHref = useCallback((href: string) => {
     renditionRef.current?.display(href).catch(() => undefined);
@@ -489,6 +530,9 @@ export function useEpubReader(input: UseEpubReaderInput): UseEpubReaderOutput {
           const pct = location.start.percentage ?? 0;
           setProgressPct(pct);
           setCurrentCfi(location.start.cfi);
+          // Sync ref so prev()/next() can read the current CFI synchronously
+          // without depending on React state being committed first.
+          currentCfiRef.current = location.start.cfi;
 
           let loc: number | null = null;
           const b = bookRef.current;
