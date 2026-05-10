@@ -1432,3 +1432,165 @@ export function useDeleteArticleHighlight(articleId: string) {
     },
   });
 }
+
+// ===========================================================================
+// Article Sources (bulk doc importer)
+// ===========================================================================
+
+export type ImportStatus =
+  | "queued"
+  | "discovering"
+  | "importing"
+  | "partial"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+export type GeneratorKind = "sphinx" | "docusaurus" | "mkdocs" | "unknown";
+
+export type ArticleSource = {
+  id: string;
+  user_id: string;
+  name: string;
+  root_url: string;
+  generator: GeneratorKind;
+  import_status: ImportStatus;
+  discovered_pages: number;
+  queued_pages: number;
+  processed_pages: number;
+  failed_pages: number;
+  started_at: string;
+  finished_at: string | null;
+  error_message: string | null;
+};
+
+export type SourceLeafEntry = {
+  url: string;
+  title: string;
+  toc_path: string;
+  parent_toc_path: string | null;
+  toc_order: number;
+};
+
+export type SourcePreview = {
+  name: string;
+  generator: GeneratorKind;
+  confidence: number;
+  root_url: string;
+  leaves: SourceLeafEntry[];
+  leaf_count: number;
+};
+
+const sourceKeys = {
+  all: ["article-sources"] as const,
+  list: () => [...sourceKeys.all, "list"] as const,
+  detail: (id: string) => [...sourceKeys.all, "detail", id] as const,
+};
+
+/** Detection heuristic: client-side test to decide whether to call
+ *  /sources/preview vs the regular /articles endpoint. Pattern-based,
+ *  no network.
+ *
+ *  Matches if the URL looks index-like AND has a docs marker — either:
+ *   - hostname starts with `docs.` / `documentation.` / `help.` /
+ *     `learn.` / `reference.` / `api.`
+ *   - path contains `/docs/` `/documentation/` `/manual/` `/guide/`
+ *     `/reference/`
+ *
+ *  `/wiki/` is deliberately NOT in the patterns: Wikipedia-style pages
+ *  are individual articles, not a manual to bulk-import. */
+export function looksLikeDocsIndex(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase();
+    const path = url.pathname;
+    const segments = path.split("/").filter(Boolean);
+    // "Index-like" = ends in "/" OR very short path OR no file extension.
+    const isIndex =
+      path.endsWith("/") ||
+      segments.length <= 2 ||
+      !/\.\w+$/.test(path);
+    if (!isIndex) return false;
+
+    const docsHost = /^(docs|documentation|help|learn|reference|api)\./i.test(host);
+    const docsPath = /\/(docs|documentation|manual|guide|reference)\b/i.test(path);
+    return docsHost || docsPath;
+  } catch {
+    return false;
+  }
+}
+
+export function usePreviewSource(opts?: {
+  onError?: (err: Error) => void;
+}) {
+  return useMutation<SourcePreview, Error, { url: string }>({
+    mutationFn: (body) =>
+      api.post<SourcePreview>("/api/v1/articles/sources/preview", body),
+    onError: opts?.onError,
+  });
+}
+
+export function useCreateSource(opts?: {
+  onSuccess?: (s: ArticleSource) => void;
+  onError?: (err: Error) => void;
+}) {
+  const qc = useQueryClient();
+  return useMutation<ArticleSource, Error, { url: string }>({
+    mutationFn: (body) =>
+      api.post<ArticleSource>("/api/v1/articles/sources", body),
+    onSuccess: (source) => {
+      qc.invalidateQueries({ queryKey: sourceKeys.list() });
+      qc.setQueryData(sourceKeys.detail(source.id), source);
+      qc.invalidateQueries({ queryKey: articleKeys.list() });
+      opts?.onSuccess?.(source);
+    },
+    onError: opts?.onError,
+  });
+}
+
+export function useArticleSources(opts?: {
+  /** Poll interval in ms — pass a number to enable polling, or undefined to disable. */
+  pollMs?: number;
+}) {
+  return useQuery({
+    queryKey: sourceKeys.list(),
+    queryFn: () => api.get<ArticleSource[]>("/api/v1/articles/sources"),
+    refetchInterval: opts?.pollMs,
+  });
+}
+
+export function useArticleSource(
+  id: string | null,
+  opts?: { pollMs?: number },
+) {
+  return useQuery({
+    queryKey: id ? sourceKeys.detail(id) : ["article-sources", "noop"],
+    queryFn: () => api.get<ArticleSource>(`/api/v1/articles/sources/${id}`),
+    enabled: !!id,
+    refetchInterval: opts?.pollMs,
+  });
+}
+
+export function useCancelSource() {
+  const qc = useQueryClient();
+  return useMutation<ArticleSource, Error, string>({
+    mutationFn: (id) =>
+      api.post<ArticleSource>(`/api/v1/articles/sources/${id}/cancel`, {}),
+    onSuccess: (source) => {
+      qc.invalidateQueries({ queryKey: sourceKeys.list() });
+      qc.setQueryData(sourceKeys.detail(source.id), source);
+    },
+  });
+}
+
+export function useDeleteSource() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.del(`/api/v1/articles/sources/${id}`),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: sourceKeys.list() });
+      qc.removeQueries({ queryKey: sourceKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: articleKeys.list() });
+    },
+  });
+}
