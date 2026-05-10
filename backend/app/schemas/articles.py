@@ -39,6 +39,8 @@ class ArticleListItem(BaseModel):
     word_count: int
     fetched_at: datetime
     read_pct: float
+    source_id: str | None = None
+    toc_path: str | None = None
 
 
 class ArticleOut(BaseModel):
@@ -54,6 +56,10 @@ class ArticleOut(BaseModel):
     word_count: int
     fetched_at: datetime
     read_pct: float
+    source_id: str | None = None
+    toc_path: str | None = None
+    parent_toc_path: str | None = None
+    toc_order: int | None = None
 
 
 class ArticleHighlightCreate(BaseModel):

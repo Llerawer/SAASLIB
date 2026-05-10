@@ -1295,6 +1295,10 @@ export type Article = {
   word_count: number;
   fetched_at: string;
   read_pct: number;
+  source_id?: string | null;
+  toc_path?: string | null;
+  parent_toc_path?: string | null;
+  toc_order?: number | null;
 };
 
 export type ArticleListItem = Omit<Article, "user_id" | "html_clean" | "text_clean">;
@@ -1321,10 +1325,16 @@ const articleKeys = {
   highlights: (id: string) => [...articleKeys.all, id, "highlights"] as const,
 };
 
-export function useArticles() {
+export function useArticles(opts?: { sourceId?: string | null }) {
+  const sourceId = opts?.sourceId ?? null;
   return useQuery({
-    queryKey: articleKeys.list(),
-    queryFn: () => api.get<ArticleListItem[]>("/api/v1/articles"),
+    queryKey: sourceId
+      ? [...articleKeys.list(), { sourceId }]
+      : articleKeys.list(),
+    queryFn: () => {
+      const qs = sourceId ? `?source_id=${encodeURIComponent(sourceId)}` : "";
+      return api.get<ArticleListItem[]>(`/api/v1/articles${qs}`);
+    },
   });
 }
 

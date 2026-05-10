@@ -24,6 +24,12 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   article: ArticleListItemType;
+  /** Display name of the source this article belongs to (looked up by
+   *  the parent from the sources list). null = single-paste article. */
+  sourceName?: string | null;
+  /** Click handler for the source badge — typically toggles the
+   *  source filter in the parent list. */
+  onSourceClick?: (sourceId: string) => void;
 };
 
 function domainFromUrl(url: string): string {
@@ -38,17 +44,31 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export function ArticleListItem({ article }: Props) {
+export function ArticleListItem({ article, sourceName, onSourceClick }: Props) {
   const deleteMut = useDeleteArticle();
   const isRead = article.read_pct >= 0.95;
 
   return (
     <li className="group flex items-center gap-3 rounded-lg border bg-background hover:bg-muted/40 transition-colors p-3">
-      <Link
-        href={`/articles/${article.id}`}
-        className="flex-1 min-w-0"
-        aria-label={`Leer ${article.title}`}
-      >
+      <div className="flex-1 min-w-0">
+        {sourceName && article.source_id && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              onSourceClick?.(article.source_id!);
+            }}
+            className="inline-flex items-center text-[10px] uppercase tracking-wider font-semibold text-accent hover:underline mb-1"
+            aria-label={`Filtrar por ${sourceName}`}
+          >
+            [{sourceName}]
+          </button>
+        )}
+        <Link
+          href={`/articles/${article.id}`}
+          className="block min-w-0"
+          aria-label={`Leer ${article.title}`}
+        >
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="font-serif text-base font-semibold truncate">
             {article.title}
@@ -84,7 +104,8 @@ export function ArticleListItem({ article }: Props) {
             {Math.round(article.read_pct * 100)}%
           </span>
         </div>
-      </Link>
+        </Link>
+      </div>
       <AlertDialog>
         <AlertDialogTrigger
           render={

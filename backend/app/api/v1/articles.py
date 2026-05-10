@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
@@ -27,10 +27,12 @@ router = APIRouter(prefix="/api/v1/articles", tags=["articles"])
 
 _ARTICLE_COLS = (
     "id, user_id, url, title, author, language, html_clean, text_clean, "
-    "word_count, fetched_at, read_pct"
+    "word_count, fetched_at, read_pct, source_id, toc_path, parent_toc_path, "
+    "toc_order"
 )
 _ARTICLE_LIST_COLS = (
-    "id, url, title, author, language, word_count, fetched_at, read_pct"
+    "id, url, title, author, language, word_count, fetched_at, read_pct, "
+    "source_id, toc_path"
 )
 _HL_COLS = (
     "id, article_id, user_id, start_offset, end_offset, excerpt, color, "
@@ -136,14 +138,19 @@ async def create_article(
 @limiter.limit("60/minute")
 async def list_articles(
     request: Request,
+    source_id: str | None = Query(default=None, max_length=64),
     auth: AuthInfo = Depends(get_auth),
 ):
     client = get_user_client(auth.jwt)
-    rows = (
+    query = (
         client.table("articles")
         .select(_ARTICLE_LIST_COLS)
         .eq("user_id", auth.user_id)
-        .order("fetched_at", desc=True)
+    )
+    if source_id:
+        query = query.eq("source_id", source_id)
+    rows = (
+        query.order("fetched_at", desc=True)
         .execute()
         .data
         or []
