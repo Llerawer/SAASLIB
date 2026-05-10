@@ -186,13 +186,13 @@ export function CardStack({
 // Stack itself — separated so the loading/error wrapper above stays clean.
 // ---------------------------------------------------------------------------
 
-// Visual stack tuning. Calibrated to match the demo the user shared:
-// offsets big enough that 6+ layers register as a real stack, with the
-// back cards showing as 25-30 px slivers above the front card.
+// Visual stack tuning. Pixel offsets (not %) so the visible separation
+// stays the same regardless of card aspect ratio — % offsets felt flat
+// because they were tied to the (relatively tall) parent height.
 const VISIBLE_DEPTH = 7;
 const SWIPE_THRESHOLD = 60;
 const VELOCITY_THRESHOLD = 500;
-const STACK_OFFSET_PCT = 7; // % of card height each layer rises by
+const STACK_OFFSET_PX = 18; // each back layer rises by this many px
 const STACK_SCALE_STEP = 0.05; // scale shrink per layer
 
 function Stack({
@@ -285,11 +285,17 @@ function Stack({
 
   return (
     <div
-      // aspect-[5/4] = slightly landscape. Wider than tall so the stack
-      // offsets read as separate "cards" stacked, not a single tall
-      // column. Still gives word + image + translation room. Padded
-      // top so the back layers have room to peek above the front card.
-      className="relative w-80 sm:w-96 aspect-[5/4] max-w-full mx-auto pt-16 sm:pt-20"
+      // The container reserves space ABOVE the front card so the
+      // back layers (each rising by STACK_OFFSET_PX) have room to
+      // peek without bleeding outside. Aspect on the inner card area
+      // is enforced via min-h on the front card itself, not on the
+      // container — this lets the container grow to fit the stack.
+      className="relative w-80 sm:w-96 max-w-full mx-auto pt-32"
+      style={{
+        // Inner card area: a 4:3 box. The pt-32 above gives 128 px of
+        // headroom which fits the 7 × 18 = 126 px tallest stack.
+        height: "calc(min(100vw - 2rem, 24rem) * 0.75 + 8rem)",
+      }}
       onDragEnter={onFileDragEnter}
       onDragLeave={onFileDragLeave}
       onDragOver={onFileDragOver}
@@ -308,7 +314,11 @@ function Stack({
             <motion.div
               key={card.id}
               className={cn(
-                "absolute inset-0 rounded-xl border bg-card overflow-hidden",
+                // Position: fill the container's inner box but with the
+                // bottom anchored, so layers rising by STACK_OFFSET_PX
+                // peek out the top.
+                "absolute left-0 right-0 bottom-0 rounded-xl border bg-card overflow-hidden",
+                "aspect-[4/3]",
                 isFront ? "shadow-xl" : "shadow",
                 isFront
                   ? "cursor-grab active:cursor-grabbing"
@@ -320,10 +330,10 @@ function Stack({
                 touchAction: "none",
               }}
               animate={{
-                // Layers stack up by rising 7 % of card height each
-                // and shrinking 5 % each — matches the demo the user
-                // referenced where 6+ layers register as a real stack.
-                top: `${i * -STACK_OFFSET_PCT}%`,
+                // Pixel offset = predictable visible spacing regardless
+                // of card height. 18 px per layer lets 6-7 layers show
+                // as crisp slivers above the front card.
+                y: i * -STACK_OFFSET_PX,
                 scale: 1 - i * STACK_SCALE_STEP,
                 filter: `brightness(${brightness})`,
                 zIndex: baseZ,
