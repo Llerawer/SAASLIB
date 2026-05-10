@@ -1,12 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  AnimatePresence,
-  motion,
-  useMotionValue,
-  useTransform,
-} from "framer-motion";
+import { motion, useMotionValue, useTransform } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
@@ -313,8 +308,17 @@ function Stack({
       onDragOver={onFileDragOver}
       onDrop={onFileDrop}
     >
-      <AnimatePresence initial={false}>
-        {visible.map((card, i) => {
+      {/*
+        AnimatePresence removed on purpose. The array rotation
+        (moveToEnd / moveToStart) keeps the same set of <motion.div>s,
+        just with different `animate` props per layer. With
+        AnimatePresence + initial={false} every reorder was making
+        framer treat the cards as enter/exit, which snapped them to
+        their final state without the layered stack visible. Plain
+        children with stable `key={card.id}` lets framer detect the
+        prop change and run the spring transition smoothly.
+      */}
+      {visible.map((card, i) => {
           const isFront = i === 0;
           const baseZ = visible.length - i;
           // Brightness instead of opacity for the back cards: keeps text
@@ -361,11 +365,6 @@ function Stack({
                 // Front card fades out briefly during a confirmed swipe
                 // before the array rotates underneath it.
                 opacity: dragDirection && isFront ? 0 : 1,
-              }}
-              exit={{
-                opacity: 0,
-                scale: 0.85,
-                transition: { duration: 0.18 },
               }}
               transition={{
                 type: "spring",
@@ -427,7 +426,6 @@ function Stack({
             </motion.div>
           );
         })}
-      </AnimatePresence>
 
       {/* Drop overlay — only over the visible area while dragging or
           uploading. Sits above the cards so the user sees feedback even
