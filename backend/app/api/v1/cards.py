@@ -426,6 +426,16 @@ async def media_upload_url(
     # storage.objects RLS policies that mirror what we already check here,
     # which is duplication that gets out of sync.
     admin = get_admin_client()
+    # create_signed_upload_url returns 409 Duplicate if the path already
+    # exists (replacing an image, retrying after a failed PUT, etc.).
+    # Remove first; ignore "not found" — the call is idempotent.
+    try:
+        admin.storage.from_("cards-media").remove([path])
+    except Exception:
+        # Most common case: path doesn't exist yet. Less common: storage
+        # transient. Either way, the next create_signed_upload_url tells
+        # us if there's a real problem.
+        pass
     signed = admin.storage.from_("cards-media").create_signed_upload_url(path)
     return MediaUploadUrlResult(
         upload_url=signed["signedUrl"],
