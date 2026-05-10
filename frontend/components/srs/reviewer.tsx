@@ -9,6 +9,7 @@ import { useReviewerKeyboard } from "@/lib/srs/use-reviewer-keyboard";
 import { useSessionTracker, type SessionMetrics } from "@/lib/srs/use-session-tracker";
 import { useCognitiveThrottle } from "@/lib/srs/use-throttle";
 import { ReviewCard } from "./review-card";
+import { CardImageDropzone } from "./card-image-dropzone";
 import { SrsGradeButtons } from "./grade-buttons";
 import { CardMenu } from "./card-menu";
 import { EditCardSheet } from "./edit-card-sheet";
@@ -147,17 +148,19 @@ export function Reviewer({
         tabIndex={-1}
         className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
       >
-        <ReviewCard
-          card={card}
-          showBack={showBack}
-          onFlip={flip}
-          onPlayAudio={playAudio}
-          onPlayUserAudio={playUserAudio}
-          onListenNatives={() =>
-            setPronounceSheet({ word: card.word, autoPlay: true })
-          }
-          onOpenMenu={openMenu}
-        />
+        <CardImageDropzone cardId={card.card_id}>
+          <ReviewCard
+            card={card}
+            showBack={showBack}
+            onFlip={flip}
+            onPlayAudio={playAudio}
+            onPlayUserAudio={playUserAudio}
+            onListenNatives={() =>
+              setPronounceSheet({ word: card.word, autoPlay: true })
+            }
+            onOpenMenu={openMenu}
+          />
+        </CardImageDropzone>
         <SrsGradeButtons
           intervals={intervals}
           disabled={!showBack || grade.isPending}
