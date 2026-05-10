@@ -15,6 +15,7 @@ import { CardFrontRecognition } from "./card-front-recognition";
 import { CardFrontProduction } from "./card-front-production";
 import { CardFrontCloze } from "./card-front-cloze";
 import { CardBack } from "./card-back";
+import { CardImage } from "./card-image";
 import { EnrichmentChips } from "./enrichment-chips";
 
 const VARIANT_LABEL: Record<Variant, string> = {
@@ -109,6 +110,17 @@ export function ReviewCard({
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
+        {/* Image lives on the FRONT (above the word/translation) so the
+            visual is part of the recall cue itself, not a reward after
+            flipping. Stays hidden if the card has no image. */}
+        {card.user_image_url && (
+          <CardImage
+            cardId={card.card_id}
+            url={card.user_image_url}
+            alt={card.word}
+          />
+        )}
+
         {variant === "recognition" && (
           <CardFrontRecognition
             card={card}

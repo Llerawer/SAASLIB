@@ -24,25 +24,10 @@ export function CardBack({
 
   return (
     <div className="w-full mt-8 space-y-4 text-sm border-t pt-6 animate-in fade-in-0 duration-200">
-      {card.user_image_url && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              window.open(card.user_image_url!, "_blank", "noopener,noreferrer");
-            }}
-            className="block max-w-full rounded-lg overflow-hidden border"
-            aria-label="Ver imagen en grande"
-          >
-            <img
-              src={card.user_image_url}
-              alt=""
-              className="max-h-60 w-auto object-contain"
-            />
-          </button>
-        </div>
-      )}
+      {/* Image moved to the FRONT of the card (see CardImage in
+          review-card.tsx). Reasoning: the image is a recall cue, not a
+          reveal — having it appear only after flipping treats it as
+          spoiler reward instead of priming material. */}
 
       {card.translation && (
         <div className="text-center">
