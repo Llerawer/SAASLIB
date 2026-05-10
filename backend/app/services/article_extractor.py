@@ -122,6 +122,12 @@ def _fetch_via_cloudscraper(url: str) -> tuple[str, str]:
     return r.text, ctype
 
 
+async def fetch_html(url: str) -> tuple[str, str]:
+    """Public re-export for the source importer (which needs raw HTML
+    before adapter detection)."""
+    return await _fetch_html(url)
+
+
 async def _fetch_html(url: str) -> tuple[str, str]:
     """Two-stage fetch: httpx first (fast), cloudscraper on timeout / 403 /
     429 / WAF challenge body (slower but bypasses Cloudflare basic).

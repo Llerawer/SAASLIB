@@ -12,6 +12,7 @@ import asyncio
 from app.api.v1 import (
     admin_enrichment,
     articles,
+    article_sources,
     books,
     bookmarks,
     captures,
@@ -144,6 +145,7 @@ async def me(user_id: str = Depends(get_current_user_id)):
 
 app.include_router(admin_enrichment.router)
 app.include_router(articles.router)
+app.include_router(article_sources.router)
 app.include_router(books.router)
 app.include_router(bookmarks.router)
 app.include_router(captures.router)
