@@ -52,8 +52,13 @@ export function CardStack({
   // current rotation order. Re-seed when the server set changes (toggle
   // subdecks, mutation, etc.).
   const [cards, setCards] = useState<Card[]>([]);
+  // Position in the rotation, used for the "N / total" counter. Wraps
+  // mod total. Reset to 0 whenever the underlying set is reseeded
+  // (subdeck toggle, shuffle, server refetch, etc.).
+  const [currentIndex, setCurrentIndex] = useState(0);
   useEffect(() => {
     setCards(cardsQ.data ?? []);
+    setCurrentIndex(0);
   }, [cardsQ.data]);
 
   const total = cards.length;
@@ -61,20 +66,24 @@ export function CardStack({
 
   const moveToEnd = useCallback(() => {
     setCards((prev) => (prev.length <= 1 ? prev : [...prev.slice(1), prev[0]!]));
-  }, []);
+    setCurrentIndex((i) => (total > 0 ? (i + 1) % total : 0));
+  }, [total]);
 
   const moveToStart = useCallback(() => {
     setCards((prev) =>
       prev.length <= 1 ? prev : [prev[prev.length - 1]!, ...prev.slice(0, -1)],
     );
-  }, []);
+    setCurrentIndex((i) => (total > 0 ? (i - 1 + total) % total : 0));
+  }, [total]);
 
   const shuffleCards = () => {
     setCards((prev) => [...prev].sort(() => Math.random() - 0.5));
+    setCurrentIndex(0);
   };
 
   const resetCards = () => {
     setCards(cardsQ.data ?? []);
+    setCurrentIndex(0);
   };
 
   // ---------- Loading / error / empty ----------
@@ -158,7 +167,7 @@ export function CardStack({
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-xs tabular-nums text-muted-foreground min-w-[3rem] text-center">
-              {total > 0 ? `1 / ${total}` : "0"}
+              {total > 0 ? `${currentIndex + 1} / ${total}` : "0"}
             </span>
             <Button
               variant="outline"
@@ -187,13 +196,15 @@ export function CardStack({
 // ---------------------------------------------------------------------------
 
 // Visual stack tuning. Pixel offsets (not %) so the visible separation
-// stays the same regardless of card aspect ratio — % offsets felt flat
-// because they were tied to the (relatively tall) parent height.
+// stays the same regardless of card aspect ratio. Calibrated with
+// transform-origin:top so the per-layer scale-down doesn't eat into
+// the visible offset (a center-origin scale of 0.95 was hiding ~7 px
+// of the 18 px sliver).
 const VISIBLE_DEPTH = 7;
 const SWIPE_THRESHOLD = 60;
 const VELOCITY_THRESHOLD = 500;
-const STACK_OFFSET_PX = 18; // each back layer rises by this many px
-const STACK_SCALE_STEP = 0.05; // scale shrink per layer
+const STACK_OFFSET_PX = 22; // each back layer rises by this many px
+const STACK_SCALE_STEP = 0.04; // scale shrink per layer (smaller now that origin is top)
 
 function Stack({
   cards,
@@ -317,9 +328,15 @@ function Stack({
                 // Position: fill the container's inner box but with the
                 // bottom anchored, so layers rising by STACK_OFFSET_PX
                 // peek out the top.
-                "absolute left-0 right-0 bottom-0 rounded-xl border bg-card overflow-hidden",
+                "absolute left-0 right-0 bottom-0 rounded-xl border-2 bg-card overflow-hidden",
                 "aspect-[4/3]",
-                isFront ? "shadow-xl" : "shadow",
+                // Stronger borders + shadows on back layers help the
+                // monochromatic stack read as separate cards (without
+                // image diversity to do that for us, the eye needs the
+                // edge to be obvious).
+                isFront
+                  ? "border-border shadow-2xl"
+                  : "border-border/70 shadow-lg",
                 isFront
                   ? "cursor-grab active:cursor-grabbing"
                   : "pointer-events-none",
@@ -328,6 +345,11 @@ function Stack({
                 rotateX: isFront ? rotateX : 0,
                 transformPerspective: 1000,
                 touchAction: "none",
+                // top-origin keeps the per-layer scale from cutting
+                // into the offset — back cards shrink toward their
+                // own bottom edge instead of toward their center, so
+                // the full STACK_OFFSET_PX of sliver stays visible.
+                transformOrigin: "top center",
               }}
               animate={{
                 // Pixel offset = predictable visible spacing regardless
