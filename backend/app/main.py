@@ -144,8 +144,8 @@ async def me(user_id: str = Depends(get_current_user_id)):
 
 
 app.include_router(admin_enrichment.router)
+app.include_router(article_sources.router)  # MUST be before articles.router so /sources matches first
 app.include_router(articles.router)
-app.include_router(article_sources.router)
 app.include_router(books.router)
 app.include_router(bookmarks.router)
 app.include_router(captures.router)
