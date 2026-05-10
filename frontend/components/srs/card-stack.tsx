@@ -298,14 +298,15 @@ function Stack({
 
   return (
     <div
-      // Fixed dimensions: width = card width, height = card + headroom
-      // for the stack. The cards inside are absolutely positioned with
-      // explicit pixel sizes (no aspect-ratio negotiation) so the
-      // back-layer offsets work predictably.
-      className="relative max-w-full mx-auto"
+      // Fixed dimensions, no max-w-full (was likely shrinking width
+      // when the parent was narrow), explicit overflow:visible so an
+      // ancestor with overflow-hidden can't clip the back-layer
+      // slivers above the front card.
+      className="relative mx-auto"
       style={{
         width: CARD_WIDTH_PX,
         height: CARD_HEIGHT_PX + HEADROOM_PX,
+        overflow: "visible",
       }}
       onDragEnter={onFileDragEnter}
       onDragLeave={onFileDragLeave}
@@ -325,10 +326,12 @@ function Stack({
             <motion.div
               key={card.id}
               className={cn(
-                "absolute rounded-xl border-2 bg-card overflow-hidden",
-                isFront
-                  ? "border-border shadow-2xl"
-                  : "border-border/70 shadow-lg",
+                "absolute rounded-xl border-2 overflow-hidden",
+                // Front card uses the standard --card token. Back layers
+                // use --muted (a slightly different surface) so the
+                // sliver above the front actually reads as a separate
+                // card, not as bleed of the same surface.
+                isFront ? "bg-card border-border shadow-2xl" : "bg-muted border-border shadow-lg",
                 isFront
                   ? "cursor-grab active:cursor-grabbing"
                   : "pointer-events-none",
