@@ -219,11 +219,31 @@ export function WordPopup({
     // (the "Nota personal" section adds ~150 px below the save button).
   }, [position, saved, savedCaptureId, loading]);
 
-  const style: React.CSSProperties = computedPos
+  // First-paint position: a quick clamp without measuring the popup's
+  // actual height. useLayoutEffect below replaces this with the precise
+  // position once we know the real height. The naive position is correct
+  // for the common case (popup below the pointer) so the first paint
+  // doesn't flash. Avoids the previous "display:none for one frame" gap
+  // that read as latency.
+  const naivePos = position
+    ? {
+        top: position.y + POPUP_GAP,
+        left: Math.max(
+          8,
+          Math.min(
+            position.x,
+            (typeof window !== "undefined" ? window.innerWidth : 1024) -
+              POPUP_WIDTH -
+              8,
+          ),
+        ),
+      }
+    : null;
+  const style: React.CSSProperties = naivePos
     ? {
         position: "fixed",
-        top: computedPos.top,
-        left: computedPos.left,
+        top: computedPos?.top ?? naivePos.top,
+        left: computedPos?.left ?? naivePos.left,
         zIndex: 1000,
         maxHeight: "calc(100vh - 16px)",
       }
@@ -350,11 +370,15 @@ export function WordPopup({
           </div>
         )}
 
-        {source.kind === "video" && contextSentence && (
+        {/* Context sentence — available INSTANT (no API call) for both
+            books and videos. Showing it before the dictionary data lands
+            gives the user something to read while translation/definition
+            stream in, killing the perception of "blank waiting". */}
+        {contextSentence && (
           <div>
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">
-                Cue completo
+                {source.kind === "video" ? "Cue completo" : "Contexto"}
               </div>
               {!cueTranslation && (
                 <button
@@ -368,7 +392,7 @@ export function WordPopup({
                 </button>
               )}
             </div>
-            <p className="text-xs font-serif text-foreground/85 leading-relaxed">
+            <p className="text-xs font-serif text-foreground/85 leading-relaxed italic">
               {contextSentence}
             </p>
             {cueTranslation && (
