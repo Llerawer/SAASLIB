@@ -6,11 +6,10 @@ import { Button } from "@/components/ui/button";
 import { useDeckTree } from "@/lib/decks/queries";
 import { buildDeckTree, deckPath } from "@/lib/decks/rules";
 import { DeckFan } from "./deck-fan";
-import { CardsList } from "./cards-list";
+import { CardStack } from "./card-stack";
 import { ReviewAllCTA } from "./review-all-cta";
 import { DeckMenu } from "./deck-menu";
 import { EditCardSheet } from "./edit-card-sheet";
-import { MoveCardSheet } from "./move-card-sheet";
 import type { Card } from "@/lib/api/queries";
 
 type Props = {
@@ -22,7 +21,6 @@ type Props = {
 export function DeckDetail({ deckId, onSelectDeck, onStartReview }: Props) {
   const tree = useDeckTree();
   const [editing, setEditing] = useState<Card | null>(null);
-  const [moving, setMoving] = useState<Card | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   if (tree.isLoading) return <div className="p-6 text-sm">Cargando…</div>;
@@ -78,7 +76,7 @@ export function DeckDetail({ deckId, onSelectDeck, onStartReview }: Props) {
 
       <div>
         <h3 className="text-sm font-medium mb-2">Cards</h3>
-        <CardsList deck={deck} onOpenCard={setEditing} onCardMenu={setMoving} />
+        <CardStack deck={deck} onOpenCard={setEditing} />
       </div>
 
       <DeckMenu
@@ -94,11 +92,6 @@ export function DeckDetail({ deckId, onSelectDeck, onStartReview }: Props) {
           onOpenChange={(v) => !v && setEditing(null)}
         />
       )}
-      <MoveCardSheet
-        card={moving}
-        open={!!moving}
-        onOpenChange={(v) => !v && setMoving(null)}
-      />
     </div>
   );
 }
