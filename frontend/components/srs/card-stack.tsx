@@ -211,7 +211,9 @@ const STACK_OFFSET_PX = 24; // each back layer rises by this many px
 const STACK_SCALE_STEP = 0.04;
 const CARD_WIDTH_PX = 360;
 const CARD_HEIGHT_PX = 280;
-const HEADROOM_PX = VISIBLE_DEPTH * STACK_OFFSET_PX + 16; // room above front for back layers
+// Minimum headroom even when the deck has 1 card — keeps the geometry
+// stable and gives the front card some breathing room at the top.
+const MIN_HEADROOM_PX = 16;
 
 function Stack({
   cards,
@@ -237,6 +239,12 @@ function Stack({
 
   const visible = cards.slice(0, VISIBLE_DEPTH);
   const front = cards[0] ?? null;
+  // Headroom = exactly the space the back layers need. Deck with 2
+  // cards reserves 24 + 16 = 40 px of slack; deck with 7+ cards
+  // reserves the full 6 × 24 + 16 = 160 px. No wasted gap above the
+  // stack just to "fit the max possible" when the actual count is small.
+  const dynHeadroom =
+    Math.max(0, visible.length - 1) * STACK_OFFSET_PX + MIN_HEADROOM_PX;
 
   // Image upload bound to the front card. The dropzone wraps the entire
   // stack — drops anywhere over the visible area count for the front
@@ -303,14 +311,10 @@ function Stack({
 
   return (
     <div
-      // Fixed dimensions, no max-w-full (was likely shrinking width
-      // when the parent was narrow), explicit overflow:visible so an
-      // ancestor with overflow-hidden can't clip the back-layer
-      // slivers above the front card.
       className="relative mx-auto"
       style={{
         width: CARD_WIDTH_PX,
-        height: CARD_HEIGHT_PX + HEADROOM_PX,
+        height: CARD_HEIGHT_PX + dynHeadroom,
         overflow: "visible",
       }}
       onDragEnter={onFileDragEnter}
@@ -355,7 +359,7 @@ function Stack({
                 // rise by translating Y, no aspect-ratio negotiation.
                 width: CARD_WIDTH_PX,
                 height: CARD_HEIGHT_PX,
-                top: HEADROOM_PX,
+                top: dynHeadroom,
                 left: 0,
                 rotateX: isFront ? rotateX : 0,
                 transformPerspective: 1000,
