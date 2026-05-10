@@ -74,10 +74,10 @@ export function DeckDetail({ deckId, onSelectDeck, onStartReview }: Props) {
         </div>
       )}
 
-      <div>
-        <h3 className="text-sm font-medium mb-2">Cards</h3>
-        <CardStack deck={deck} onOpenCard={setEditing} />
-      </div>
+      {/* CardStack owns its own "Cards" label + counter + actions row
+          (see card-stack.tsx). Wrapping it in another h3 was double-
+          labelling and pushed the stack visually off the page. */}
+      <CardStack deck={deck} onOpenCard={setEditing} />
 
       <DeckMenu
         deck={deck}

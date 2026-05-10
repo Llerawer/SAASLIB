@@ -96,23 +96,34 @@ export function CardStack({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Top bar: subdeck toggle + shuffle/reset + counter */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {hasDescendants && (
-          <button
-            onClick={() => setIncludeSub((v) => !v)}
-            className={cn(
-              "text-xs rounded-full px-3 py-1.5 border transition",
-              includeSub
-                ? "bg-foreground text-background border-foreground"
-                : "border-border hover:bg-accent/10",
-            )}
-          >
-            Incluir subdecks ({deck.descendant_card_count})
-          </button>
+    <section className="space-y-3">
+      {/* Header row: label + count tabular on the left, secondary
+          actions on the right. Single row pulls the stack visually
+          closer instead of leaving "Cards" floating alone. */}
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <h3 className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">
+          Cards
+        </h3>
+        {total > 0 && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {currentIndex + 1} <span className="text-muted-foreground/40">·</span> {total}
+          </span>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1">
+          {hasDescendants && (
+            <button
+              onClick={() => setIncludeSub((v) => !v)}
+              className={cn(
+                "text-xs rounded-full px-2.5 py-1 border mr-1 transition-colors",
+                includeSub
+                  ? "bg-foreground/90 text-background border-foreground"
+                  : "border-border/60 text-muted-foreground hover:bg-accent/10 hover:text-foreground",
+              )}
+              title="Incluir cards de subdecks"
+            >
+              + subdecks ({deck.descendant_card_count})
+            </button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -137,11 +148,15 @@ export function CardStack({
       </div>
 
       {total === 0 ? (
-        <p className="text-sm text-muted-foreground p-8 text-center">
+        <p className="text-sm text-muted-foreground py-12 text-center">
           Este deck no tiene tarjetas todavía.
         </p>
       ) : (
-        <>
+        // Stack zone — tight stack + nav + hint as one visual unit.
+        // Pulled left-of-center toward the natural reading flow rather
+        // than centered-on-page; gap-2 between stack and nav so they
+        // read as paired controls, not separate sections.
+        <div className="flex flex-col items-center gap-2 pt-2">
           <Stack
             cards={cards}
             onClickFront={() => frontCard && onOpenCard(frontCard)}
@@ -149,10 +164,9 @@ export function CardStack({
             onRetreat={moveToStart}
           />
 
-          {/* Nav row */}
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon-sm"
               onClick={moveToStart}
               disabled={total < 2}
@@ -161,11 +175,8 @@ export function CardStack({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-xs tabular-nums text-muted-foreground min-w-[3rem] text-center">
-              {total > 0 ? `${currentIndex + 1} / ${total}` : "0"}
-            </span>
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon-sm"
               onClick={moveToEnd}
               disabled={total < 2}
@@ -176,13 +187,12 @@ export function CardStack({
             </Button>
           </div>
 
-          <p className="text-xs text-muted-foreground text-center">
-            Arrastrá ↕ para navegar · click para editar · soltá una imagen para
-            asignarla
+          <p className="text-xs text-muted-foreground/70 text-center max-w-md">
+            Arrastrá ↕ · click para editar · soltá una imagen
           </p>
-        </>
+        </div>
       )}
-    </div>
+    </section>
   );
 }
 
