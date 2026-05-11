@@ -1,6 +1,7 @@
 "use client";
 
-import { Play } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, Play, Video } from "lucide-react";
 
 export function ReviewAllCTA({
   totalDue,
@@ -10,11 +11,32 @@ export function ReviewAllCTA({
   onStart: () => void;
 }) {
   if (totalDue === 0) {
+    // Empty state used to be a one-liner dead end. Now: explanation
+    // PLUS two clear paths forward — go capture from books, or go
+    // browse video clips. Heuristic 10 (help) gets a real lift here.
     return (
-      <p className="text-sm text-muted-foreground text-center max-w-sm leading-relaxed">
-        Día limpio. Captura palabras nuevas desde tus libros y videos para
-        alimentar tu próxima sesión.
-      </p>
+      <div className="flex flex-col items-center text-center max-w-sm gap-4">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Día limpio. Captura palabras nuevas desde tus libros o videos para
+          alimentar tu próxima sesión.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Link
+            href="/library"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border border-border hover:bg-accent/10 hover:text-foreground text-muted-foreground transition-colors"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            <span>Ir a la biblioteca</span>
+          </Link>
+          <Link
+            href="/videos"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border border-border hover:bg-accent/10 hover:text-foreground text-muted-foreground transition-colors"
+          >
+            <Video className="h-3.5 w-3.5" />
+            <span>Explorar videos</span>
+          </Link>
+        </div>
+      </div>
     );
   }
 

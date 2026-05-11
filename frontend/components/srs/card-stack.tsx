@@ -148,11 +148,17 @@ export function CardStack({
       </div>
 
       {total === 0 ? (
-        <div className="py-12 text-center space-y-2 max-w-sm mx-auto">
+        <div className="py-12 flex flex-col items-center text-center gap-4 max-w-sm mx-auto">
           <p className="text-sm text-muted-foreground leading-relaxed">
             Sin cards en este deck. Captura palabras desde un libro o video
             y promuévelas para que aparezcan acá.
           </p>
+          <a
+            href="/vocabulary"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+          >
+            Ver tus capturas pendientes →
+          </a>
         </div>
       ) : (
         // Stack zone — tight stack + nav + hint as one visual unit.
@@ -347,12 +353,15 @@ function Stack({
             <motion.div
               key={card.id}
               className={cn(
-                "absolute rounded-xl border-2 overflow-hidden",
-                // Front card uses the standard --card token. Back layers
-                // use --muted (a slightly different surface) so the
-                // sliver above the front actually reads as a separate
-                // card, not as bleed of the same surface.
-                isFront ? "bg-card border-border shadow-2xl" : "bg-muted border-border shadow-lg",
+                // Same border weight + bg-card token as the reviewer's
+                // ReviewCard so the two surfaces read as the same
+                // component family. Back layers swap to bg-muted (a
+                // slightly lighter surface token) so the sliver above
+                // the front reads as a real edge.
+                "absolute rounded-xl border overflow-hidden",
+                isFront
+                  ? "bg-card border-border shadow-lg"
+                  : "bg-muted border-border shadow",
                 isFront
                   ? "cursor-grab active:cursor-grabbing"
                   : "pointer-events-none",
