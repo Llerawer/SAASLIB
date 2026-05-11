@@ -1,1 +1,0 @@
-{"root":["./src/background/service-worker.ts","./src/content/content.ts","./src/content/extract-context.ts","./src/content/word-popup.ts","./src/content/word-walker.ts","./src/popup/popup.tsx","./src/shared/config.ts","./src/shared/messages.ts","./manifest.json"],"version":"5.9.3"}
