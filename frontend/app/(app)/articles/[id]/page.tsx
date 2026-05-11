@@ -18,6 +18,8 @@ import { ReaderHighlightPopover } from "@/components/reader/reader-highlight-pop
 import {
   useArticle,
   useArticleHighlights,
+  useArticleSource,
+  useArticles,
   useCreateArticleHighlight,
   useDeleteArticleHighlight,
   useUpdateArticleHighlight,
@@ -26,6 +28,10 @@ import {
   type ArticleHighlightColor,
   type HighlightColor,
 } from "@/lib/api/queries";
+import { ArticleBreadcrumbs } from "@/components/article/article-breadcrumbs";
+import { ArticlePrevNext } from "@/components/article/article-prev-next";
+import { ArticleTocDrawer } from "@/components/article/article-toc-drawer";
+import { ArticleTocSidebar } from "@/components/article/article-toc-sidebar";
 import {
   useArticleReader,
   type WordCaptureEvent,
@@ -72,6 +78,12 @@ export default function ArticleReadPage({
 
   const article = useArticle(id);
   const highlights = useArticleHighlights(id);
+  // Source-related queries: the source row (for name, status) + sibling
+  // articles (for TOC, breadcrumbs, prev/next). Both gated by source_id
+  // so single-paste articles don't fire them.
+  const sourceId = article.data?.source_id ?? null;
+  const source = useArticleSource(sourceId);
+  const siblings = useArticles({ sourceId });
 
   const updateProgress = useUpdateArticleProgress();
   const createHighlight = useCreateArticleHighlight(id);
@@ -175,29 +187,69 @@ export default function ArticleReadPage({
     }
   })();
 
-  return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
-      <header className="space-y-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push("/articles")}
-          className="-ml-2"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" /> Artículos
-        </Button>
-        <h1 className="font-serif text-3xl font-semibold leading-tight">
-          {a.title}
-        </h1>
-        {a.author && (
-          <p className="text-sm text-muted-foreground">{a.author}</p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          {domain} · {a.word_count.toLocaleString()} palabras
-        </p>
-      </header>
+  // Show TOC affordances only when this article belongs to a source
+  // (i.e., was bulk-imported as part of a manual). Single-paste
+  // articles get the original "no sidebar" layout.
+  const hasSource = !!a.source_id && !!source.data;
+  const siblingArticles = siblings.data ?? [];
 
-      <ArticleContent ref={contentRef} html={a.html_clean} />
+  return (
+    <div className="flex">
+      {hasSource && source.data && (
+        <div className="hidden lg:block">
+          <ArticleTocSidebar
+            source={source.data}
+            articles={siblingArticles}
+            currentArticle={a}
+          />
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
+          <header className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/articles")}
+                className="-ml-2"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" /> Artículos
+              </Button>
+              {hasSource && source.data && (
+                <div className="lg:hidden">
+                  <ArticleTocDrawer
+                    source={source.data}
+                    articles={siblingArticles}
+                    currentArticle={a}
+                  />
+                </div>
+              )}
+            </div>
+            {hasSource && source.data && (
+              <ArticleBreadcrumbs
+                article={a}
+                articles={siblingArticles}
+                sourceId={source.data.id}
+              />
+            )}
+            <h1 className="font-serif text-3xl font-semibold leading-tight">
+              {a.title}
+            </h1>
+            {a.author && (
+              <p className="text-sm text-muted-foreground">{a.author}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {domain} · {a.word_count.toLocaleString()} palabras
+            </p>
+          </header>
+
+          <ArticleContent ref={contentRef} html={a.html_clean} />
+
+          {hasSource && (
+            <ArticlePrevNext article={a} articles={siblingArticles} />
+          )}
 
       {popup && (
         <WordPopup
@@ -271,6 +323,8 @@ export default function ArticleReadPage({
           }}
         />
       )}
+        </div>
+      </div>
     </div>
   );
 }
