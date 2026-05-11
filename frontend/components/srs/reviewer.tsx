@@ -89,25 +89,40 @@ export function Reviewer({
   const startBreak = useCallback(() => setBreakActive(true), []);
 
   const handleGrade = useCallback(
-    async (g: GradeKey) => {
-      if (!card || !showBack || grade.isPending) return;
+    (g: GradeKey) => {
+      if (!card || !showBack) return;
+      // Snapshot the current card BEFORE the optimistic update mutates
+      // the queue (which would change `card` mid-handler). Everything
+      // we report after the mutation refers to this exact instance.
+      const snap = card;
       setPulseGrade(g);
       setTimeout(() => setPulseGrade(null), 220);
       const ms = Date.now() - cardShownAtRef.current;
-      try {
-        await grade.mutateAsync({ card_id: card.card_id, grade: g });
-        tracker.add({
-          card_id: card.card_id,
-          word: card.word,
-          grade: g,
-          ms_elapsed: ms,
-        });
-        setShowUndoBanner(true);
-        if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-        undoTimerRef.current = setTimeout(() => setShowUndoBanner(false), 5000);
-      } catch (e) {
-        toast.error(`No se pudo guardar: ${(e as Error).message}`);
-      }
+
+      // Optimistic UI: track the review and pop the undo banner now,
+      // not after the round-trip. The next card flips in instantly via
+      // the optimistic queue update inside useGradeReview.
+      tracker.add({
+        card_id: snap.card_id,
+        word: snap.word,
+        grade: g,
+        ms_elapsed: ms,
+      });
+      setShowUndoBanner(true);
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = setTimeout(() => setShowUndoBanner(false), 5000);
+
+      // Fire-and-forget. Failure surfaces as a toast; the optimistic
+      // remove is rolled back inside useGradeReview's onError so the
+      // card reappears in the queue.
+      grade.mutate(
+        { card_id: snap.card_id, grade: g },
+        {
+          onError: (e) => {
+            toast.error(`No se pudo guardar: ${e.message}`);
+          },
+        },
+      );
     },
     [card, showBack, grade, tracker],
   );
@@ -163,7 +178,7 @@ export function Reviewer({
         </CardImageDropzone>
         <SrsGradeButtons
           intervals={intervals}
-          disabled={!showBack || grade.isPending}
+          disabled={!showBack}
           pulseGrade={pulseGrade}
           onGrade={handleGrade}
         />

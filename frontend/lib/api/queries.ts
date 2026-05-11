@@ -539,10 +539,38 @@ export function useReviewQueue(deckId: string | null = null) {
 
 export function useGradeReview() {
   const qc = useQueryClient();
-  return useMutation<GradeResult, Error, { card_id: string; grade: 1 | 2 | 3 | 4 }>({
+  return useMutation<
+    GradeResult,
+    Error,
+    { card_id: string; grade: 1 | 2 | 3 | 4 },
+    { snapshots: Array<[unknown, ReviewQueueCard[] | undefined]> }
+  >({
     mutationFn: ({ card_id, grade }) =>
       api.post<GradeResult>(`/api/v1/reviews/${card_id}/grade`, { grade }),
-    onSuccess: () => {
+    // Optimistic update: drop the graded card from every reviews-queue
+    // cache the moment the user clicks. Reviewer reads cards[0] so the
+    // next card pops in instantly — no perceived 300-500 ms wait for
+    // the FSRS schedule round-trip. onError restores the snapshot.
+    onMutate: async ({ card_id }) => {
+      await qc.cancelQueries({ queryKey: ["reviews-queue"] });
+      const snapshots = qc.getQueriesData<ReviewQueueCard[]>({
+        queryKey: ["reviews-queue"],
+      });
+      qc.setQueriesData<ReviewQueueCard[]>(
+        { queryKey: ["reviews-queue"] },
+        (old) => (old ? old.filter((c) => c.card_id !== card_id) : old),
+      );
+      return { snapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (!ctx) return;
+      for (const [key, data] of ctx.snapshots) {
+        qc.setQueryData(key as readonly unknown[], data);
+      }
+    },
+    onSettled: () => {
+      // Reconcile with the server in the background — UI is already
+      // ahead, so this just refreshes the count + any due-soon entries.
       qc.invalidateQueries({ queryKey: ["reviews-queue"] });
       qc.invalidateQueries({ queryKey: ["reviews-due"] });
       qc.invalidateQueries({ queryKey: ["stats-me"] });
