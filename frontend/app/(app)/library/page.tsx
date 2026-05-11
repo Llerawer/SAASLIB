@@ -38,6 +38,7 @@ import {
 import { useBookMetadata } from "@/lib/api/queries";
 import { cleanSubjects } from "@/lib/library/subjects";
 import { OnboardingRibbon } from "@/components/onboarding-ribbon";
+import { PerspectiveBook } from "@/components/library/perspective-book";
 import {
   Sheet,
   SheetContent,
@@ -1144,56 +1145,59 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
             setConfirmOpen(true);
           }}
           disabled={remove.isPending}
-          className="absolute top-2 right-2 size-8 inline-flex items-center justify-center rounded-md bg-background/85 backdrop-blur-sm text-muted-foreground hover:bg-destructive/15 hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity z-10"
+          className="absolute top-2 right-2 size-8 inline-flex items-center justify-center rounded-md bg-background/85 backdrop-blur-sm text-muted-foreground hover:bg-destructive/15 hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity z-20"
           aria-label={`Quitar ${book.title} de la biblioteca`}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
 
-        <div className="flex gap-3 p-4 flex-1">
-          <div className="shrink-0 w-14 h-20 bg-muted rounded-sm overflow-hidden ring-1 ring-foreground/5">
+        {isFinished && (
+          <span
+            className="absolute top-2 left-2 text-xs bg-success/15 text-success border border-success/30 rounded px-1.5 py-0.5 whitespace-nowrap z-10"
+            aria-label="Terminado"
+          >
+            Terminado
+          </span>
+        )}
+
+        <div className="pt-6 pb-4 px-4 flex justify-center">
+          <PerspectiveBook size="default">
             {coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={coverUrl}
                 alt=""
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                className="w-full h-full object-cover"
+                style={{ borderRadius: "inherit" }}
                 loading="lazy"
-                width={56}
-                height={80}
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = "none";
                 }}
               />
-            ) : null}
-          </div>
-          <div className="min-w-0 flex-1 pr-6">
-            <div className="flex items-start gap-2">
-              <h3 className="font-semibold text-sm leading-snug line-clamp-2 flex-1">
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs px-2 text-center">
                 {book.title}
-              </h3>
-              {isFinished && (
-                <span
-                  className="shrink-0 text-xs bg-success/15 text-success border border-success/30 rounded px-1.5 py-0.5 whitespace-nowrap"
-                  aria-label="Terminado"
-                >
-                  Terminado
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 font-serif italic line-clamp-1">
-              {book.author ?? "Autor desconocido"}
-            </p>
-            {lastRead && (
-              <p className="text-xs text-muted-foreground mt-1.5 tabular">
-                Última lectura: {lastRead}
-              </p>
+              </div>
             )}
-          </div>
+          </PerspectiveBook>
+        </div>
+
+        <div className="px-4 pb-3 min-w-0">
+          <h3 className="font-semibold text-sm leading-snug line-clamp-2">
+            {book.title}
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1 font-serif italic line-clamp-1">
+            {book.author ?? "Autor desconocido"}
+          </p>
+          {lastRead && (
+            <p className="text-xs text-muted-foreground mt-1.5 tabular">
+              Última lectura: {lastRead}
+            </p>
+          )}
         </div>
 
         <div
-          className="h-1.5 w-full bg-muted"
+          className="h-1.5 w-full bg-muted mt-auto"
           role="progressbar"
           aria-valuenow={pct}
           aria-valuemin={0}
