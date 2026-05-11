@@ -1,7 +1,11 @@
 "use client";
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 
 import { api } from "@/lib/api/client";
 import { WordPopup } from "@/components/word-popup";
@@ -338,10 +342,16 @@ export default function ReadPage({
 
   if (registerError) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center p-6">
-        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3 rounded-md">
+      <div className="h-screen flex flex-col items-center justify-center p-6 gap-4 max-w-md mx-auto text-center">
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3 rounded-md w-full">
           {registerError}
         </div>
+        <Link href="/library">
+          <Button size="sm" variant="outline">
+            <ArrowLeft className="h-4 w-4 mr-1.5" />
+            Volver a la biblioteca
+          </Button>
+        </Link>
       </div>
     );
   }

@@ -29,7 +29,21 @@ export function DeckDetail({ deckId, onSelectDeck, onStartReview }: Props) {
 
   const all = tree.data ?? [];
   const deck = all.find((d) => d.id === deckId);
-  if (!deck) return <div className="p-6 text-sm">Deck no encontrado.</div>;
+  if (!deck) {
+    // Stale URL (deck deleted in another tab, bad link, etc.). Give
+    // the user a way out instead of a dead-end sentence.
+    return (
+      <div className="p-6 flex flex-col items-start gap-3">
+        <p className="text-sm text-muted-foreground">
+          Este deck ya no existe o no está disponible.
+        </p>
+        <Button size="sm" variant="outline" onClick={() => onSelectDeck(null)}>
+          <ChevronLeft className="h-4 w-4 mr-1" />
+          Volver a Repaso
+        </Button>
+      </div>
+    );
+  }
 
   const roots = buildDeckTree(all);
   const path = deckPath(roots, deckId);

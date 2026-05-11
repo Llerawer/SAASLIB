@@ -187,10 +187,17 @@ export default function PronounceDeckPage({
 
   if (ctrl.status === "error") {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-md mx-auto p-6 flex flex-col items-center gap-4 text-center">
         <p className="text-sm text-destructive">
           {ctrl.error?.message || "No se pudo cargar el clip."}
         </p>
+        <Link
+          href={withQuery(`/pronounce/${wordEnc}`, sp)}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Volver a clips de &ldquo;{word}&rdquo;
+        </Link>
       </div>
     );
   }
