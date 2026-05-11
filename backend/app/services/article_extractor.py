@@ -57,6 +57,11 @@ class ExtractionResult:
     text_clean: str
     word_count: int
     content_hash: str
+    # The URL after all redirects. Always populated. Callers should use
+    # this (not the input URL) when computing url_hash for dedup, so
+    # that pasting an alias / http→https / trailing-slash variant of
+    # an already-imported article hits the existing row.
+    final_url: str
 
 
 class ExtractionError(Exception):
@@ -120,8 +125,8 @@ def make_cloudscraper_session():
     )
 
 
-def _fetch_via_cloudscraper(url: str, scraper=None) -> tuple[str, str]:
-    """Sync — runs in a thread from `extract()`. Returns (html, content_type).
+def _fetch_via_cloudscraper(url: str, scraper=None) -> tuple[str, str, str]:
+    """Sync — runs in a thread from `extract()`. Returns (html, content_type, final_url).
 
     If `scraper` is None, creates a fresh one (single-paste flow).
     For bulk imports, the caller should pass a reused session so the
@@ -137,22 +142,25 @@ def _fetch_via_cloudscraper(url: str, scraper=None) -> tuple[str, str]:
     # for Sphinx/Docusaurus pages that don't always send charset header.
     if r.encoding and r.encoding.lower() in ("iso-8859-1", "latin-1"):
         r.encoding = r.apparent_encoding or "utf-8"
-    return r.text, ctype
+    final_url = str(r.url) if hasattr(r, "url") else url
+    return r.text, ctype, final_url
 
 
 async def fetch_html(
     url: str, *, scraper=None, prefer_scraper: bool = False,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """Public re-export for the source importer (which needs raw HTML
     before adapter detection). The bulk importer passes its shared
     cloudscraper session via `scraper` to keep cookies warm, and
-    `prefer_scraper=True` to skip the httpx attempt for known-WAF sources."""
+    `prefer_scraper=True` to skip the httpx attempt for known-WAF sources.
+
+    Returns (html, content_type, final_url)."""
     return await _fetch_html(url, scraper=scraper, prefer_scraper=prefer_scraper)
 
 
 async def _fetch_html(
     url: str, *, scraper=None, prefer_scraper: bool = False,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """Two-stage fetch: httpx first (fast), cloudscraper on timeout / 403 /
     429 / WAF challenge body (slower but bypasses Cloudflare basic).
 
@@ -163,7 +171,7 @@ async def _fetch_html(
     # save 15s of dead httpx timeout per leaf.
     if prefer_scraper:
         try:
-            html, ctype = await asyncio.to_thread(
+            html, ctype, final_url = await asyncio.to_thread(
                 _fetch_via_cloudscraper, url, scraper,
             )
             if _looks_waf_blocked(200, html):
@@ -171,7 +179,7 @@ async def _fetch_html(
                     "Este sitio tiene protección WAF avanzada que cloudscraper "
                     "no logra pasar."
                 )
-            return html, ctype
+            return html, ctype, final_url
         except ExtractionError:
             raise
         except Exception as e:
@@ -188,6 +196,7 @@ async def _fetch_html(
         ) as client:
             resp = await client.get(url)
         # Don't raise_for_status here — let the WAF check decide.
+        final_url = str(resp.url)
         if _looks_waf_blocked(resp.status_code, resp.text):
             log.info("[extract] httpx %s → WAF body markers, falling back to cloudscraper for %s", resp.status_code, url)
             waf_blocked = True
@@ -199,7 +208,7 @@ async def _fetch_html(
             )
         else:
             log.info("[extract] httpx %s → OK fast path (%d bytes) for %s", resp.status_code, len(resp.text), url)
-            return resp.text, resp.headers.get("content-type", "")
+            return resp.text, resp.headers.get("content-type", ""), final_url
     except ExtractionError:
         raise
     except httpx.TimeoutException as e:
@@ -212,7 +221,9 @@ async def _fetch_html(
 
     if waf_blocked:
         try:
-            html, ctype = await asyncio.to_thread(_fetch_via_cloudscraper, url, scraper)
+            html, ctype, final_url = await asyncio.to_thread(
+                _fetch_via_cloudscraper, url, scraper,
+            )
             log.info("[extract] cloudscraper → OK (%d bytes) for %s", len(html), url)
             # Even cloudscraper can hit a hard JS challenge — check the body.
             if _looks_waf_blocked(200, html):
@@ -221,7 +232,7 @@ async def _fetch_html(
                     "Turnstile o similar) que cloudscraper no logra pasar. "
                     "Necesitaríamos un browser headless o una extensión."
                 )
-            return html, ctype
+            return html, ctype, final_url
         except ExtractionError:
             raise
         except Exception as e:
@@ -253,7 +264,7 @@ async def extract(
     Raises ExtractionError on any failure with a message safe to surface
     to the user (mapped to HTTP 422 by the API layer).
     """
-    html, ctype = await _fetch_html(
+    html, ctype, final_url = await _fetch_html(
         url, scraper=scraper, prefer_scraper=prefer_scraper,
     )
     ctype = ctype.lower()
@@ -317,6 +328,7 @@ async def extract(
         text_clean=text_clean,
         word_count=_count_words(text_clean),
         content_hash=hashlib.sha256(text_clean.encode("utf-8")).hexdigest(),
+        final_url=final_url,
     )
 
 

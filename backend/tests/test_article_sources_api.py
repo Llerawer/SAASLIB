@@ -85,7 +85,7 @@ async def test_import_source_processes_leaves_and_finalizes_done(monkeypatch):
         return ExtractionResult(
             title="t", author=None, language="en",
             html_clean=f"<p>{url}</p>", text_clean=f"text from {url}",
-            word_count=3, content_hash="h",
+            word_count=3, content_hash="h", final_url=url,
         )
     monkeypatch.setattr(source_importer, "extract", fake_extract)
 
@@ -131,7 +131,7 @@ async def test_import_source_marks_partial_on_some_failures(monkeypatch):
         return ExtractionResult(
             title="t", author=None, language="en",
             html_clean="<p>ok</p>", text_clean="ok ok ok",
-            word_count=3, content_hash="h",
+            word_count=3, content_hash="h", final_url=url,
         )
     monkeypatch.setattr(source_importer, "extract", flaky_extract)
 

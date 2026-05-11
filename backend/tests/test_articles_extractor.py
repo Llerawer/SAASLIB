@@ -90,12 +90,14 @@ _PAYWALL_HTML = """<!doctype html>
 </body></html>"""
 
 
-def _build_response_mock(text: str, content_type: str = "text/html"):
+def _build_response_mock(text: str, content_type: str = "text/html",
+                         url: str = "https://example.com/article"):
     resp = MagicMock()
     resp.text = text
     resp.raise_for_status = MagicMock(return_value=None)
     resp.status_code = 200
     resp.headers = {"content-type": content_type}
+    resp.url = url
     return resp
 
 
@@ -174,6 +176,21 @@ def test_looks_waf_blocked_status_codes():
     # 200/404 don't trigger fallback even with empty body.
     assert not _looks_waf_blocked(200, "<html>real content</html>")
     assert not _looks_waf_blocked(404, "Not Found")
+
+
+@pytest.mark.asyncio
+async def test_extract_returns_final_url_after_redirect():
+    """ExtractionResult.final_url must be the URL after redirects, not
+    the input URL — so dedup catches alias / http→https / trailing-slash
+    variants of an already-imported article."""
+    resp_mock = _build_response_mock(_VALID_HTML)
+    # Simulate that the server redirected us.
+    resp_mock.url = "https://example.com/canonical/article"
+    client_mock = _build_client_mock(resp_mock)
+    with patch("app.services.article_extractor.httpx.AsyncClient",
+               return_value=client_mock):
+        result = await extract("https://example.com/old-alias")
+    assert result.final_url == "https://example.com/canonical/article"
 
 
 def test_looks_waf_blocked_body_markers():

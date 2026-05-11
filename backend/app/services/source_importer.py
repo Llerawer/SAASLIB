@@ -144,31 +144,51 @@ async def _import_one_leaf(
     scraper,
 ) -> bool:
     """Fetch + extract + insert one leaf with retries. Returns True on success."""
-    canonical, url_hash = normalize_url(leaf.url)
+    input_canonical, input_hash = normalize_url(leaf.url)
 
-    # Dedup: skip URLs the user already has.
+    # First-pass dedup on INPUT URL (cheap, skip extraction entirely).
     existing = (
         client.table("articles")
         .select("id")
         .eq("user_id", user_id)
-        .eq("url_hash", url_hash)
+        .eq("url_hash", input_hash)
         .limit(1)
         .execute()
         .data
         or []
     )
     if existing:
-        log.info("[importer] dedup hit for %s, skipping", canonical)
+        log.info("[importer] dedup hit (input) for %s, skipping", input_canonical)
         return True
 
-    result = await _extract_with_retry(canonical, scraper, prefer_scraper=True)
+    result = await _extract_with_retry(input_canonical, scraper, prefer_scraper=True)
     if result is None:
         return False
 
+    # Second-pass dedup on FINAL URL (post-redirect).
+    final_canonical, final_hash = normalize_url(result.final_url)
+    if final_hash != input_hash:
+        existing = (
+            client.table("articles")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("url_hash", final_hash)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if existing:
+            log.info(
+                "[importer] dedup hit (after redirect) for %s → %s, skipping",
+                input_canonical, final_canonical,
+            )
+            return True
+
     payload: dict[str, Any] = {
         "user_id": user_id,
-        "url": canonical,
-        "url_hash": url_hash,
+        "url": final_canonical,
+        "url_hash": final_hash,
         "title": result.title,
         "author": result.author,
         "language": result.language,

@@ -62,13 +62,17 @@ async def preview_source(
     """Fetch the URL, run adapter detection, return enumerated leaves
     WITHOUT creating anything. The user sees the count and confirms
     via POST /sources before any work happens."""
-    canonical, _ = normalize_url(str(body.url))
+    input_canonical, _ = normalize_url(str(body.url))
     try:
-        html, _ctype = await fetch_html(canonical)
+        html, _ctype, final_url = await fetch_html(input_canonical)
     except ExtractionError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    pick, name, leaves = run_preview(html, canonical)
+    # Use the FINAL URL (post-redirect) as the base for leaf enumeration —
+    # otherwise relative `<a href>` resolutions in the adapter would build
+    # URLs against the pre-redirect host (e.g., http→https mismatch).
+    final_canonical, _ = normalize_url(final_url)
+    pick, name, leaves = run_preview(html, final_canonical)
     if pick.adapter is None:
         raise HTTPException(
             status_code=422,
@@ -83,7 +87,7 @@ async def preview_source(
         name=name or "Documentación",
         generator=pick.name,  # type: ignore[arg-type]
         confidence=pick.confidence,
-        root_url=canonical,
+        root_url=final_canonical,
         leaves=[
             SourceLeafEntry(
                 url=le.url,
@@ -112,16 +116,16 @@ async def create_source(
     """Re-runs preview internally (cheap if browser cache hits) and kicks
     off the background import. Returns the source row immediately so the
     UI can navigate to a progress view."""
-    canonical, _ = normalize_url(str(body.url))
-    url_hash = _hash_url(canonical)
+    input_canonical, _ = normalize_url(str(body.url))
+    input_hash = _hash_url(input_canonical)
     client = get_user_client(auth.jwt)
 
-    # Dedup: same root URL → return existing source row.
+    # First-pass dedup on the INPUT URL.
     existing = (
         client.table("article_sources")
         .select(_SOURCE_COLS)
         .eq("user_id", auth.user_id)
-        .eq("root_url_hash", url_hash)
+        .eq("root_url_hash", input_hash)
         .limit(1)
         .execute()
         .data
@@ -131,11 +135,28 @@ async def create_source(
         return _to_source_out(existing[0])
 
     try:
-        html, _ctype = await fetch_html(canonical)
+        html, _ctype, final_url = await fetch_html(input_canonical)
     except ExtractionError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    pick, name, leaves = run_preview(html, canonical)
+    final_canonical, final_hash = normalize_url(final_url)
+
+    # Second-pass dedup on the FINAL URL (post-redirect).
+    if final_hash != input_hash:
+        existing = (
+            client.table("article_sources")
+            .select(_SOURCE_COLS)
+            .eq("user_id", auth.user_id)
+            .eq("root_url_hash", final_hash)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if existing:
+            return _to_source_out(existing[0])
+
+    pick, name, leaves = run_preview(html, final_canonical)
     if pick.adapter is None:
         raise HTTPException(
             status_code=422,
@@ -148,8 +169,8 @@ async def create_source(
     payload = {
         "user_id": auth.user_id,
         "name": name or "Documentación",
-        "root_url": canonical,
-        "root_url_hash": url_hash,
+        "root_url": final_canonical,
+        "root_url_hash": final_hash,
         "generator": pick.name,
         "import_status": "importing",
         "discovered_pages": len(leaves),

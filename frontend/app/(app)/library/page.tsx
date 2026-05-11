@@ -6,6 +6,7 @@ import {
   BookOpen,
   X,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Layers,
   Filter,
@@ -540,29 +541,37 @@ export default function LibraryPage() {
               </div>
             )}
 
-            {filteredResults.length > 0 && !isInitialLoading && (
-              <div className="flex items-center gap-2 mt-6 text-sm">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={safeChunkIndex === 0}
-                  onClick={() => setChunkIndex((i) => Math.max(0, i - 1))}
-                >
-                  Anterior
-                </Button>
-                <span className="text-xs text-muted-foreground tabular">
-                  {safeChunkIndex + 1} / {totalChunks}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={safeChunkIndex >= totalChunks - 1}
-                  onClick={() =>
-                    setChunkIndex((i) => Math.min(totalChunks - 1, i + 1))
-                  }
-                >
-                  Siguiente
-                </Button>
+            {filteredResults.length > 0 && !isInitialLoading && totalChunks > 1 && (
+              <div className="mt-8 mb-2 flex justify-center">
+                <div className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 p-1 shadow-sm">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={safeChunkIndex === 0}
+                    onClick={() => setChunkIndex((i) => Math.max(0, i - 1))}
+                    className="rounded-full gap-1 px-3"
+                  >
+                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    Anterior
+                  </Button>
+                  <span className="px-3 text-sm font-medium tabular select-none">
+                    {safeChunkIndex + 1}
+                    <span className="mx-1 text-muted-foreground">de</span>
+                    {totalChunks}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={safeChunkIndex >= totalChunks - 1}
+                    onClick={() =>
+                      setChunkIndex((i) => Math.min(totalChunks - 1, i + 1))
+                    }
+                    className="rounded-full gap-1 px-3"
+                  >
+                    Siguiente
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </div>
               </div>
             )}
           </div>

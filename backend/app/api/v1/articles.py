@@ -101,23 +101,34 @@ async def create_article(
     body: ArticleCreate,
     auth: AuthInfo = Depends(get_auth),
 ):
-    canonical, url_hash = normalize_url(str(body.url))
+    input_canonical, input_hash = normalize_url(str(body.url))
     client = get_user_client(auth.jwt)
 
-    # Dedup: same URL → return existing row.
-    existing = _check_existing(client, auth.user_id, url_hash)
+    # First-pass dedup on the INPUT URL (cheap, avoids extraction if the
+    # user pasted exactly the same URL twice).
+    existing = _check_existing(client, auth.user_id, input_hash)
     if existing:
         return ArticleOut(**existing)
 
     try:
-        result = await extract(canonical)
+        result = await extract(input_canonical)
     except ExtractionError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    # Second-pass dedup on the FINAL URL (after redirects). Catches the
+    # case where the user pasted https://x.com/old → 301 → /new and
+    # /new was previously imported. Also normalizes http→https, www
+    # variations, trailing slash drift between alias paths, etc.
+    final_canonical, final_hash = normalize_url(result.final_url)
+    if final_hash != input_hash:
+        existing = _check_existing(client, auth.user_id, final_hash)
+        if existing:
+            return ArticleOut(**existing)
+
     payload = {
         "user_id": auth.user_id,
-        "url": canonical,
-        "url_hash": url_hash,
+        "url": final_canonical,
+        "url_hash": final_hash,
         "title": result.title,
         "author": result.author,
         "language": result.language,
