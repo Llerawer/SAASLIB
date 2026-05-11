@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "LinguaReader",
+  "version": "0.1.0",
+  "description": "Doble-click cualquier palabra en cualquier página para guardar vocabulario en LinguaReader.",
+  "icons": {
+    "16": "public/icons/16.png",
+    "48": "public/icons/48.png",
+    "128": "public/icons/128.png"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "LinguaReader",
+    "default_icon": {
+      "16": "public/icons/16.png",
+      "48": "public/icons/48.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/content.ts"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:8100/*",
+    "https://*.supabase.co/*"
+  ]
+}
