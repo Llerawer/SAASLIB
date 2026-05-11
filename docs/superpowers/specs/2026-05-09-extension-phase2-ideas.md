@@ -1,9 +1,36 @@
-# Browser Extension MVP — Diseño
+# Browser Extension — Phase 2+ Ideas (SUPERSEDED for Phase 1)
 
-**Fecha**: 2026-05-09
-**Branch destino**: por decidir al ejecutar (probablemente `feature/extension-mvp` desde `feature/semana-2-core-loop` o desde la branch actual)
-**Status**: Draft — pendiente review del founder
-**Alcance**: Extensión de navegador (Chrome MV3 primero, Firefox después) que extiende la captura de palabras del producto a CUALQUIER página web. Las palabras capturadas sincronizan al backend existente y aparecen en `/vocabulary`, alimentando el SRS sin tocar el flujo del reader EPUB.
+> **NOTA — SUPERSEDED**: este spec se escribió el 2026-05-09 sin saber que
+> un día después (2026-05-10) se redactó un spec más completo y se
+> construyó el scaffold de Phase 1 bajo decisiones técnicas distintas.
+>
+> **Para Phase 1 vigente**, leer: `2026-05-10-browser-extension-design.md`.
+>
+> Este documento se conserva porque contiene ideas que SÍ aportan valor para
+> **Phase 2+** (post-validación de Phase 1):
+>
+> - **YouTube special-case** (§3.6): detectar URLs de youtube.com/watch,
+>   capturar con `video_id + video_timestamp_s` en vez de campos web genéricos
+> - **Telemetría minimal** (§5): 6 events bounded para validación de uso real
+> - **Hotkey configurable + Save quietly mode** (§2 Day 2): reduce fricción
+> - **Site denylist explícita** (§3.7): lista hardcoded en vez de "aceptar que rompe"
+> - **Reglas operativas** (§7): 200-LOC por archivo, react compiler, testing
+>
+> Las **decisiones core** de este spec (PAT paste manual, WXT, React en content
+> script, schema con web_url/web_title/web_domain) están **explícitamente
+> refutadas** en el spec del 10 mayo, que decidió:
+> - supabase-js real con refresh tokens (no PAT manual)
+> - Vite + @crxjs (no WXT)
+> - Vanilla TS en content script (no React)
+> - Reuso de `article_id: null` (zero schema changes)
+>
+> No revivir el contenido core de este spec sin razón fuerte.
+
+---
+
+**Fecha**: 2026-05-09 (superseded 2026-05-11)
+**Status**: Superseded — Phase 2 ideas only
+**Alcance original**: Extensión de navegador que extiende la captura de palabras a cualquier página web — VER spec del 10 mayo para Phase 1 vigente.
 
 ---
 
