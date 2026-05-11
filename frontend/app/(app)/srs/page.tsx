@@ -115,18 +115,41 @@ export default function SrsPage() {
     .reduce((acc, d) => acc + d.direct_due_count + d.descendant_due_count, 0);
 
   return (
-    <div className="flex min-h-[calc(100vh-57px)] flex-col p-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Repaso</h1>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setNewOpen(true)}
-          className="gap-1"
-        >
-          <Plus className="h-3.5 w-3.5" /> Nuevo deck
-        </Button>
-      </div>
+    <div className="flex min-h-[calc(100vh-57px)] flex-col p-4 sm:p-6">
+      {/* Editorial masthead — same kicker · serif · amber rule pattern
+          as /library, /pronounce, /vocabulary, /settings. The "Nuevo
+          deck" action lives at the right edge as a ghost so it doesn't
+          compete with the page identity. */}
+      <header className="mb-6 sm:mb-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+              <span className="size-1 rounded-full bg-accent" aria-hidden />
+              <span>Repaso</span>
+              <span aria-hidden className="text-muted-foreground/50">·</span>
+              <span>Hoy</span>
+            </div>
+            <h1 className="font-serif font-semibold text-3xl md:text-4xl tracking-tight leading-[1.15]">
+              Práctica diaria
+            </h1>
+            <div className="mt-3 flex items-center gap-2 max-w-xs">
+              <div className="h-px w-10 bg-accent/70" />
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setNewOpen(true)}
+            className="gap-1.5 shrink-0"
+            title="Crear un deck nuevo"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Nuevo deck</span>
+          </Button>
+        </div>
+      </header>
+
       <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-8">
         <ReviewAllCTA totalDue={totalDue} onStart={() => sel.startReview(null)} />
         <DeckFan decks={roots} onSelect={(d) => sel.selectDeck(d.id)} />
