@@ -84,6 +84,7 @@ export function DeckDetail({ deckId, onSelectDeck, onStartReview }: Props) {
         open={menuOpen}
         onOpenChange={setMenuOpen}
         onViewCards={() => setMenuOpen(false)}
+        onDeleted={() => onSelectDeck(null)}
       />
       {editing && (
         <EditCardSheet

@@ -30,9 +30,13 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onViewCards: (deck: DeckOut) => void;
+  /** Fired after the deck is deleted server-side. Parent should
+   *  navigate away from the now-orphaned ?deck=id URL (otherwise the
+   *  detail view renders "Deck no encontrado"). */
+  onDeleted?: () => void;
 };
 
-export function DeckMenu({ deck, open, onOpenChange, onViewCards }: Props) {
+export function DeckMenu({ deck, open, onOpenChange, onViewCards, onDeleted }: Props) {
   const update = useUpdateDeck();
   const del = useDeleteDeck();
   const tree = useDeckTree();
@@ -68,6 +72,9 @@ export function DeckMenu({ deck, open, onOpenChange, onViewCards }: Props) {
       await del.mutateAsync(deck.id);
       toast.success("Deck eliminado");
       onOpenChange(false);
+      // Send the parent back to /srs before useDeckTree refetches and
+      // this component tries to render against the now-missing row.
+      onDeleted?.();
     } catch (e) {
       toast.error((e as Error).message);
     }
