@@ -120,6 +120,28 @@ export default function LibraryPage() {
   const [previewBook, setPreviewBook] = useState<BookPreviewSeed | null>(null);
   const [readingMap, setReadingMap] = useState<Record<number, ReadingInfo>>({});
 
+  // Continuar-leyendo section collapse state, persisted across sessions.
+  const [continueCollapsed, setContinueCollapsed] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("lr.library.continue.collapsed");
+    if (stored === "1") setContinueCollapsed(true);
+  }, []);
+  function toggleContinue() {
+    setContinueCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          "lr.library.continue.collapsed",
+          next ? "1" : "0",
+        );
+      } catch {
+        // Quota / private mode — collapse still works in-memory.
+      }
+      return next;
+    });
+  }
+
   const searchKey: SearchKey = {
     q: debouncedQuery,
     topic: activeTopic,
@@ -310,25 +332,42 @@ export default function LibraryPage() {
         </section>
       ) : myBooks.length > 0 ? (
         <section className="mb-10">
-          <h2 className="font-serif font-semibold text-2xl mb-1 tracking-tight">
-            Continuar leyendo
-          </h2>
+          <button
+            type="button"
+            onClick={toggleContinue}
+            aria-expanded={!continueCollapsed}
+            aria-controls="continue-grid"
+            className="group w-full flex items-center justify-between gap-2 text-left mb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+          >
+            <h2 className="font-serif font-semibold text-2xl tracking-tight">
+              Continuar leyendo
+            </h2>
+            <ChevronDown
+              className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${continueCollapsed ? "-rotate-90" : "rotate-0"}`}
+              aria-hidden="true"
+            />
+          </button>
           <p className="text-sm text-muted-foreground mb-4 tabular">
             {myBooks.length} {myBooks.length === 1 ? "libro" : "libros"} en tu
             biblioteca
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {myBooks.map((b, i) => (
-              <div
-                key={b.book_id}
-                style={{
-                  animation: `lr-card-in 360ms var(--ease-out-quart) ${i * 40}ms both`,
-                }}
-              >
-                <MyBookCard book={b} />
-              </div>
-            ))}
-          </div>
+          {!continueCollapsed && (
+            <div
+              id="continue-grid"
+              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+            >
+              {myBooks.map((b, i) => (
+                <div
+                  key={b.book_id}
+                  style={{
+                    animation: `lr-card-in 360ms var(--ease-out-quart) ${i * 40}ms both`,
+                  }}
+                >
+                  <MyBookCard book={b} />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -1167,7 +1206,7 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
               <img
                 src={coverUrl}
                 alt=""
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain bg-neutral-50 dark:bg-[#0f0f0f]"
                 style={{ borderRadius: "inherit" }}
                 loading="lazy"
                 onError={(e) => {
