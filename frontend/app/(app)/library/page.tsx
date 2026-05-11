@@ -1206,7 +1206,7 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
               <img
                 src={coverUrl}
                 alt=""
-                className="w-full h-full object-contain bg-neutral-50 dark:bg-[#0f0f0f]"
+                className="w-full h-full object-cover object-center"
                 style={{ borderRadius: "inherit" }}
                 loading="lazy"
                 onError={(e) => {
