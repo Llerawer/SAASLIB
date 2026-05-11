@@ -118,8 +118,11 @@ export function Reviewer({
       grade.mutate(
         { card_id: snap.card_id, grade: g },
         {
-          onError: (e) => {
-            toast.error(`No se pudo guardar: ${e.message}`);
+          onError: () => {
+            // Don't surface raw error.message — backend errors look like
+            // SQL or HTTP jargon to a learner. The card is rolled back
+            // by the mutation's onError, so the user can simply re-grade.
+            toast.error("No se guardó la calificación. Volvé a intentar.");
           },
         },
       );

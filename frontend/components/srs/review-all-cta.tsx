@@ -11,16 +11,18 @@ export function ReviewAllCTA({
 }) {
   if (totalDue === 0) {
     return (
-      <p className="text-sm text-muted-foreground text-center max-w-sm">
-        Nada pendiente hoy. Pulsa un deck para revisar o agregar cards.
+      <p className="text-sm text-muted-foreground text-center max-w-sm leading-relaxed">
+        Día limpio. Captura palabras nuevas desde tus libros y videos para
+        alimentar tu próxima sesión.
       </p>
     );
   }
-  // Custom button (not the shared <Button>) so the visual weight sits
-  // between primary and outline: accent-tinted bg + border, dark text.
-  // The default primary button rendered as a cream slab over dark bg
-  // and read as an ad banner; this one feels like the start of a
-  // session — confident but not loud.
+
+  // Singular vs plural — "Repasar todo · 1" reads weirdly when there's
+  // only one card pending ("repasar todo, uno?"). Adapt the copy.
+  const label =
+    totalDue === 1 ? "Repasar la única pendiente" : "Repasar todo";
+
   return (
     <button
       type="button"
@@ -30,14 +32,18 @@ export function ReviewAllCTA({
       <span className="inline-flex items-center justify-center size-7 rounded-full bg-accent text-accent-foreground transition-transform group-hover:scale-105">
         <Play className="h-3.5 w-3.5 ml-0.5" aria-hidden="true" />
       </span>
-      <span className="font-medium">Repasar todo</span>
-      <span
-        aria-hidden="true"
-        className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-accent/30 px-2 text-xs font-semibold tabular-nums"
-      >
-        {totalDue}
+      <span className="font-medium">{label}</span>
+      {totalDue > 1 && (
+        <span
+          aria-hidden="true"
+          className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-accent/30 px-2 text-xs font-semibold tabular-nums"
+        >
+          {totalDue}
+        </span>
+      )}
+      <span className="sr-only">
+        {totalDue === 1 ? "1 card pendiente" : `${totalDue} cards pendientes`}
       </span>
-      <span className="sr-only">{totalDue} cards pendientes</span>
     </button>
   );
 }

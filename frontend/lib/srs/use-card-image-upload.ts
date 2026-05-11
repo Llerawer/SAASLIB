@@ -28,11 +28,13 @@ export function useCardImageUpload(cardId: string | null | undefined) {
 
   async function uploadImage(file: File): Promise<boolean> {
     if (!cardId) {
-      toast.error("Sin card activa");
+      // Edge case — drop without a card active. Shouldn't happen via UI
+      // but defensive in case the hook is called from somewhere new.
+      toast.error("No hay card activa para asignar la imagen.");
       return false;
     }
     if (!file.type.startsWith("image/")) {
-      toast.error(`No es imagen: ${file.type || "tipo desconocido"}`);
+      toast.error("Ese archivo no es una imagen.");
       return false;
     }
     setBusy(true);
@@ -50,14 +52,16 @@ export function useCardImageUpload(cardId: string | null | undefined) {
         headers: { "Content-Type": f.type },
       });
       if (!put.ok) {
-        toast.error(`Error subiendo: ${put.statusText}`);
+        toast.error("La imagen no se pudo subir. Volvé a intentar.");
         return false;
       }
       await confirm.mutateAsync({ id: cardId, type: "image", path });
       toast.success("Imagen guardada");
       return true;
-    } catch (e) {
-      toast.error(`Error: ${(e as Error).message}`);
+    } catch {
+      // Compress / network / confirm failure — collapse all to one
+      // user-actionable message. Devs see the real error in console.
+      toast.error("La imagen no se pudo guardar. Volvé a intentar.");
       return false;
     } finally {
       setBusy(false);

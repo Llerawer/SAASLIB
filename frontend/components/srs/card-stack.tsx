@@ -148,9 +148,12 @@ export function CardStack({
       </div>
 
       {total === 0 ? (
-        <p className="text-sm text-muted-foreground py-12 text-center">
-          Este deck no tiene tarjetas todavía.
-        </p>
+        <div className="py-12 text-center space-y-2 max-w-sm mx-auto">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Sin cards en este deck. Captura palabras desde un libro o video
+            y promuévelas para que aparezcan acá.
+          </p>
+        </div>
       ) : (
         // Stack zone — tight stack + nav + hint as one visual unit.
         // Pulled left-of-center toward the natural reading flow rather
@@ -188,7 +191,7 @@ export function CardStack({
           </div>
 
           <p className="text-xs text-muted-foreground/70 text-center max-w-md">
-            Arrastrá ↕ · click para editar · soltá una imagen
+            Arrastrá ↕ para navegar · click para editar · pegá o soltá una imagen
           </p>
         </div>
       )}
