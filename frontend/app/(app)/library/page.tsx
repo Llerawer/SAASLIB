@@ -39,6 +39,7 @@ import { useBookMetadata } from "@/lib/api/queries";
 import { cleanSubjects } from "@/lib/library/subjects";
 import { OnboardingRibbon } from "@/components/onboarding-ribbon";
 import { PerspectiveBook } from "@/components/library/perspective-book";
+import { relativeDate } from "@/lib/library/relative-date";
 import {
   Sheet,
   SheetContent,
@@ -301,12 +302,6 @@ export default function LibraryPage() {
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       <header className="mb-6">
-        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
-          <span className="size-1 rounded-full bg-accent" aria-hidden />
-          <span>Lectura</span>
-          <span aria-hidden className="text-muted-foreground/50">·</span>
-          <span>Tus libros</span>
-        </div>
         <h1 className="font-serif font-semibold text-3xl md:text-4xl tracking-tight leading-[1.15]">
           Biblioteca
         </h1>
@@ -347,10 +342,9 @@ export default function LibraryPage() {
               aria-hidden="true"
             />
           </button>
-          <p className="text-sm text-muted-foreground mb-4 tabular">
-            {myBooks.length} {myBooks.length === 1 ? "libro" : "libros"} en tu
-            biblioteca
-          </p>
+          <LibrarySubtitle books={myBooks} />
+          {/* invisible spacer so the subtitle has room above the grid */}
+          <div className="mb-4" />
           {!continueCollapsed && (
             <div
               id="continue-grid"
@@ -1146,6 +1140,40 @@ function BookSearchCard({
   );
 }
 
+function LibrarySubtitle({ books }: { books: MyLibraryBook[] }) {
+  const [nowMs] = useState(() => Date.now());
+  const inProgress = books.filter(
+    (b) => b.status !== "finished" && b.progress_percent < 99,
+  ).length;
+  const finished = books.length - inProgress;
+  const mostRecent = books
+    .map((b) => b.last_read_at)
+    .filter((v): v is string => !!v)
+    .sort()
+    .pop();
+  const lastSession = mostRecent ? relativeDate(mostRecent, nowMs) : null;
+
+  return (
+    <p className="text-sm text-muted-foreground/80">
+      {lastSession ? (
+        <>
+          Tu última sesión <span className="text-foreground/80">{lastSession}</span>
+          {" · "}
+        </>
+      ) : null}
+      <span className="tabular">{inProgress}</span>{" "}
+      {inProgress === 1 ? "en progreso" : "en progreso"}
+      {finished > 0 && (
+        <>
+          {" · "}
+          <span className="tabular">{finished}</span>{" "}
+          {finished === 1 ? "terminado" : "terminados"}
+        </>
+      )}
+    </p>
+  );
+}
+
 function MyBookCard({ book }: { book: MyLibraryBook }) {
   const remove = useRemoveFromLibrary();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1158,9 +1186,9 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
     : "#";
   const pct = Math.max(0, Math.min(100, Math.round(book.progress_percent || 0)));
   const isFinished = book.status === "finished" || pct >= 99;
-  const lastRead = book.last_read_at
-    ? new Date(book.last_read_at).toLocaleDateString()
-    : null;
+  const isUnopened = pct === 0 && !book.last_read_at;
+  const [nowMs] = useState(() => Date.now());
+  const lastRead = relativeDate(book.last_read_at, nowMs);
 
   async function handleRemove() {
     try {
@@ -1176,7 +1204,7 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
     <>
       <Link
         href={href}
-        className="group relative flex flex-col h-full px-2 pt-2 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className="group relative flex flex-col h-full px-2 pt-3 pb-2 rounded-lg transition-colors hover:bg-foreground/[0.025] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         <button
           onClick={(e) => {
@@ -1200,8 +1228,10 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
           </span>
         )}
 
-        {/* The book itself is the visual — no card frame around it. */}
-        <div className="flex justify-center pb-3">
+        {/* The book itself is the visual — no card frame around it.
+            Below the book a thin baseline + radial shadow simulate the
+            shelf surface the book sits on. */}
+        <div className="relative flex flex-col items-center pb-3">
           <PerspectiveBook size="sm">
             {coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1221,6 +1251,11 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
               </div>
             )}
           </PerspectiveBook>
+          {/* Floor shadow — radial gradient that fades horizontally. */}
+          <div
+            aria-hidden="true"
+            className="-mt-1.5 h-3 w-[70%] rounded-full blur-md bg-black/35 dark:bg-black/60"
+          />
         </div>
 
         {/* Floating label below the book — no box. */}
@@ -1238,28 +1273,46 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
           )}
         </div>
 
-        {/* Thin progress indicator — only a hairline + percentage, no full bar. */}
-        <div className="mt-auto pt-3 flex flex-col items-center gap-1">
-          <div
-            className="h-px w-16 bg-muted overflow-hidden rounded-full"
-            role="progressbar"
-            aria-valuenow={pct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={`Progreso de ${book.title}: ${pct}%`}
-          >
-            <div
-              className="h-full bg-accent transition-[width] duration-500 ease-out"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <div className="text-[10px] tabular flex items-center gap-1.5 h-4">
-            <span className="text-muted-foreground/60">{pct}%</span>
-            <span className="text-accent font-medium opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-0.5">
-              · Continuar
-              <ChevronRight className="h-3 w-3" aria-hidden="true" />
-            </span>
-          </div>
+        {/* Progress indicator — different shapes for different states:
+              - Unopened: subtle "Sin abrir" label, no bar (nothing to show yet).
+              - In progress: hairline + percentage.
+              - Hover: "Continuar →" CTA in accent. */}
+        <div className="mt-auto pt-3 flex flex-col items-center gap-1 min-h-[28px]">
+          {isUnopened ? (
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50 h-4 flex items-center group-hover:text-accent transition-colors">
+              {/* hover-swap: "Sin abrir" → "Empezar →" */}
+              <span className="group-hover:hidden">Sin abrir</span>
+              <span className="hidden group-hover:inline-flex items-center gap-0.5">
+                Empezar
+                <ChevronRight className="h-3 w-3" aria-hidden="true" />
+              </span>
+            </div>
+          ) : (
+            <>
+              <div
+                className="h-px w-16 bg-muted overflow-hidden rounded-full"
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Progreso de ${book.title}: ${pct}%`}
+              >
+                <div
+                  className="h-full bg-accent transition-[width] duration-500 ease-out"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="text-[10px] tabular flex items-center gap-1.5 h-4">
+                <span className="text-muted-foreground/60 group-hover:hidden">
+                  {pct}%
+                </span>
+                <span className="hidden group-hover:inline-flex items-center gap-0.5 text-accent font-medium">
+                  Continuar
+                  <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </Link>
 
