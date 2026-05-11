@@ -105,23 +105,30 @@ export default function BookmarkletPage() {
           </li>
         </ol>
 
-        {/* The drag target */}
+        {/* The drag target.
+            React (since v16) sanitizes `<a href="javascript:...">` and
+            replaces the href with a throw — security feature against
+            XSS. To make a real bookmarklet work, we render the anchor
+            via dangerouslySetInnerHTML so the JSX → DOM pass doesn't
+            see it. The browser then sees a raw <a> with the actual
+            javascript: URL and lets the user drag it to bookmarks. */}
         <div className="flex justify-center py-6 border-y border-dashed border-border/60">
           {bookmarkletCode ? (
-            // The actual draggable bookmarklet. The `href` is the
-            // javascript: URL the browser will save when dragged. We
-            // also handle click as a no-op so it doesn't navigate when
-            // the user accidentally clicks instead of drags.
-            <a
-              href={bookmarkletCode}
-              onClick={(e) => e.preventDefault()}
-              draggable
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-accent text-accent-foreground font-semibold text-base shadow-md cursor-grab active:cursor-grabbing hover:shadow-lg transition-shadow"
-              title="Arrastrá esto a tu barra de marcadores"
-            >
-              <Bookmark className="h-5 w-5" />
-              Guardar en LinguaReader
-            </a>
+            <div
+              dangerouslySetInnerHTML={{
+                __html: `
+                  <a
+                    href="${escapeHtml(bookmarkletCode)}"
+                    onclick="event.preventDefault();return false;"
+                    draggable="true"
+                    title="Arrastrá esto a tu barra de marcadores"
+                    style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.75rem 1.25rem;border-radius:0.5rem;background-color:rgb(var(--accent-rgb,234 88 12));color:rgb(var(--accent-foreground-rgb,255 255 255));font-weight:600;font-size:1rem;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);cursor:grab;text-decoration:none;"
+                  >
+                    📑 Guardar en LinguaReader
+                  </a>
+                `,
+              }}
+            />
           ) : (
             <div className="h-12 w-56 rounded-lg bg-muted animate-pulse" />
           )}
@@ -252,6 +259,19 @@ function Card({
       <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
     </div>
   );
+}
+
+/** Minimal HTML attribute escaping for the dangerouslySetInnerHTML
+ *  href value. Only escapes the chars that would break the attr.
+ *  Bookmarklet code is generated server-side / by us, not user input,
+ *  but defense in depth. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
