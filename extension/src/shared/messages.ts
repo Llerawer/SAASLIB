@@ -20,7 +20,16 @@ export type AuthStateRequest = {
   type: "auth-state";
 };
 
-export type ExtMessage = LookupRequest | SaveCaptureRequest | AuthStateRequest;
+export type FetchAudioRequest = {
+  type: "fetch-audio";
+  url: string;
+};
+
+export type ExtMessage =
+  | LookupRequest
+  | SaveCaptureRequest
+  | AuthStateRequest
+  | FetchAudioRequest;
 
 export type LookupResponse =
   | { ok: true; data: DictionaryEntry }
@@ -35,7 +44,15 @@ export type AuthStateResponse = {
   email: string | null;
 };
 
-export type ExtResponse = LookupResponse | SaveCaptureResponse | AuthStateResponse;
+export type FetchAudioResponse =
+  | { ok: true; dataUrl: string }
+  | { ok: false; error: string };
+
+export type ExtResponse =
+  | LookupResponse
+  | SaveCaptureResponse
+  | AuthStateResponse
+  | FetchAudioResponse;
 
 /** Mirrors backend GET /api/v1/dictionary/{word} response. */
 export type DictionaryEntry = {

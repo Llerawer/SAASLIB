@@ -133,11 +133,7 @@ function paint(state: PopupState): void {
     const a = elText("button", "lr-icon-btn", "🔊");
     a.title = "Reproducir";
     a.addEventListener("click", () => {
-      try {
-        new Audio(entry.audio_url!).play().catch(() => undefined);
-      } catch {
-        // ignore
-      }
+      void playAudioViaSW(entry.audio_url!);
     });
     header.appendChild(a);
   }
@@ -179,6 +175,24 @@ function paint(state: PopupState): void {
   });
   footer.appendChild(btn);
   popupRoot.appendChild(footer);
+}
+
+// Cache decoded audio per URL so repeated clicks don't re-fetch.
+const audioCache = new Map<string, string>();
+
+async function playAudioViaSW(url: string): Promise<void> {
+  try {
+    let dataUrl = audioCache.get(url);
+    if (!dataUrl) {
+      const resp = await chrome.runtime.sendMessage({ type: "fetch-audio", url });
+      if (!resp || !resp.ok) return;
+      dataUrl = resp.dataUrl as string;
+      audioCache.set(url, dataUrl);
+    }
+    await new Audio(dataUrl).play().catch(() => undefined);
+  } catch {
+    // ignore
+  }
 }
 
 let triggerSave: (() => void) | null = null;

@@ -150,6 +150,29 @@ async function saveCapture(
   }
 }
 
+// Proxy audio fetches: third-party page CSP blocks <audio> from loading
+// cross-origin URLs (e.g. dictionaryapi.dev on Wikipedia). The SW has no
+// page CSP — fetch here and hand back a data: URL the popup can play.
+async function fetchAudio(url: string): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return { ok: false, error: `${r.status} ${r.statusText}` };
+    const buf = await r.arrayBuffer();
+    const mime = r.headers.get("content-type") ?? "audio/mpeg";
+    // base64 encode in chunks to avoid call-stack blowups on large files.
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    const dataUrl = `data:${mime};base64,${btoa(bin)}`;
+    return { ok: true, dataUrl };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
 // --- Message dispatch ----------------------------------------------------
 
 chrome.runtime.onMessage.addListener(
@@ -174,6 +197,9 @@ chrome.runtime.onMessage.addListener(
         case "sign-out":
           await signOut();
           response = { ok: true };
+          break;
+        case "fetch-audio":
+          response = await fetchAudio(msg.url);
           break;
       }
       sendResponse(response);

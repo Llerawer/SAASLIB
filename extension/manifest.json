@@ -30,6 +30,7 @@
   "permissions": ["storage"],
   "host_permissions": [
     "http://localhost:8100/*",
-    "https://*.supabase.co/*"
+    "https://*.supabase.co/*",
+    "https://api.dictionaryapi.dev/*"
   ]
 }
