@@ -55,7 +55,28 @@ export function isDescendantOf(
   return false;
 }
 
-const HUE_PALETTE = [0, 15, 175, 200, 215, 230, 250, 270, 290, 310, 330, 350];
+// Curated palette for auto-derived deck hues. Spread evenly across the
+// color wheel so freshly-named decks get visibly distinct tints, not
+// the "everything is blue" effect the previous palette produced
+// (8 of its 12 entries sat in the 175°-310° blue/violet range).
+//
+// Hues that overlap with semantic tokens are skipped on purpose:
+//   - 25°-50°: project accent (terracota → amber)
+//   - 0°-15°/350°-360°: destructive
+// so a deck-coloured surface can't be misread as "this is a CTA" or
+// "this is dangerous".
+const HUE_PALETTE = [
+  70,   // chartreuse
+  100,  // lime
+  140,  // green
+  165,  // teal
+  190,  // cyan
+  215,  // blue
+  240,  // indigo
+  270,  // violet
+  300,  // magenta
+  330,  // hot pink
+];
 
 export function derivedHueForName(name: string): number {
   // FNV-1a 32-bit, reused from lib/srs/variants.ts pattern.

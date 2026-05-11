@@ -72,10 +72,21 @@ describe("derivedHueForName", () => {
   it("is deterministic", () => {
     expect(derivedHueForName("English")).toBe(derivedHueForName("English"));
   });
-  it("returns a hue from the closed palette (excludes 60–110)", () => {
-    const palette = [0, 15, 175, 200, 215, 230, 250, 270, 290, 310, 330, 350];
+  it("returns a hue from the curated palette (skips accent + destructive ranges)", () => {
+    // Mirrors HUE_PALETTE in rules.ts. Spread evenly across the wheel
+    // so freshly-named decks look visibly different. The 25°-50° gap
+    // (project accent / amber) and 0°-15°/350°+ gap (destructive) are
+    // skipped so a deck color can't be misread as a semantic state.
+    const palette = [70, 100, 140, 165, 190, 215, 240, 270, 300, 330];
     for (const name of ["a", "b", "Sherlock", "Phrasal", "1984"]) {
       expect(palette).toContain(derivedHueForName(name));
     }
+  });
+  it("distributes a small sample across the palette", () => {
+    // Sanity check that it doesn't cluster all names on the same hue.
+    // Five distinct names should hit at least 3 distinct hues.
+    const sample = ["alpha", "beta", "gamma", "delta", "epsilon"];
+    const hues = new Set(sample.map(derivedHueForName));
+    expect(hues.size).toBeGreaterThanOrEqual(3);
   });
 });
