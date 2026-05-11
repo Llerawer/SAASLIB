@@ -1176,7 +1176,7 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
     <>
       <Link
         href={href}
-        className="group relative border rounded-lg overflow-hidden bg-card transition-[background-color,box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none flex flex-col h-full"
+        className="group relative flex flex-col h-full px-2 pt-2 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         <button
           onClick={(e) => {
@@ -1185,7 +1185,7 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
             setConfirmOpen(true);
           }}
           disabled={remove.isPending}
-          className="absolute top-2 right-2 size-8 inline-flex items-center justify-center rounded-md bg-background/85 backdrop-blur-sm text-muted-foreground hover:bg-destructive/15 hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity z-20"
+          className="absolute top-1 right-1 size-7 inline-flex items-center justify-center rounded-md bg-background/70 backdrop-blur-sm text-muted-foreground hover:bg-destructive/15 hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity z-20"
           aria-label={`Quitar ${book.title} de la biblioteca`}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -1193,14 +1193,15 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
 
         {isFinished && (
           <span
-            className="absolute top-2 left-2 text-xs bg-success/15 text-success border border-success/30 rounded px-1.5 py-0.5 whitespace-nowrap z-10"
+            className="absolute top-1 left-1 text-[10px] bg-success/15 text-success border border-success/30 rounded px-1.5 py-0.5 whitespace-nowrap z-10 tracking-wide"
             aria-label="Terminado"
           >
-            Terminado
+            ✓ Terminado
           </span>
         )}
 
-        <div className="pt-4 pb-3 px-3 flex justify-center">
+        {/* The book itself is the visual — no card frame around it. */}
+        <div className="flex justify-center pb-3">
           <PerspectiveBook size="sm">
             {coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1222,39 +1223,43 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
           </PerspectiveBook>
         </div>
 
-        <div className="px-3 pb-2 min-w-0">
-          <h3 className="font-semibold text-xs leading-snug line-clamp-2">
+        {/* Floating label below the book — no box. */}
+        <div className="min-w-0 text-center px-1">
+          <h3 className="font-serif font-medium text-sm leading-snug line-clamp-2 text-foreground">
             {book.title}
           </h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5 font-serif italic line-clamp-1">
+          <p className="text-[11px] text-muted-foreground/90 mt-0.5 font-serif italic line-clamp-1">
             {book.author ?? "Autor desconocido"}
           </p>
           {lastRead && (
-            <p className="text-[10px] text-muted-foreground mt-1 tabular">
+            <p className="text-[10px] text-muted-foreground/60 mt-1 uppercase tracking-wider tabular">
               {lastRead}
             </p>
           )}
         </div>
 
-        <div
-          className="h-1.5 w-full bg-muted mt-auto"
-          role="progressbar"
-          aria-valuenow={pct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`Progreso de ${book.title}: ${pct}%`}
-        >
+        {/* Thin progress indicator — only a hairline + percentage, no full bar. */}
+        <div className="mt-auto pt-3 flex flex-col items-center gap-1">
           <div
-            className="h-full bg-accent transition-[width] duration-500 ease-out"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <div className="px-4 py-1.5 flex items-center justify-between text-xs">
-          <span className="text-muted-foreground tabular">{pct}%</span>
-          <span className="text-accent font-medium opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1">
-            Continuar
-            <ChevronRight className="h-3 w-3" aria-hidden="true" />
-          </span>
+            className="h-px w-16 bg-muted overflow-hidden rounded-full"
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Progreso de ${book.title}: ${pct}%`}
+          >
+            <div
+              className="h-full bg-accent transition-[width] duration-500 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="text-[10px] tabular flex items-center gap-1.5 h-4">
+            <span className="text-muted-foreground/60">{pct}%</span>
+            <span className="text-accent font-medium opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-0.5">
+              · Continuar
+              <ChevronRight className="h-3 w-3" aria-hidden="true" />
+            </span>
+          </div>
         </div>
       </Link>
 
