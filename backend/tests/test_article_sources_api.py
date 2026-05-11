@@ -80,7 +80,7 @@ async def test_import_source_processes_leaves_and_finalizes_done(monkeypatch):
     reflect 3 processed."""
     from app.services import source_importer
 
-    async def fake_extract(url):
+    async def fake_extract(url, *, scraper=None, prefer_scraper=False):
         from app.services.article_extractor import ExtractionResult
         return ExtractionResult(
             title="t", author=None, language="en",
@@ -122,11 +122,12 @@ async def test_import_source_marks_partial_on_some_failures(monkeypatch):
 
     call_count = {"n": 0}
 
-    async def flaky_extract(url):
+    async def flaky_extract(url, *, scraper=None, prefer_scraper=False):
         from app.services.article_extractor import ExtractionResult
         call_count["n"] += 1
-        if call_count["n"] == 2:
-            raise ExtractionError("fail")
+        # Make the failure permanent so retries don't mask it.
+        if "p/1" in url:
+            raise ExtractionError("no readable content found")
         return ExtractionResult(
             title="t", author=None, language="en",
             html_clean="<p>ok</p>", text_clean="ok ok ok",
@@ -160,7 +161,7 @@ async def test_import_source_dedupes_existing_articles(monkeypatch):
     importer should NOT re-insert and count it as processed (silent skip)."""
     from app.services import source_importer
 
-    async def fake_extract(url):
+    async def fake_extract(url, *, scraper=None, prefer_scraper=False):
         raise AssertionError("Should not call extract for dedup hits")
     monkeypatch.setattr(source_importer, "extract", fake_extract)
 

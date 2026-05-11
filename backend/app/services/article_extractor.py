@@ -111,30 +111,66 @@ def _looks_waf_blocked(status_code: int, body: str) -> bool:
     return any(m in lower for m in waf_markers)
 
 
-def _fetch_via_cloudscraper(url: str) -> tuple[str, str]:
-    """Sync — runs in a thread from `extract()`. Returns (html, content_type)."""
-    scraper = cloudscraper.create_scraper(
+def make_cloudscraper_session():
+    """Create a cloudscraper session. Reuse this object across many fetches
+    in the same import (the JS challenge cookie persists, dropping
+    per-leaf time from ~20s to ~2s after the first request)."""
+    return cloudscraper.create_scraper(
         browser={"browser": "chrome", "platform": "windows", "mobile": False},
     )
+
+
+def _fetch_via_cloudscraper(url: str, scraper=None) -> tuple[str, str]:
+    """Sync — runs in a thread from `extract()`. Returns (html, content_type).
+
+    If `scraper` is None, creates a fresh one (single-paste flow).
+    For bulk imports, the caller should pass a reused session so the
+    Cloudflare challenge cookie is preserved across requests."""
+    if scraper is None:
+        scraper = make_cloudscraper_session()
     r = scraper.get(url, timeout=_CLOUDSCRAPER_TIMEOUT_S, allow_redirects=True)
     r.raise_for_status()
     ctype = r.headers.get("content-type", "")
     return r.text, ctype
 
 
-async def fetch_html(url: str) -> tuple[str, str]:
+async def fetch_html(
+    url: str, *, scraper=None, prefer_scraper: bool = False,
+) -> tuple[str, str]:
     """Public re-export for the source importer (which needs raw HTML
-    before adapter detection)."""
-    return await _fetch_html(url)
+    before adapter detection). The bulk importer passes its shared
+    cloudscraper session via `scraper` to keep cookies warm, and
+    `prefer_scraper=True` to skip the httpx attempt for known-WAF sources."""
+    return await _fetch_html(url, scraper=scraper, prefer_scraper=prefer_scraper)
 
 
-async def _fetch_html(url: str) -> tuple[str, str]:
+async def _fetch_html(
+    url: str, *, scraper=None, prefer_scraper: bool = False,
+) -> tuple[str, str]:
     """Two-stage fetch: httpx first (fast), cloudscraper on timeout / 403 /
     429 / WAF challenge body (slower but bypasses Cloudflare basic).
 
     Returns (html, content_type). Raises ExtractionError with a message a
     human can act on.
     """
+    # Fast-path skip: known-WAF sources (bulk importer passes prefer_scraper)
+    # save 15s of dead httpx timeout per leaf.
+    if prefer_scraper:
+        try:
+            html, ctype = await asyncio.to_thread(
+                _fetch_via_cloudscraper, url, scraper,
+            )
+            if _looks_waf_blocked(200, html):
+                raise ExtractionError(
+                    "Este sitio tiene protección WAF avanzada que cloudscraper "
+                    "no logra pasar."
+                )
+            return html, ctype
+        except ExtractionError:
+            raise
+        except Exception as e:
+            raise ExtractionError(f"Fetch failed (cloudscraper-direct): {e}") from e
+
     waf_blocked = False
     httpx_err: Exception | None = None
 
@@ -170,7 +206,7 @@ async def _fetch_html(url: str) -> tuple[str, str]:
 
     if waf_blocked:
         try:
-            html, ctype = await asyncio.to_thread(_fetch_via_cloudscraper, url)
+            html, ctype = await asyncio.to_thread(_fetch_via_cloudscraper, url, scraper)
             log.info("[extract] cloudscraper → OK (%d bytes) for %s", len(html), url)
             # Even cloudscraper can hit a hard JS challenge — check the body.
             if _looks_waf_blocked(200, html):
@@ -192,17 +228,28 @@ async def _fetch_html(url: str) -> tuple[str, str]:
     raise ExtractionError(f"Fetch failed: {msg}")
 
 
-async def extract(url: str) -> ExtractionResult:
+async def extract(
+    url: str, *, scraper=None, prefer_scraper: bool = False,
+) -> ExtractionResult:
     """Fetch `url`, run trafilatura, return cleaned content + metadata.
 
     Two-stage fetch: httpx (fast) → cloudscraper fallback on Cloudflare /
     timeout / 4xx-5xx-marked-as-WAF. Then content-type / size guards, then
     trafilatura extraction.
 
+    For bulk imports against a WAF-protected source, pass:
+      - `scraper`: a shared cloudscraper session (kept across many calls
+        so the Cloudflare cookie persists)
+      - `prefer_scraper=True`: skip the httpx attempt entirely. Otherwise
+        every leaf eats a 15s httpx timeout before falling back, which
+        dominates the per-leaf cost (~18s vs ~2s).
+
     Raises ExtractionError on any failure with a message safe to surface
     to the user (mapped to HTTP 422 by the API layer).
     """
-    html, ctype = await _fetch_html(url)
+    html, ctype = await _fetch_html(
+        url, scraper=scraper, prefer_scraper=prefer_scraper,
+    )
     ctype = ctype.lower()
 
     if "application/pdf" in ctype or url.lower().endswith(".pdf"):
