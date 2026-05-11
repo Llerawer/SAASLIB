@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { Bookmark, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { ArticleListItem } from "@/components/article/article-list-item";
@@ -114,9 +115,18 @@ export default function ArticlesPage() {
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
       <header className="space-y-1">
-        <h1 className="font-serif text-2xl font-semibold leading-tight">
-          Artículos
-        </h1>
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <h1 className="font-serif text-2xl font-semibold leading-tight">
+            Artículos
+          </h1>
+          <Link
+            href="/bookmarklet"
+            className="text-xs text-accent hover:underline inline-flex items-center gap-1"
+          >
+            <Bookmark className="h-3 w-3" />
+            Guardar de cualquier sitio
+          </Link>
+        </div>
         <p className="text-sm text-muted-foreground">
           Pega un URL para leer un artículo, o el índice de un manual para
           importarlo entero.

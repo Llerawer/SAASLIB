@@ -1430,6 +1430,22 @@ export function useCreateArticle(opts?: {
   });
 }
 
+export function useCreateArticleFromHtml(opts?: {
+  onSuccess?: (a: Article) => void;
+  onError?: (err: Error) => void;
+}) {
+  const qc = useQueryClient();
+  return useMutation<Article, Error, { url: string; html: string }>({
+    mutationFn: (body) => api.post<Article>("/api/v1/articles/from-html", body),
+    onSuccess: (article) => {
+      qc.invalidateQueries({ queryKey: articleKeys.list() });
+      qc.setQueryData(articleKeys.detail(article.id), article);
+      opts?.onSuccess?.(article);
+    },
+    onError: opts?.onError,
+  });
+}
+
 export function useDeleteArticle() {
   const qc = useQueryClient();
   return useMutation<void, Error, string>({
