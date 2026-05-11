@@ -1070,28 +1070,28 @@ function BookSearchCard({
   return (
     <button
       onClick={onPick}
-      className={`group text-left flex border rounded-lg bg-card w-full transition-[background-color,box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${
-        isSpotlight ? "gap-4 p-4" : "gap-3 p-3"
+      className={`group text-left flex w-full rounded-lg transition-colors duration-200 hover:bg-foreground/[0.025] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${
+        isSpotlight ? "gap-4 p-3" : "gap-3 p-2"
       }`}
     >
       <div
-        className={`shrink-0 bg-muted rounded-sm overflow-hidden ring-1 ring-foreground/5 ${
+        className={`shrink-0 overflow-hidden rounded-sm shadow-[0_1px_2px_rgba(0,0,0,0.15),_0_4px_10px_rgba(0,0,0,0.18)] ring-1 ring-black/10 transition-transform duration-300 group-hover:scale-[1.04] group-hover:shadow-[0_2px_4px_rgba(0,0,0,0.18),_0_8px_18px_rgba(0,0,0,0.25)] ${
           isSpotlight ? "w-20 h-30 sm:w-24 sm:h-36" : "w-16 h-24"
         }`}
-        style={isSpotlight ? { aspectRatio: "2 / 3" } : undefined}
+        style={{ aspectRatio: "2 / 3" }}
       >
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={cover}
             alt=""
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+            className="w-full h-full object-cover"
             loading="lazy"
             width={isSpotlight ? 96 : 64}
             height={isSpotlight ? 144 : 96}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1 text-center">
+          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1 text-center bg-muted">
             Sin portada
           </div>
         )}
@@ -1099,7 +1099,7 @@ function BookSearchCard({
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start gap-2">
           <h3
-            className={`font-semibold leading-snug line-clamp-2 flex-1 min-w-0 ${
+            className={`font-serif font-medium leading-snug line-clamp-2 flex-1 min-w-0 ${
               isSpotlight ? "text-base" : "text-sm"
             }`}
           >
@@ -1108,7 +1108,7 @@ function BookSearchCard({
           <CefrBadge cefr={cefr} reading={reading} />
         </div>
         <p
-          className={`text-muted-foreground line-clamp-1 font-serif italic ${
+          className={`text-muted-foreground/90 line-clamp-1 font-serif italic ${
             isSpotlight ? "text-sm mt-1" : "text-xs mt-0.5"
           }`}
         >
