@@ -193,6 +193,26 @@ async def test_extract_returns_final_url_after_redirect():
     assert result.final_url == "https://example.com/canonical/article"
 
 
+def test_extract_from_html_runs_trafilatura_without_fetch():
+    """The bookmarklet path: caller already has HTML, we skip httpx
+    entirely and just run trafilatura."""
+    from app.services.article_extractor import extract_from_html
+
+    result = extract_from_html(_VALID_HTML, "https://example.com/captured")
+    assert "Widgets" in result.text_clean
+    assert result.word_count > 30
+    assert result.final_url == "https://example.com/captured"
+
+
+def test_extract_from_html_rejects_short_content():
+    from app.services.article_extractor import (
+        extract_from_html,
+        ExtractionError,
+    )
+    with pytest.raises(ExtractionError, match="readable content"):
+        extract_from_html(_PAYWALL_HTML, "https://example.com/short")
+
+
 def test_looks_waf_blocked_body_markers():
     from app.services.article_extractor import _looks_waf_blocked
     # Cloudflare challenge interstitial.

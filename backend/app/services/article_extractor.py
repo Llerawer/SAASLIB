@@ -245,6 +245,72 @@ async def _fetch_html(
     raise ExtractionError(f"Fetch failed: {msg}")
 
 
+def extract_from_html(html: str, url: str) -> ExtractionResult:
+    """Run trafilatura on already-fetched HTML. No network. Used by the
+    bookmarklet flow where the user's browser captured the rendered DOM
+    (post-auth, post-JS).
+
+    Same checks as extract() except we skip content-type / size guards
+    that only make sense for raw network fetches. The caller is trusted
+    to send legitimate HTML (bookmarklet runs in their own browser).
+
+    Returns ExtractionResult with final_url == url (no redirect to track
+    server-side; the bookmarklet captures the URL the user is actually on)."""
+    if len(html) > _MAX_HTML_BYTES:
+        raise ExtractionError("HTML payload too large")
+
+    extracted_html = trafilatura.extract(
+        html,
+        output_format="html",
+        with_metadata=True,
+        include_links=False,
+        include_images=False,
+        include_tables=True,
+        favor_recall=False,
+    )
+    extracted_text = trafilatura.extract(
+        html,
+        include_links=False,
+        include_images=False,
+        favor_recall=False,
+    )
+
+    if not extracted_text or len(extracted_text) < _MIN_TEXT_LEN:
+        log.info(
+            "[from-html] trafilatura returned %d chars (need %d) for %s",
+            len(extracted_text or ""), _MIN_TEXT_LEN, url,
+        )
+        raise ExtractionError(
+            "No readable content found in the captured page. "
+            "Try a different page with more visible text."
+        )
+
+    metadata = trafilatura.extract_metadata(html) or None
+    title = _clean_title(
+        (metadata.title if metadata and metadata.title else None)
+        or _fallback_title_from_html(html)
+        or "Sin título"
+    )
+    author = None
+    language = "en"
+    if metadata is not None:
+        author = (metadata.author or None)
+        if author:
+            author = author[:200]
+        language = (metadata.language or "en")[:8]
+
+    return ExtractionResult(
+        title=title,
+        author=author,
+        language=language,
+        html_clean=extracted_html or "",
+        text_clean=extracted_text,
+        word_count=_count_words(extracted_text),
+        content_hash=hashlib.sha256(extracted_text.encode("utf-8")).hexdigest(),
+        final_url=url,
+    )
+
+
 async def extract(
     url: str, *, scraper=None, prefer_scraper: bool = False,
 ) -> ExtractionResult:

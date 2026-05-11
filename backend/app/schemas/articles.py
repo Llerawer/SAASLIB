@@ -24,6 +24,20 @@ class ArticleCreate(BaseModel):
         return self
 
 
+class ArticleFromHtmlCreate(BaseModel):
+    """For the bookmarklet flow: caller already has the rendered HTML
+    (captured from the user's browser, post-auth/JS). Backend skips
+    fetching and runs trafilatura directly on the provided HTML."""
+    url: HttpUrl
+    html: str = Field(..., min_length=1, max_length=10_000_000)
+
+    @model_validator(mode="after")
+    def _check_url_length(self):
+        if len(str(self.url)) > _MAX_URL_LEN:
+            raise ValueError(f"URL exceeds {_MAX_URL_LEN} characters")
+        return self
+
+
 class ArticleProgressUpdate(BaseModel):
     read_pct: float = Field(..., ge=0, le=1)
 

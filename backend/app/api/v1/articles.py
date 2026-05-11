@@ -10,6 +10,7 @@ from app.core.rate_limit import limiter
 from app.db.supabase_client import get_user_client
 from app.schemas.articles import (
     ArticleCreate,
+    ArticleFromHtmlCreate,
     ArticleHighlightCreate,
     ArticleHighlightOut,
     ArticleHighlightUpdate,
@@ -21,6 +22,7 @@ from app.schemas.articles import (
 from app.services.article_extractor import (
     ExtractionError,
     extract,
+    extract_from_html,
     normalize_url,
 )
 
@@ -141,6 +143,51 @@ async def create_article(
     inserted = (
         client.table("articles").insert(payload).execute().data
     )
+    if not inserted:
+        raise HTTPException(500, "Failed to insert article")
+    return ArticleOut(**inserted[0])
+
+
+@router.post("/from-html", response_model=ArticleOut)
+@limiter.limit("30/minute")
+async def create_article_from_html(
+    request: Request,
+    body: ArticleFromHtmlCreate,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Bookmarklet-flow create. Caller (the user's browser) already has
+    the rendered HTML; we skip the fetch pipeline entirely and run
+    trafilatura on the provided HTML.
+
+    Same dedup as the regular /articles endpoint (input-URL hash before
+    extract; second pass on final URL would be redundant — bookmarklet
+    runs in user's browser so the URL bar is the canonical URL already).
+    """
+    canonical, url_hash = normalize_url(str(body.url))
+    client = get_user_client(auth.jwt)
+
+    existing = _check_existing(client, auth.user_id, url_hash)
+    if existing:
+        return ArticleOut(**existing)
+
+    try:
+        result = extract_from_html(body.html, canonical)
+    except ExtractionError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    payload = {
+        "user_id": auth.user_id,
+        "url": canonical,
+        "url_hash": url_hash,
+        "title": result.title,
+        "author": result.author,
+        "language": result.language,
+        "html_clean": result.html_clean,
+        "text_clean": result.text_clean,
+        "content_hash": result.content_hash,
+        "word_count": result.word_count,
+    }
+    inserted = client.table("articles").insert(payload).execute().data
     if not inserted:
         raise HTTPException(500, "Failed to insert article")
     return ArticleOut(**inserted[0])
