@@ -27,10 +27,21 @@ export default function ArticlesPage() {
   const [pendingPreview, setPendingPreview] = useState<SourcePreview | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
 
-  const articles = useArticles({ sourceId: sourceFilter });
   // Poll active sources every 2s so progress feels live; once all are
   // settled we don't need to keep hitting the endpoint.
   const sources = useArticleSources({ pollMs: 2000 });
+  const hasActiveSource = (sources.data ?? []).some(
+    (s) =>
+      s.import_status === "queued" ||
+      s.import_status === "discovering" ||
+      s.import_status === "importing",
+  );
+  // While any source is importing, poll the global list too so newly-
+  // landed articles appear without needing a manual refresh.
+  const articles = useArticles({
+    sourceId: sourceFilter,
+    pollMs: hasActiveSource ? 3000 : undefined,
+  });
 
   const sourceNameById = useMemo(() => {
     const m = new Map<string, string>();

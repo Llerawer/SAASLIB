@@ -56,11 +56,14 @@ class SphinxAdapter(DocumentationAdapter):
         soup = BeautifulSoup(html, "html.parser")
         title_tag = soup.find("title")
         if title_tag and title_tag.text.strip():
-            t = title_tag.text.strip()
+            t = title_tag.text.replace("¶", "").replace("§", "")
+            # Drop Mojibake replacement chars and control chars.
+            t = re.sub(r"[\x00-\x1f�]", " ", t)
+            t = re.sub(r"\s+", " ", t).strip()
             # Sphinx titles often look like "Documentation — Project 1.0"
-            # or "Project 1.0 documentation". Prefer the cleaner form.
+            # or "Project 1.0 documentation". Normalize separators.
             t = re.sub(r"\s*[—\-–|]\s*", " — ", t)
-            return t[:200]
+            return t[:200] or _path_to_title(urlparse(url).path)
         # Fallback: host + first path segment.
         parsed = urlparse(url)
         first_seg = parsed.path.strip("/").split("/", 1)[0] or ""

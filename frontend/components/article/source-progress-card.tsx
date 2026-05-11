@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   type ArticleSource,
+  useArticles,
   useCancelSource,
   useDeleteSource,
 } from "@/lib/api/queries";
@@ -14,6 +15,33 @@ import { cn } from "@/lib/utils";
 type Props = {
   source: ArticleSource;
 };
+
+/** Number of recently-imported article titles to stream below the bar. */
+const STREAM_LIMIT = 4;
+
+function formatEta(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return "calculando…";
+  if (seconds < 60) return `~${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (m < 60) return `~${m}m ${s.toString().padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  return `~${h}h ${(m % 60).toString().padStart(2, "0")}m`;
+}
+
+function computeEtaSeconds(source: ArticleSource): number | null {
+  const done = source.processed_pages + source.failed_pages;
+  if (done < 3) return null; // need a couple data points
+  const total = source.discovered_pages || source.queued_pages;
+  if (!total || done >= total) return null;
+  const startedMs = new Date(source.started_at).getTime();
+  if (!isFinite(startedMs)) return null;
+  const elapsedSec = (Date.now() - startedMs) / 1000;
+  if (elapsedSec < 1) return null;
+  const ratePerSec = done / elapsedSec;
+  if (ratePerSec <= 0) return null;
+  return (total - done) / ratePerSec;
+}
 
 const STATUS_LABEL: Record<ArticleSource["import_status"], string> = {
   queued: "En cola",
@@ -37,6 +65,19 @@ export function SourceProgressCard({ source }: Props) {
   const done = source.processed_pages + source.failed_pages;
   const pct = Math.min(100, Math.round((done / total) * 100));
   const active = isActive(source.import_status);
+  const etaSec = active ? computeEtaSeconds(source) : null;
+
+  // Stream the last few imported titles for psychological-progress UX.
+  // Reuses the same /articles?source_id endpoint the lista already polls;
+  // TanStack dedupes, so this is essentially free if the page is also
+  // showing the source filter.
+  const recent = useArticles({
+    sourceId: source.id,
+    // Poll while active so titles stream in. Stop once finished to
+    // avoid hammering the API for completed sources.
+    pollMs: active ? 2500 : undefined,
+  });
+  const lastTitles = (recent.data ?? []).slice(0, STREAM_LIMIT);
 
   return (
     <div
@@ -114,7 +155,7 @@ export function SourceProgressCard({ source }: Props) {
         />
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
         <span className="tabular-nums">
           <strong className="text-foreground">{source.processed_pages}</strong>
           {" / "}
@@ -125,12 +166,37 @@ export function SourceProgressCard({ source }: Props) {
             {source.failed_pages} fallaron
           </span>
         )}
+        {etaSec !== null && (
+          <span className="text-foreground/60">
+            restan {formatEta(etaSec)}
+          </span>
+        )}
         {source.error_message && (
           <span className="text-destructive truncate" title={source.error_message}>
             {source.error_message}
           </span>
         )}
       </div>
+
+      {/* Recently-imported titles streaming under the bar. Hidden when
+       *  there are no articles yet to avoid an empty box. */}
+      {active && lastTitles.length > 0 && (
+        <ul className="text-xs text-muted-foreground space-y-0.5 pt-1 border-t border-border/40">
+          {lastTitles.map((a) => (
+            <li
+              key={a.id}
+              className="flex items-baseline gap-1.5 truncate"
+              title={a.title}
+            >
+              <CheckCircle2
+                className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400"
+                aria-hidden="true"
+              />
+              <span className="truncate">{a.title}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

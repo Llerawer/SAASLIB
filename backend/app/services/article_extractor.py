@@ -131,6 +131,12 @@ def _fetch_via_cloudscraper(url: str, scraper=None) -> tuple[str, str]:
     r = scraper.get(url, timeout=_CLOUDSCRAPER_TIMEOUT_S, allow_redirects=True)
     r.raise_for_status()
     ctype = r.headers.get("content-type", "")
+    # requests sometimes guesses the encoding wrong (defaults to ISO-8859-1
+    # when no charset header) → titles get � for em-dash etc. Trust
+    # apparent_encoding (chardet detection) which is much more accurate
+    # for Sphinx/Docusaurus pages that don't always send charset header.
+    if r.encoding and r.encoding.lower() in ("iso-8859-1", "latin-1"):
+        r.encoding = r.apparent_encoding or "utf-8"
     return r.text, ctype
 
 
@@ -288,11 +294,11 @@ async def extract(
     log.info("[extract] trafilatura → %d chars OK for %s", len(extracted_text), url)
 
     metadata = trafilatura.extract_metadata(html) or None
-    title = (
+    title = _clean_title(
         (metadata.title if metadata and metadata.title else None)
         or _fallback_title_from_html(html)
         or "Sin título"
-    ).strip()[:500]
+    )
 
     author = None
     language = "en"
@@ -312,6 +318,19 @@ async def extract(
         word_count=_count_words(text_clean),
         content_hash=hashlib.sha256(text_clean.encode("utf-8")).hexdigest(),
     )
+
+
+def _clean_title(raw: str) -> str:
+    """Strip Sphinx pilcrow anchors (¶), normalize whitespace, cap length.
+    Sphinx adds ¶ as the heading-anchor link character; trafilatura
+    sometimes lifts it into the title. Other docs use § similarly. We
+    drop both, plus any control characters and excessive whitespace."""
+    cleaned = raw.replace("¶", "").replace("§", "")
+    # Drop Mojibake-replacement char and other control chars.
+    cleaned = re.sub(r"[\x00-\x1f�]", " ", cleaned)
+    # Collapse whitespace.
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:500] or "Sin título"
 
 
 def _fallback_title_from_html(html: str) -> str | None:

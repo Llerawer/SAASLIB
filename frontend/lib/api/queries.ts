@@ -1353,7 +1353,12 @@ const articleKeys = {
   highlights: (id: string) => [...articleKeys.all, id, "highlights"] as const,
 };
 
-export function useArticles(opts?: { sourceId?: string | null }) {
+export function useArticles(opts?: {
+  sourceId?: string | null;
+  /** Poll interval in ms — pass while a source is actively importing
+   *  to surface newly-landed articles. */
+  pollMs?: number;
+}) {
   const sourceId = opts?.sourceId ?? null;
   return useQuery({
     queryKey: sourceId
@@ -1363,6 +1368,7 @@ export function useArticles(opts?: { sourceId?: string | null }) {
       const qs = sourceId ? `?source_id=${encodeURIComponent(sourceId)}` : "";
       return api.get<ArticleListItem[]>(`/api/v1/articles${qs}`);
     },
+    refetchInterval: opts?.pollMs,
   });
 }
 
