@@ -359,6 +359,7 @@ export default function LibraryPage() {
               {myBooks.map((b, i) => (
                 <div
                   key={b.book_id}
+                  className="h-full"
                   style={{
                     animation: `lr-card-in 360ms var(--ease-out-quart) ${i * 40}ms both`,
                   }}
@@ -1175,7 +1176,7 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
     <>
       <Link
         href={href}
-        className="group relative border rounded-lg overflow-hidden bg-card transition-[background-color,box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none flex flex-col"
+        className="group relative border rounded-lg overflow-hidden bg-card transition-[background-color,box-shadow,transform] duration-200 hover:shadow-md hover:-translate-y-0.5 hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none flex flex-col h-full"
       >
         <button
           onClick={(e) => {
