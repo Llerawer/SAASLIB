@@ -91,3 +91,16 @@ class ArticleHighlightOut(BaseModel):
     note: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class ArticleSearchHit(BaseModel):
+    """One result from GET /articles/search.
+    `snippet` is HTML with <mark> tags around matched terms (from
+    Postgres ts_headline). Frontend renders dangerouslySetInnerHTML
+    after sanitizing the allowlist (only <mark> + plain text)."""
+    id: str
+    title: str
+    snippet: str
+    source_id: str | None = None
+    toc_path: str | None = None
+    rank: float

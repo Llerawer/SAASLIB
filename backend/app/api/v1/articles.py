@@ -16,6 +16,7 @@ from app.schemas.articles import (
     ArticleListItem,
     ArticleOut,
     ArticleProgressUpdate,
+    ArticleSearchHit,
 )
 from app.services.article_extractor import (
     ExtractionError,
@@ -143,6 +144,39 @@ async def create_article(
     if not inserted:
         raise HTTPException(500, "Failed to insert article")
     return ArticleOut(**inserted[0])
+
+
+@router.get("/search", response_model=list[ArticleSearchHit])
+@limiter.limit("60/minute")
+async def search_articles(
+    request: Request,
+    q: str = Query(..., min_length=1, max_length=200),
+    source_id: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=20, ge=1, le=100),
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Full-text search across the user's articles.
+
+    Backed by the search_articles() RPC which uses Postgres tsvector
+    with weighted ranking (title=A, body=B). RLS ensures only the
+    caller's articles are searchable. Returns ranked hits with
+    <mark>-tagged snippets (10-20 word fragments around matches).
+
+    Empty / whitespace-only `q` is rejected at the Pydantic layer
+    (min_length=1). websearch_to_tsquery handles quotes and -negation
+    natively.
+    """
+    client = get_user_client(auth.jwt)
+    res = client.rpc(
+        "search_articles",
+        {
+            "q": q,
+            "source_id_filter": source_id,
+            "limit_n": limit,
+        },
+    ).execute()
+    rows = res.data or []
+    return [ArticleSearchHit(**r) for r in rows]
 
 
 @router.get("", response_model=list[ArticleListItem])

@@ -1353,6 +1353,40 @@ const articleKeys = {
   highlights: (id: string) => [...articleKeys.all, id, "highlights"] as const,
 };
 
+export type ArticleSearchHit = {
+  id: string;
+  title: string;
+  snippet: string;       // HTML with <mark>...</mark> around matches
+  source_id: string | null;
+  toc_path: string | null;
+  rank: number;
+};
+
+export function useArticleSearch(opts: {
+  query: string;
+  sourceId?: string | null;
+  enabled?: boolean;
+}) {
+  const trimmed = opts.query.trim();
+  const isEnabled = (opts.enabled ?? true) && trimmed.length > 0;
+  return useQuery({
+    queryKey: [
+      "articles",
+      "search",
+      { q: trimmed, sourceId: opts.sourceId ?? null },
+    ],
+    queryFn: () => {
+      const params = new URLSearchParams({ q: trimmed });
+      if (opts.sourceId) params.set("source_id", opts.sourceId);
+      return api.get<ArticleSearchHit[]>(
+        `/api/v1/articles/search?${params.toString()}`,
+      );
+    },
+    enabled: isEnabled,
+    staleTime: 30_000,
+  });
+}
+
 export function useArticles(opts?: {
   sourceId?: string | null;
   /** Poll interval in ms — pass while a source is actively importing
