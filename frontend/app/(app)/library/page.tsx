@@ -317,7 +317,7 @@ export default function LibraryPage() {
             {myBooks.length} {myBooks.length === 1 ? "libro" : "libros"} en tu
             biblioteca
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {myBooks.map((b, i) => (
               <div
                 key={b.book_id}
@@ -1160,8 +1160,8 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
           </span>
         )}
 
-        <div className="pt-6 pb-4 px-4 flex justify-center">
-          <PerspectiveBook size="default">
+        <div className="pt-4 pb-3 px-3 flex justify-center">
+          <PerspectiveBook size="sm">
             {coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -1175,23 +1175,23 @@ function MyBookCard({ book }: { book: MyLibraryBook }) {
                 }}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs px-2 text-center">
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-[10px] px-2 text-center">
                 {book.title}
               </div>
             )}
           </PerspectiveBook>
         </div>
 
-        <div className="px-4 pb-3 min-w-0">
-          <h3 className="font-semibold text-sm leading-snug line-clamp-2">
+        <div className="px-3 pb-2 min-w-0">
+          <h3 className="font-semibold text-xs leading-snug line-clamp-2">
             {book.title}
           </h3>
-          <p className="text-xs text-muted-foreground mt-1 font-serif italic line-clamp-1">
+          <p className="text-[11px] text-muted-foreground mt-0.5 font-serif italic line-clamp-1">
             {book.author ?? "Autor desconocido"}
           </p>
           {lastRead && (
-            <p className="text-xs text-muted-foreground mt-1.5 tabular">
-              Última lectura: {lastRead}
+            <p className="text-[10px] text-muted-foreground mt-1 tabular">
+              {lastRead}
             </p>
           )}
         </div>
