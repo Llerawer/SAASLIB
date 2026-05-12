@@ -3,6 +3,10 @@ import { withSerwist } from "@serwist/turbopack";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // Hide the floating "N" Next.js DevTools indicator on the page. It
+  // overlaps content on mobile and serves no purpose in user-facing
+  // builds. Set to `true` again if you need the devtools surface back.
+  devIndicators: false,
   // Allow phone/LAN devices + Cloudflare quick tunnels to hit the dev
   // server during testing. The tunnel hostname changes every time you
   // start cloudflared — the wildcard catches all `*.trycloudflare.com`
