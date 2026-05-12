@@ -18,21 +18,21 @@ beforeEach(() => {
 import LandingPreviewPage from "@/app/landing-preview/page";
 
 describe("LandingPreviewPage", () => {
-  it("renders the hero headline (Glimpse.)", () => {
+  it("renders the new product headline", () => {
     const { container } = render(<LandingPreviewPage />);
     const h1 = container.querySelector("h1");
-    expect(h1?.textContent).toMatch(/glimpse/i);
+    expect(h1?.textContent).toMatch(/aprende inglés sin dejar de leer lo que amas/i);
   });
 
-  it("renders the sub-headline promise", () => {
+  it("renders the tagline", () => {
     render(<LandingPreviewPage />);
-    expect(screen.getByText(/y ahora ya no se te olvida/i)).toBeInTheDocument();
+    expect(screen.getByText(/lee\.\s*captura\.\s*no olvides\./i)).toBeInTheDocument();
   });
 
-  it("renders the inline CTA 'Abre un libro'", () => {
+  it("renders the primary CTA 'Prueba con un libro' linking to /signup", () => {
     const { container } = render(<LandingPreviewPage />);
     const cta = container.querySelector('a[href="/signup"]') as HTMLAnchorElement;
     expect(cta).not.toBeNull();
-    expect(cta.textContent).toMatch(/abre un libro/i);
+    expect(cta.textContent).toMatch(/prueba con un libro/i);
   });
 });
