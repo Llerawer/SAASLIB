@@ -16,7 +16,7 @@ export function HeroDeck({ count }: HeroDeckProps) {
           <div
             key={i}
             data-card={i}
-            className="absolute inset-0 rounded-2xl border border-border bg-card"
+            className="absolute inset-0 rounded-2xl border border-[color:var(--border)] bg-muted"
             style={{
               transform: `translate(${OFFSETS_X[i]}px, ${OFFSETS_Y[i]}px) rotate(${rot})`,
               boxShadow:
@@ -26,7 +26,7 @@ export function HeroDeck({ count }: HeroDeckProps) {
           />
         ))}
       </div>
-      <span className="font-mono tabular text-sm text-muted-foreground">{count}</span>
+      <span className="font-mono tabular text-sm text-foreground/80">{count}</span>
     </div>
   );
 }

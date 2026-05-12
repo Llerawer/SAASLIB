@@ -19,7 +19,7 @@ export function HeroPopup({ ipa, amplitudes, playing, onPlay }: HeroPopupProps) 
       }}
     >
       <div className="flex items-center gap-3">
-        <span className="font-mono text-sm text-foreground tabular flex-1">{ipa}</span>
+        <span className="prose-serif italic text-base text-foreground tabular flex-1">{ipa}</span>
         <button
           type="button"
           onClick={onPlay}
