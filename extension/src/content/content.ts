@@ -140,6 +140,20 @@ function onDblClick(e: MouseEvent): void {
     return;
   }
 
+  // Netflix: dblclick is bound to fullscreen-toggle on the player.
+  // If the user is double-clicking the subtitle, we want our popup,
+  // NOT fullscreen. Detect early via point and swallow the event
+  // before Netflix's own listener runs.
+  let elAtPoint: Element | null = null;
+  if (isNetflixWatchPage()) {
+    elAtPoint = document.elementFromPoint(e.clientX, e.clientY);
+    if (elAtPoint?.closest(".player-timedtext")) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+  }
+
   let textNode: Text | null = null;
   let startOffset = 0;
 

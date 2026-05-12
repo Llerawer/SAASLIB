@@ -67,9 +67,11 @@ function ensureHost(): { host: HTMLDivElement; shadow: ShadowRoot } {
   if (host && shadow) return { host, shadow };
   host = document.createElement("div");
   host.id = HOST_ID;
-  // Mode 'open' for v1 (per spec — debug-friendly). Switch to 'closed'
-  // before any production / Web Store release.
-  shadow = host.attachShadow({ mode: "open" });
+  // Mode 'closed' for production — third-party pages can't introspect
+  // or mutate our popup via document.querySelector(...).shadowRoot.
+  // We kept 'open' during dev for DevTools inspection; switched here
+  // before Web Store submit per spec.
+  shadow = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = STYLES;
   shadow.appendChild(style);

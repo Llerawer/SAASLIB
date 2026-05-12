@@ -112,6 +112,9 @@ export type UpdateCaptureNoteResponse =
 export type AuthStateResponse = {
   signedIn: boolean;
   email: string | null;
+  /** Number of captures saved via the extension today (local-day,
+   *  resets at midnight). Tracked in chrome.storage by the SW. */
+  capturesToday: number;
 };
 
 export type FetchAudioResponse =

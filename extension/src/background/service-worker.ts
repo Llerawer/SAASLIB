@@ -117,7 +117,45 @@ async function getAuthState(): Promise<AuthStateResponse> {
   return {
     signedIn: !!session,
     email: session?.user.email ?? null,
+    capturesToday: await getCapturesTodayCount(),
   };
+}
+
+// --- Daily capture counter ----------------------------------------------
+// Persisted in chrome.storage so it survives SW restarts within the same
+// day. Keyed by local-date (YYYY-MM-DD) so we get a free reset at
+// midnight — reading a stale key from yesterday returns 0.
+
+type DailyCounter = { date: string; count: number };
+
+const COUNTER_KEY = "captures_today";
+
+function localDateStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+async function getCapturesTodayCount(): Promise<number> {
+  const today = localDateStr();
+  const { [COUNTER_KEY]: stored } = await chrome.storage.local.get(COUNTER_KEY);
+  const counter = stored as DailyCounter | undefined;
+  if (!counter || counter.date !== today) return 0;
+  return counter.count;
+}
+
+async function incrementCapturesToday(): Promise<number> {
+  const today = localDateStr();
+  const { [COUNTER_KEY]: stored } = await chrome.storage.local.get(COUNTER_KEY);
+  const counter = stored as DailyCounter | undefined;
+  const next: DailyCounter =
+    counter && counter.date === today
+      ? { date: today, count: counter.count + 1 }
+      : { date: today, count: 1 };
+  await chrome.storage.local.set({ [COUNTER_KEY]: next });
+  return next.count;
 }
 
 // --- API operations triggered from the content script -------------------
@@ -173,6 +211,19 @@ async function saveCapture(
   videoId: string | null = null,
   videoTimestampS: number | null = null,
 ): Promise<SaveCaptureResponse> {
+  // Hoisted so the catch can re-use it for the offline queue.
+  const body: Record<string, unknown> = {
+    word,
+    context_sentence: contextSentence,
+    language,
+  };
+  if (videoId) {
+    body.video_id = videoId;
+    body.video_timestamp_s = videoTimestampS ?? 0;
+  } else {
+    body.article_id = null;
+  }
+
   try {
     // If this is a YouTube capture, make sure the video exists in our
     // DB before posting the capture — captures.py validates the FK.
@@ -184,29 +235,104 @@ async function saveCapture(
     }
 
     type Capture = { word_normalized: string };
-    const body: Record<string, unknown> = {
-      word,
-      context_sentence: contextSentence,
-      language,
-    };
-    if (videoId) {
-      body.video_id = videoId;
-      body.video_timestamp_s = videoTimestampS ?? 0;
-    } else {
-      // General "extension on a random web page" capture — no source.
-      body.article_id = null;
-    }
     type CaptureResp = Capture & { id: string };
     const data = await apiFetch<CaptureResp>("/api/v1/captures", {
       method: "POST",
       body: JSON.stringify(body),
     });
     recordCapture(data.word_normalized, data.id);
+    void incrementCapturesToday();
     return { ok: true, word: data.word_normalized, captureId: data.id };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    // Network-class failures get queued for retry. Auth / validation
+    // errors (4xx) are reported back to the user immediately — no
+    // point retrying a 422 "invalid word" on the next launch.
+    const message = (err as Error).message;
+    if (isLikelyNetworkError(message)) {
+      await enqueuePendingCapture(body);
+      return {
+        ok: false,
+        error: "Sin conexión. Tu captura se guardará automáticamente cuando vuelva la red.",
+      };
+    }
+    return { ok: false, error: message };
   }
 }
+
+// --- Offline queue ------------------------------------------------------
+// On network failure we stash the capture payload in chrome.storage and
+// retry on the next SW startup (or when triggerFlush() is called after
+// auth refresh). The queue is bounded so a long offline streak doesn't
+// pin storage indefinitely.
+
+const PENDING_KEY = "pending_captures";
+const PENDING_MAX = 200;
+
+type PendingCapture = Record<string, unknown> & { queuedAt: number };
+
+function isLikelyNetworkError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("failed to fetch") ||
+    m.includes("networkerror") ||
+    m.includes("network request failed") ||
+    m.includes("err_internet_disconnected") ||
+    m.includes("err_network_changed") ||
+    m === "load failed"
+  );
+}
+
+async function enqueuePendingCapture(payload: Record<string, unknown>): Promise<void> {
+  const { [PENDING_KEY]: stored } = await chrome.storage.local.get(PENDING_KEY);
+  const queue = (stored as PendingCapture[] | undefined) ?? [];
+  queue.push({ ...payload, queuedAt: Date.now() });
+  // Drop oldest if we're past the cap. Keeps storage bounded; users
+  // who go offline for weeks won't ship a 50MB queue when they reconnect.
+  while (queue.length > PENDING_MAX) queue.shift();
+  await chrome.storage.local.set({ [PENDING_KEY]: queue });
+}
+
+async function flushPendingCaptures(): Promise<{ flushed: number; failed: number }> {
+  const { [PENDING_KEY]: stored } = await chrome.storage.local.get(PENDING_KEY);
+  const queue = (stored as PendingCapture[] | undefined) ?? [];
+  if (queue.length === 0) return { flushed: 0, failed: 0 };
+  const remaining: PendingCapture[] = [];
+  let flushed = 0;
+  for (const item of queue) {
+    const { queuedAt: _queuedAt, ...body } = item;
+    try {
+      type CaptureResp = { word_normalized: string; id: string };
+      const data = await apiFetch<CaptureResp>("/api/v1/captures", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      recordCapture(data.word_normalized, data.id);
+      void incrementCapturesToday();
+      flushed++;
+    } catch (err) {
+      // Still offline → keep the item queued. Auth/validation errors
+      // → drop it (no point retrying forever; user gets a fresh chance
+      // by triggering the capture again).
+      if (isLikelyNetworkError((err as Error).message)) {
+        remaining.push(item);
+      }
+      // else: drop silently (4xx items would never succeed)
+    }
+  }
+  await chrome.storage.local.set({ [PENDING_KEY]: remaining });
+  return { flushed, failed: queue.length - flushed };
+}
+
+// Retry on SW startup. Idle if no session yet — getSession resolves
+// before this runs because we await it earlier in init.
+chrome.runtime.onStartup.addListener(() => {
+  void flushPendingCaptures();
+});
+// Also try once shortly after the worker boots in case onStartup was
+// already missed (e.g., dev reload mid-day).
+setTimeout(() => {
+  void flushPendingCaptures();
+}, 3000);
 
 async function updateCaptureNote(
   captureId: string,

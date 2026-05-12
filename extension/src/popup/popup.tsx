@@ -6,7 +6,7 @@ import type { AuthStateResponse } from "../shared/messages";
 type View =
   | { kind: "loading" }
   | { kind: "login"; error: string | null; submitting: boolean }
-  | { kind: "connected"; email: string };
+  | { kind: "connected"; email: string; capturesToday: number };
 
 function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -15,7 +15,11 @@ function App() {
   useEffect(() => {
     chrome.runtime.sendMessage({ type: "auth-state" }, (resp: AuthStateResponse) => {
       if (resp?.signedIn && resp.email) {
-        setView({ kind: "connected", email: resp.email });
+        setView({
+          kind: "connected",
+          email: resp.email,
+          capturesToday: resp.capturesToday ?? 0,
+        });
       } else {
         setView({ kind: "login", error: null, submitting: false });
       }
@@ -28,7 +32,17 @@ function App() {
       { type: "sign-in", email, password },
       (resp: { ok: boolean; error?: string }) => {
         if (resp?.ok) {
-          setView({ kind: "connected", email });
+          // After sign-in, fetch the counter (fresh state in SW)
+          chrome.runtime.sendMessage(
+            { type: "auth-state" },
+            (auth: AuthStateResponse) => {
+              setView({
+                kind: "connected",
+                email,
+                capturesToday: auth?.capturesToday ?? 0,
+              });
+            },
+          );
         } else {
           setView({
             kind: "login",
@@ -57,6 +71,13 @@ function App() {
         <div className="connected">
           <span className="dot" aria-hidden />
           <span className="email">{view.email}</span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">Hoy</span>
+          <span className="stat-value">{view.capturesToday}</span>
+          <span className="stat-suffix">
+            {view.capturesToday === 1 ? "captura" : "capturas"}
+          </span>
         </div>
         <p className="subtitle">
           Doble-click en cualquier palabra para guardar.
