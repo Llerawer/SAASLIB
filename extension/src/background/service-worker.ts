@@ -202,7 +202,22 @@ async function saveCapture(
       body: JSON.stringify(body),
     });
     recordCapture(data.word_normalized, data.id);
-    return { ok: true, word: data.word_normalized };
+    return { ok: true, word: data.word_normalized, captureId: data.id };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+async function updateCaptureNote(
+  captureId: string,
+  note: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await apiFetch(`/api/v1/captures/${captureId}`, {
+      method: "PUT",
+      body: JSON.stringify({ note }),
+    });
+    return { ok: true };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
@@ -467,6 +482,9 @@ chrome.runtime.onMessage.addListener(
           }
           break;
         }
+        case "update-capture-note":
+          response = await updateCaptureNote(msg.captureId, msg.note);
+          break;
       }
       sendResponse(response);
     })();
@@ -474,3 +492,42 @@ chrome.runtime.onMessage.addListener(
     return true;
   },
 );
+
+// --- Context menu integration ------------------------------------------
+// "Save selection" right-click → push a message to the content script
+// in the active tab. The content script reuses its word-popup flow
+// with the selection as the lookup target.
+
+const CTX_MENU_ID = "lr-save-selection";
+
+function ensureContextMenu(): void {
+  // create() throws if the id already exists, so remove first.
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: CTX_MENU_ID,
+      title: "Guardar selección en LinguaReader",
+      contexts: ["selection"],
+    });
+  });
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  ensureContextMenu();
+});
+chrome.runtime.onStartup.addListener(() => {
+  ensureContextMenu();
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== CTX_MENU_ID) return;
+  if (!tab?.id || !info.selectionText) return;
+  const text = info.selectionText.trim();
+  if (!text) return;
+  // Cap excessive selections at the same limit captures.context_sentence
+  // accepts (600 chars). Anything bigger is almost certainly accidental.
+  const capped = text.length > 600 ? text.slice(0, 600) : text;
+  chrome.tabs.sendMessage(tab.id, {
+    type: "context-menu-save",
+    text: capped,
+  });
+});

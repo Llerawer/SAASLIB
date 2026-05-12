@@ -27,7 +27,7 @@
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage"],
+  "permissions": ["storage", "contextMenus"],
   "host_permissions": [
     "http://localhost:8100/*",
     "https://*.supabase.co/*",

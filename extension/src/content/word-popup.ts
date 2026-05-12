@@ -22,6 +22,17 @@ export type ClipsState =
   | { kind: "loaded"; clips: PronounceClip[]; total: number }
   | { kind: "error" };
 
+export type NoteState = {
+  /** Capture id returned by the save endpoint — required to PATCH note. */
+  captureId: string;
+  /** Current textarea contents (uncommitted). */
+  draft: string;
+  /** Last value successfully persisted, for "dirty" detection. */
+  persisted: string;
+  saving: boolean;
+  error: string | null;
+};
+
 export type PopupState =
   | { kind: "loading"; word: string; position: { x: number; y: number } }
   | {
@@ -37,6 +48,9 @@ export type PopupState =
       // ISO timestamp of the first time we saw this word saved. null
       // means the user has not saved it yet.
       knownAt: string | null;
+      // Populated only AFTER the user clicks Save (captureId is the
+      // anchor for note PATCH). Null while the capture is unsaved.
+      note: NoteState | null;
     }
   | { kind: "lookup-error"; word: string; position: { x: number; y: number };
       error: string };
@@ -202,6 +216,58 @@ function paint(state: PopupState): void {
   });
   footer.appendChild(btn);
   popupRoot.appendChild(footer);
+
+  // Note editor — only after the user clicked Save in this session and
+  // we have the captureId to PATCH against. Pre-existing "ya guardada"
+  // chip doesn't enable this v1 (would need a GET capture endpoint to
+  // fetch the captureId by lemma; not in v1 scope).
+  if (state.note) {
+    renderNoteEditor(state.note);
+  }
+}
+
+function renderNoteEditor(noteState: NoteState): void {
+  if (!popupRoot) return;
+  const section = el("div", "lr-note-section");
+  section.appendChild(elText("div", "lr-section-title", "Nota personal"));
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "lr-note-input";
+  textarea.value = noteState.draft;
+  textarea.rows = 2;
+  textarea.maxLength = 2000;
+  textarea.placeholder = "Una mnemotecnia, contexto, lo que quieras…";
+  textarea.disabled = noteState.saving;
+  textarea.addEventListener("input", () => {
+    triggerNoteDraftChange?.(textarea.value);
+  });
+  // Cmd/Ctrl+Enter to save the note without leaving the textarea.
+  textarea.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      triggerNoteSave?.();
+    }
+  });
+  section.appendChild(textarea);
+
+  if (noteState.error) {
+    section.appendChild(elText("p", "lr-error", noteState.error));
+  }
+
+  const dirty = noteState.draft !== noteState.persisted;
+  const saveBtn = elText(
+    "button",
+    "lr-btn-ghost",
+    noteState.saving
+      ? "Guardando…"
+      : dirty
+        ? "Guardar nota"
+        : "Nota guardada",
+  );
+  saveBtn.disabled = noteState.saving || !dirty;
+  saveBtn.addEventListener("click", () => triggerNoteSave?.());
+  section.appendChild(saveBtn);
+  popupRoot.appendChild(section);
 }
 
 function renderClips(clipsState: ClipsState, word: string): void {
@@ -283,13 +349,19 @@ async function playAudioViaSW(url: string): Promise<void> {
 
 let triggerSave: (() => void) | null = null;
 let triggerClose: (() => void) | null = null;
+let triggerNoteDraftChange: ((value: string) => void) | null = null;
+let triggerNoteSave: (() => void) | null = null;
 
 export function setHandlers(handlers: {
   onSave: () => void;
   onClose: () => void;
+  onNoteDraftChange?: (value: string) => void;
+  onNoteSave?: () => void;
 }): void {
   triggerSave = handlers.onSave;
   triggerClose = handlers.onClose;
+  triggerNoteDraftChange = handlers.onNoteDraftChange ?? null;
+  triggerNoteSave = handlers.onNoteSave ?? null;
 }
 
 function closeButton(): HTMLButtonElement {
@@ -438,6 +510,49 @@ const STYLES = `
   border-color: rgba(234,88,12,0.55);
   color: #ffedd5;
 }
+.lr-note-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #2a2a30;
+}
+.lr-note-input {
+  width: 100%;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: #18181b;
+  color: #e5e5e7;
+  border: 1px solid #2a2a30;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 40px;
+  box-sizing: border-box;
+}
+.lr-note-input:focus {
+  outline: none;
+  border-color: rgba(234,88,12,0.55);
+}
+.lr-note-input:disabled { opacity: 0.6; }
+.lr-btn-ghost {
+  width: 100%;
+  background: transparent;
+  color: #a1a1aa;
+  border: 1px solid #2a2a30;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.lr-btn-ghost:hover:not(:disabled) {
+  background: #18181b;
+  color: #e5e5e7;
+}
+.lr-btn-ghost:disabled { opacity: 0.5; cursor: default; }
 `;
 
 export type { LookupResponse, SaveCaptureResponse };

@@ -57,6 +57,15 @@ export type GetKnownWordsRequest = {
   type: "get-known-words";
 };
 
+/** Pushed FROM the service worker TO the content script when the user
+ *  right-clicks a selection → "Guardar selección en LinguaReader".
+ *  The content script opens its popup with the selected text as the
+ *  word/phrase, reusing the existing lookup+save UI. */
+export type ContextMenuSavePush = {
+  type: "context-menu-save";
+  text: string;
+};
+
 /** Map of word_normalized → metadata so the highlighter can show
  *  "ya guardada hace N días" on click without an extra fetch. */
 export type KnownWord = {
@@ -77,14 +86,27 @@ export type ExtMessage =
   | OpenTabRequest
   | OpenDeckWindowRequest
   | TrackRequest
-  | GetKnownWordsRequest;
+  | GetKnownWordsRequest
+  | UpdateCaptureNoteRequest;
 
 export type LookupResponse =
   | { ok: true; data: DictionaryEntry }
   | { ok: false; error: string };
 
 export type SaveCaptureResponse =
-  | { ok: true; word: string }
+  | { ok: true; word: string; captureId: string }
+  | { ok: false; error: string };
+
+/** PATCH the note of a just-saved capture. captureId comes from the
+ *  preceding save-capture response. */
+export type UpdateCaptureNoteRequest = {
+  type: "update-capture-note";
+  captureId: string;
+  note: string | null;
+};
+
+export type UpdateCaptureNoteResponse =
+  | { ok: true }
   | { ok: false; error: string };
 
 export type AuthStateResponse = {

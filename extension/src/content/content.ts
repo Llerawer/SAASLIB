@@ -26,6 +26,14 @@ import {
   resumeIfWePaused,
 } from "./youtube-adapter";
 import {
+  getCurrentNetflixCaptionLine,
+  isInsideNetflixCaption,
+  isNetflixWatchPage,
+  pauseNetflixIfPlaying,
+  resumeNetflixIfWePaused,
+  setupNetflix,
+} from "./netflix-adapter";
+import {
   bootKnownWords,
   findBlockContext,
   lookupKnown,
@@ -83,6 +91,38 @@ function safeSendMessage<T = unknown>(
 type YouTubeContext = { videoId: string; timestampS: number };
 let currentYouTube: YouTubeContext | null = null;
 
+/** Cross-browser caret-from-point. Returns the text node under the
+ *  given viewport coords plus the offset within it. Used as a fallback
+ *  for sites (Netflix) that destroy the selection before our handler
+ *  runs. */
+function caretFromPoint(
+  x: number,
+  y: number,
+): { node: Node; offset: number } | null {
+  // Modern API (Firefox + Chromium 128+)
+  type DocWithCaretPos = Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
+  };
+  const cpFn = (document as DocWithCaretPos).caretPositionFromPoint;
+  if (typeof cpFn === "function") {
+    const pos = cpFn.call(document, x, y);
+    if (pos) return { node: pos.offsetNode, offset: pos.offset };
+  }
+  // Webkit legacy
+  type DocWithCaretRange = Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  const crFn = (document as DocWithCaretRange).caretRangeFromPoint;
+  if (typeof crFn === "function") {
+    const range = crFn.call(document, x, y);
+    if (range) return { node: range.startContainer, offset: range.startOffset };
+  }
+  return null;
+}
+
 function detectLanguage(): string {
   // The page's lang attribute is the best hint we have. Strip region.
   const lang = document.documentElement.lang || "en";
@@ -100,14 +140,31 @@ function onDblClick(e: MouseEvent): void {
     return;
   }
 
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
-  const range = sel.getRangeAt(0);
-  const node = range.startContainer;
-  if (node.nodeType !== Node.TEXT_NODE) return;
+  let textNode: Text | null = null;
+  let startOffset = 0;
 
-  const textNode = node as Text;
-  const span = walkWordAroundOffset(textNode.data, range.startOffset);
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    const range = sel.getRangeAt(0);
+    if (range.startContainer.nodeType === Node.TEXT_NODE) {
+      textNode = range.startContainer as Text;
+      startOffset = range.startOffset;
+    }
+  }
+
+  // Netflix (and other players with user-select shenanigans) often
+  // clears the selection before our handler fires. Fall back to the
+  // text node under the cursor via caretPositionFromPoint.
+  if (!textNode) {
+    const cp = caretFromPoint(e.clientX, e.clientY);
+    if (cp && cp.node.nodeType === Node.TEXT_NODE) {
+      textNode = cp.node as Text;
+      startOffset = cp.offset;
+    }
+  }
+  if (!textNode) return;
+
+  const span = walkWordAroundOffset(textNode.data, startOffset);
   if (!span) return;
   const word = span.word;
   if (!WORD_RE.test(word)) return;
@@ -115,9 +172,11 @@ function onDblClick(e: MouseEvent): void {
   const language = detectLanguage();
   const position = { x: e.clientX, y: e.clientY };
 
-  // YouTube special-case: if the dblclick landed inside a caption, we
-  // grab the video id + timestamp + the full caption line as context.
-  // Pause the player so the user has time to read the popup.
+  // Streaming-platform branches:
+  //  - YouTube: video_id + timestamp captured, full caption line as context
+  //  - Netflix: caption line as context only (no source linking — yet),
+  //    pause/resume video so the user can read the popup
+  //  - Generic web: context-sentence extraction + known-word fallback
   let contextSentence: string | null;
   if (isYouTubeWatchPage() && isInsideCaption(textNode)) {
     const videoId = getCurrentVideoId();
@@ -129,6 +188,12 @@ function onDblClick(e: MouseEvent): void {
       currentYouTube = null;
       contextSentence = extractContextSentence(textNode.data, span.start);
     }
+  } else if (isNetflixWatchPage() && isInsideNetflixCaption(textNode)) {
+    currentYouTube = null;
+    contextSentence =
+      getCurrentNetflixCaptionLine(textNode) ??
+      extractContextSentence(textNode.data, span.start);
+    pauseNetflixIfPlaying();
   } else {
     currentYouTube = null;
     // If the click landed inside a known-word highlight wrapper, the
@@ -150,6 +215,8 @@ function onDblClick(e: MouseEvent): void {
       resumeIfWePaused();
       closePopup();
     },
+    onNoteDraftChange,
+    onNoteSave,
   });
   openPopup(currentState);
 
@@ -181,6 +248,7 @@ function onDblClick(e: MouseEvent): void {
           saveError: null,
           clips: { kind: "loading" },
           knownAt: known?.capturedAt ?? null,
+          note: null,
         };
         // Fire-and-forget clip lookup. Popup stays interactive while
         // clips load; updates when they arrive (or errors quietly).
@@ -235,7 +303,77 @@ function doSave(language: string): void {
           saveError: resp?.error ?? "No se pudo guardar.",
         };
       } else {
-        currentState = { ...currentState, saving: false, saved: true, saveError: null };
+        currentState = {
+          ...currentState,
+          saving: false,
+          saved: true,
+          saveError: null,
+          // Unlock the note editor with the captureId we just got back.
+          note: {
+            captureId: resp.captureId,
+            draft: "",
+            persisted: "",
+            saving: false,
+            error: null,
+          },
+        };
+      }
+      updateState(currentState);
+    },
+  );
+}
+
+/** Called from the popup textarea oninput. Mutates the draft locally
+ *  without firing a network request — debounced commit lives in onNoteSave. */
+function onNoteDraftChange(value: string): void {
+  if (!currentState || currentState.kind !== "loaded" || !currentState.note) return;
+  currentState = {
+    ...currentState,
+    note: { ...currentState.note, draft: value, error: null },
+  };
+  updateState(currentState);
+}
+
+/** Called from popup Save-note button or Cmd+Enter. PATCHes the capture
+ *  via the SW. Empty string → store as null (matches SaaS convention). */
+function onNoteSave(): void {
+  if (!currentState || currentState.kind !== "loaded" || !currentState.note) return;
+  const noteState = currentState.note;
+  if (noteState.draft === noteState.persisted) return; // no-op
+  const value = noteState.draft.trim() || null;
+  currentState = {
+    ...currentState,
+    note: { ...noteState, saving: true, error: null },
+  };
+  updateState(currentState);
+
+  safeSendMessage<{ ok: boolean; error?: string }>(
+    {
+      type: "update-capture-note",
+      captureId: noteState.captureId,
+      note: value,
+    },
+    (resp) => {
+      if (!currentState || currentState.kind !== "loaded" || !currentState.note) return;
+      if (!resp?.ok) {
+        currentState = {
+          ...currentState,
+          note: {
+            ...currentState.note,
+            saving: false,
+            error: resp?.error ?? "No se pudo guardar la nota.",
+          },
+        };
+      } else {
+        currentState = {
+          ...currentState,
+          note: {
+            ...currentState.note,
+            saving: false,
+            persisted: currentState.note.draft,
+            error: null,
+          },
+        };
       }
       updateState(currentState);
     },
@@ -260,13 +398,105 @@ function onKeyDown(e: KeyboardEvent): void {
     currentState = null;
     currentYouTube = null;
     resumeIfWePaused();
+    resumeNetflixIfWePaused();
     closePopup();
   }
 }
 
-document.addEventListener("dblclick", onDblClick);
+// Capture phase so player overlays that swallow events (Netflix) don't
+// prevent us from seeing the dblclick first.
+document.addEventListener("dblclick", onDblClick, true);
 document.addEventListener("mousedown", onDocumentClick);
 document.addEventListener("keydown", onKeyDown);
+
+// Right-click "Guardar selección" → SW pushes a `context-menu-save`
+// message with the selected text. Reuses word-popup flow so the user
+// reviews translation + clips before committing.
+chrome.runtime.onMessage.addListener((msg: { type?: string; text?: string }) => {
+  if (msg?.type !== "context-menu-save" || !msg.text) return;
+  openFromSelection(msg.text);
+});
+
+function openFromSelection(text: string): void {
+  if (!extensionAlive()) return;
+  // Anchor the popup near the current selection. If the user moved the
+  // selection between right-click and the menu firing (rare), fall back
+  // to viewport center.
+  const sel = window.getSelection();
+  let position = { x: window.innerWidth / 2, y: window.innerHeight / 3 };
+  let contextSentence: string | null = null;
+  if (sel && sel.rangeCount > 0) {
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if (rect.width > 0 || rect.height > 0) {
+      position = { x: rect.left + rect.width / 2, y: rect.bottom };
+    }
+    // Sentence-sized selections ARE the context. For short selections
+    // we walk the nearest block ancestor to find the surrounding
+    // sentence — same logic as the dblclick path.
+    if (text.length >= 10) {
+      contextSentence = text;
+    } else {
+      const node = range.startContainer;
+      if (node.nodeType === Node.TEXT_NODE) {
+        const block = findBlockContext(node as Text, range.startOffset);
+        contextSentence = block
+          ? extractContextSentence(block.fullText, block.absoluteOffset)
+          : extractContextSentence((node as Text).data, range.startOffset);
+      }
+    }
+  }
+
+  const language = detectLanguage();
+  const word = text;
+  currentYouTube = null;
+
+  currentState = { kind: "loading", word, position };
+  setHandlers({
+    onSave: () => doSave(language),
+    onClose: () => {
+      currentState = null;
+      currentYouTube = null;
+      resumeIfWePaused();
+      closePopup();
+    },
+    onNoteDraftChange,
+    onNoteSave,
+  });
+  openPopup(currentState);
+
+  safeSendMessage<LookupResponse>(
+    { type: "lookup", word, language },
+    (resp) => {
+      if (!currentState || currentState.word !== word) return;
+      if (!resp || !resp.ok) {
+        currentState = {
+          kind: "lookup-error",
+          word,
+          position,
+          error: resp?.error ?? "No se pudo buscar la palabra.",
+        };
+      } else {
+        const known = lookupKnown(clientNormalize(word) || word);
+        currentState = {
+          kind: "loaded",
+          word,
+          position,
+          entry: resp.data,
+          contextSentence,
+          saved: !!known,
+          saving: false,
+          saveError: null,
+          clips: { kind: "loading" },
+          knownAt: known?.capturedAt ?? null,
+          note: null,
+        };
+        fetchClips(word);
+      }
+      updateState(currentState);
+    },
+  );
+}
 
 // Pull the user's saved-words map from the SW (cached there) and ask
 // the highlighter to underline matches across the page. Cheap and lazy:
@@ -275,3 +505,7 @@ safeSendMessage<GetKnownWordsResponse>({ type: "get-known-words" }, (resp) => {
   if (!resp || !resp.ok) return;
   bootKnownWords(resp.words);
 });
+
+// Netflix: inject the pointer-events override so subtitle text is
+// clickable. No-op on every other site.
+setupNetflix();
