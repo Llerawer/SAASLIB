@@ -76,9 +76,15 @@ function ensureHost(): { host: HTMLDivElement; shadow: ShadowRoot } {
   style.textContent = STYLES;
   shadow.appendChild(style);
   popupRoot = document.createElement("div");
-  popupRoot.className = "lr-popup";
+  popupRoot.className = "lr-popup lr-popup-enter";
   shadow.appendChild(popupRoot);
   document.body.appendChild(host);
+  // Entrance animation: starts at scale(0.97)+opacity(0). One rAF is
+  // enough — Chrome reliably commits style writes between paints, and a
+  // second rAF was costing ~16ms of perceived latency.
+  requestAnimationFrame(() => {
+    popupRoot?.classList.add("lr-popup-enter-active");
+  });
   return { host, shadow };
 }
 
@@ -165,7 +171,7 @@ function paint(state: PopupState): void {
     header.appendChild(elText("span", "lr-ipa", entry.ipa));
   }
   if (entry.audio_url) {
-    const a = elText("button", "lr-icon-btn", "🔊");
+    const a = elWithIcon("button", "lr-icon-btn", ICON_SVG.speaker);
     a.title = "Reproducir";
     a.addEventListener("click", () => {
       void playAudioViaSW(entry.audio_url!);
@@ -177,23 +183,37 @@ function paint(state: PopupState): void {
 
   if (state.knownAt) {
     popupRoot.appendChild(
-      elText("div", "lr-known-chip", `✓ Ya guardada · ${relativeTime(state.knownAt)}`),
+      elWithIcon(
+        "div",
+        "lr-known-chip",
+        ICON_SVG.check,
+        `Ya guardada · ${relativeTime(state.knownAt)}`,
+      ),
     );
   }
 
+  // Visual hierarchy: traducción is the primary signal for a learner;
+  // definition is supporting context. Translation gets its own line
+  // with no eyebrow; definition becomes a quiet sub-line below it.
   if (entry.translation) {
-    popupRoot.appendChild(elText("div", "lr-section-title", "Traducción"));
     popupRoot.appendChild(elText("p", "lr-translation", entry.translation));
   }
-
   if (entry.definition) {
-    popupRoot.appendChild(elText("div", "lr-section-title", "Definición"));
     popupRoot.appendChild(elText("p", "lr-definition", entry.definition));
   }
 
   if (contextSentence) {
     popupRoot.appendChild(elText("div", "lr-section-title", "Contexto"));
     popupRoot.appendChild(elText("p", "lr-context", `"${contextSentence}"`));
+  }
+
+  // When the source context is too thin to teach much (subtitle lines
+  // like "Yes." or where the target word is most of the line), surface
+  // ONE dictionary example so the popup carries real usage info.
+  const example = pickFallbackExample(state.word, contextSentence, entry.examples);
+  if (example) {
+    popupRoot.appendChild(elText("div", "lr-section-title", "Ejemplo"));
+    popupRoot.appendChild(elText("p", "lr-context", `"${example}"`));
   }
 
   renderClips(state.clips, state.word);
@@ -203,15 +223,13 @@ function paint(state: PopupState): void {
   if (state.saveError) {
     footer.appendChild(elText("p", "lr-error", state.saveError));
   }
-  const btn = elText(
-    "button",
-    state.saved ? "lr-btn lr-btn-saved" : "lr-btn",
-    state.saved
-      ? "✓ Guardado"
-      : state.saving
-        ? "Guardando…"
-        : "Guardar palabra",
-  );
+  const btn = state.saved
+    ? elWithIcon("button", "lr-btn lr-btn-saved", ICON_SVG.check, "Guardado")
+    : elText(
+        "button",
+        "lr-btn",
+        state.saving ? "Guardando…" : "Guardar palabra",
+      );
   btn.disabled = state.saved || state.saving;
   btn.addEventListener("click", () => {
     triggerSave?.();
@@ -277,7 +295,11 @@ function renderClips(clipsState: ClipsState, word: string): void {
   if (clipsState.kind === "idle") return;
 
   if (clipsState.kind === "loading") {
-    popupRoot.appendChild(elText("p", "lr-subtle", "Buscando clips de nativos…"));
+    // Skeleton: same dimensions as the loaded button so the popup
+    // doesn't jump in height when clips arrive. The pulse animation
+    // signals "loading" without text noise.
+    const skel = el("div", "lr-btn-pronounce lr-btn-pronounce-skel");
+    popupRoot.appendChild(skel);
     return;
   }
   if (clipsState.kind === "error" || clipsState.clips.length === 0) {
@@ -288,10 +310,21 @@ function renderClips(clipsState: ClipsState, word: string): void {
 
   // Single prominent CTA opens the floating deck window with the full
   // karaoke + speed/repeat controls (same UI as the EPUB reader sheet).
-  const label = `🎧 Escuchá a nativos pronunciar (${clipsState.total} ${
-    clipsState.total === 1 ? "clip" : "clips"
-  })`;
-  const btn = elText("button", "lr-btn-pronounce", label);
+  // Concise label + thousands-separator count keeps the chip on one
+  // line even on tight popup widths (avoids "(1,234 clips)" clipping).
+  const fmt = clipsState.total.toLocaleString("es-AR");
+  const btn = elWithIcon(
+    "button",
+    "lr-btn-pronounce",
+    ICON_SVG.headphones,
+    "Escuchar nativos",
+  );
+  const badge = document.createElement("span");
+  badge.className = "lr-clip-badge";
+  badge.textContent = fmt;
+  btn.appendChild(badge);
+  // Chevron telegraphs "click to open" — slides on hover for life.
+  btn.insertAdjacentHTML("beforeend", ICON_SVG.chevronRight);
   btn.addEventListener("click", () => {
     if (!chrome.runtime?.id) return; // extension was reloaded; tab needs F5
     try {
@@ -310,6 +343,66 @@ function renderClips(clipsState: ClipsState, word: string): void {
     }
   });
   popupRoot.appendChild(btn);
+}
+
+// Lucide-style inline SVG icons. `currentColor` lets each icon inherit
+// the parent's text color so we don't repeat hex values across themes.
+const ICON_SVG = {
+  speaker: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`,
+  headphones: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a1 1 0 0 1-1-1zM21 14h-3a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2a1 1 0 0 0 1-1zM3 14a9 9 0 0 1 18 0"/></svg>`,
+  chevronRight: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="lr-chevron"><path d="m9 18 6-6-6-6"/></svg>`,
+} as const;
+
+/** Builds an element where children are SVG + optional text — used when
+ *  the visual is an icon-plus-label combo. `innerHTML` is required for
+ *  the raw SVG markup; the text part is set safely via textContent on
+ *  a child span so user-supplied strings can never inject HTML. */
+function elWithIcon(
+  tag: string,
+  className: string,
+  svgMarkup: string,
+  text?: string,
+): HTMLButtonElement & HTMLElement {
+  const e = document.createElement(tag) as HTMLButtonElement & HTMLElement;
+  e.className = className;
+  e.innerHTML = svgMarkup;
+  if (text !== undefined) {
+    const span = document.createElement("span");
+    span.textContent = text;
+    e.appendChild(span);
+  }
+  return e;
+}
+
+/**
+ * Returns a dictionary example to show when the captured context is too
+ * thin to teach much. Two trigger conditions (per spec brainstorm):
+ *   1) the context is shorter than ~24 chars, or
+ *   2) the target word is >50% of the visible context
+ * Prefers examples that actually contain the word (case-insensitive)
+ * so the user sees the headword in another real sentence.
+ */
+function pickFallbackExample(
+  word: string,
+  context: string | null,
+  examples: readonly string[],
+): string | null {
+  if (!examples || examples.length === 0) return null;
+  const ctx = (context ?? "").trim();
+  const wordRatio = ctx.length > 0 ? word.length / ctx.length : 1;
+  const contextTooThin = ctx.length < 24 || wordRatio > 0.5;
+  if (!contextTooThin) return null;
+  const lowerWord = word.toLowerCase();
+  // First pick: an example that actually contains the word — and isn't
+  // identical to the (already-shown) context.
+  const withWord = examples.find(
+    (e) => e.toLowerCase().includes(lowerWord) && e.trim() !== ctx,
+  );
+  if (withWord) return withWord;
+  // Fallback: any example that isn't a duplicate of the context.
+  return examples.find((e) => e.trim() !== ctx) ?? null;
 }
 
 function relativeTime(iso: string): string {
@@ -367,7 +460,7 @@ export function setHandlers(handlers: {
 }
 
 function closeButton(): HTMLButtonElement {
-  const b = elText("button", "lr-icon-btn lr-close", "✕");
+  const b = elWithIcon("button", "lr-icon-btn lr-close", ICON_SVG.x);
   b.title = "Cerrar (Esc)";
   b.addEventListener("click", () => triggerClose?.());
   return b;
@@ -400,6 +493,35 @@ const STYLES = `
   padding: 12px;
   max-height: 70vh;
   overflow-y: auto;
+  transform-origin: top left;
+}
+.lr-popup-enter {
+  opacity: 0;
+  transform: scale(0.97) translateY(-2px);
+}
+.lr-popup-enter-active {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition:
+    opacity 90ms ease-out,
+    transform 110ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
+}
+.lr-btn-pronounce-skel {
+  height: 28px;
+  border: 1px solid rgba(234,88,12,0.18);
+  background: linear-gradient(
+    90deg,
+    rgba(234,88,12,0.04) 0%,
+    rgba(234,88,12,0.10) 50%,
+    rgba(234,88,12,0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: lr-shimmer 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes lr-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 .lr-header {
   display: flex;
@@ -422,16 +544,19 @@ const STYLES = `
   color: #a1a1aa;
 }
 .lr-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   color: #a1a1aa;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 3px;
   border-radius: 4px;
-  font-size: 13px;
-  line-height: 1;
+  line-height: 0;
 }
 .lr-icon-btn:hover { background: #1f1f25; color: #e5e5e7; }
+.lr-icon-btn svg { display: block; }
 .lr-close { margin-left: auto; }
 .lr-section-title {
   font-size: 10px;
@@ -443,12 +568,18 @@ const STYLES = `
 }
 .lr-translation {
   font-family: Georgia, serif;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 500;
+  line-height: 1.25;
+  margin: 6px 0 2px 0;
+  color: #e5e5e7;
 }
 .lr-definition {
   font-family: Georgia, serif;
-  color: rgba(229,229,231,0.9);
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(229,229,231,0.55);
+  margin: 0 0 4px 0;
 }
 .lr-context {
   font-family: Georgia, serif;
@@ -480,9 +611,19 @@ const STYLES = `
 }
 .lr-btn:hover { background: #c2410c; }
 .lr-btn:disabled { opacity: 0.65; cursor: default; }
-.lr-btn-saved { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+.lr-btn-saved {
+  background: rgba(16,185,129,0.2);
+  color: #6ee7b7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.lr-btn-saved svg { flex-shrink: 0; }
 .lr-known-chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   color: #6ee7b7;
   background: rgba(16,185,129,0.12);
@@ -491,26 +632,70 @@ const STYLES = `
   border-radius: 999px;
   margin-bottom: 8px;
 }
+.lr-known-chip svg { flex-shrink: 0; }
+/* Secondary action — text link with a tiny clip-count badge + a
+   chevron that slides on hover to telegraph "click to open". No
+   border, no fill: Save is the only filled button in this popup. */
 .lr-btn-pronounce {
   width: 100%;
-  display: block;
-  text-align: center;
-  background: rgba(234,88,12,0.08);
-  border: 1px solid rgba(234,88,12,0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  border: 0;
   color: #fdba74;
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 5px;
+  padding: 8px 6px;
   font-size: 12px;
   font-weight: 500;
   font-family: inherit;
+  line-height: 1;
   cursor: pointer;
-  margin-top: 10px;
-  transition: background 120ms ease, border-color 120ms ease;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  transition:
+    color 90ms ease,
+    background 90ms ease,
+    transform 90ms ease;
+}
+.lr-btn-pronounce > svg { flex-shrink: 0; opacity: 0.9; }
+.lr-btn-pronounce > span:not(.lr-clip-badge) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lr-chevron {
+  opacity: 0.55;
+  transition: transform 140ms cubic-bezier(0.2,0.9,0.3,1.1), opacity 90ms ease;
 }
 .lr-btn-pronounce:hover {
-  background: rgba(234,88,12,0.16);
-  border-color: rgba(234,88,12,0.55);
   color: #ffedd5;
+  background: rgba(234,88,12,0.10);
+}
+.lr-btn-pronounce:hover .lr-chevron {
+  transform: translateX(3px);
+  opacity: 1;
+}
+.lr-btn-pronounce:active {
+  transform: scale(0.985);
+  background: rgba(234,88,12,0.16);
+}
+.lr-clip-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(253,186,116,0.85);
+  background: rgba(234,88,12,0.14);
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.lr-btn-pronounce:hover .lr-clip-badge {
+  color: #fed7aa;
+  background: rgba(234,88,12,0.22);
 }
 .lr-note-section {
   margin-top: 12px;

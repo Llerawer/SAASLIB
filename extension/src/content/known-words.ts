@@ -68,6 +68,29 @@ export function lookupKnown(word: string): KnownWord | null {
   return known.get(word.toLowerCase()) ?? null;
 }
 
+/**
+ * Incremental highlight after a new save: add the lemma to the live
+ * known-map and walk the page once for THIS word only. Existing
+ * wrapped nodes are skipped by the walker's filter, so the mutation
+ * cost is bounded to fresh matches. Pre-checks textContent for the
+ * lemma to skip the walk entirely on pages that don't contain it.
+ */
+export function highlightNewWord(lemma: string, info: KnownWord): void {
+  const normalized = lemma.toLowerCase();
+  if (!normalized) return;
+  if (!known) known = new Map();
+  // Already known + highlighted — nothing to do.
+  if (known.has(normalized)) return;
+  known.set(normalized, info);
+  injectStyles();
+  // Cheap text-search short-circuit: most save events happen on pages
+  // that mention the word once or twice at most; skipping the tree
+  // walk when the word isn't visible saves real CPU on long pages.
+  const haystack = document.body?.textContent ?? "";
+  if (!haystack.toLowerCase().includes(normalized)) return;
+  schedule(() => walkInto(document.body));
+}
+
 /** Boot the highlighter with the user's known-word map. No-op when empty. */
 export function bootKnownWords(words: Record<string, KnownWord>): void {
   const entries = Object.entries(words);

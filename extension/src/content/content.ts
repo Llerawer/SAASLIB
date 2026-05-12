@@ -24,6 +24,7 @@ import {
   isYouTubeWatchPage,
   pauseIfPlaying,
   resumeIfWePaused,
+  setupYouTube,
 } from "./youtube-adapter";
 import {
   getCurrentNetflixCaptionLine,
@@ -36,6 +37,7 @@ import {
 import {
   bootKnownWords,
   findBlockContext,
+  highlightNewWord,
   lookupKnown,
 } from "./known-words";
 import type {
@@ -176,6 +178,7 @@ function onDblClick(e: MouseEvent): void {
   if (!WORD_RE.test(word)) return;
 
   const language = detectLanguage();
+  savedLanguage = language;
   const position = { x: e.clientX, y: e.clientY };
 
   // Streaming-platform branches:
@@ -314,6 +317,7 @@ function doSave(language: string): void {
           saving: false,
           saved: true,
           saveError: null,
+          knownAt: new Date().toISOString(),
           // Unlock the note editor with the captureId we just got back.
           note: {
             captureId: resp.captureId,
@@ -323,6 +327,13 @@ function doSave(language: string): void {
             error: null,
           },
         };
+        // Re-highlight the page incrementally — the newly-saved word
+        // lights up the moment Save resolves, so the user feels their
+        // vocabulary "lives on top of the web" without a reload.
+        highlightNewWord(clientNormalize(word) || word, {
+          capturedAt: new Date().toISOString(),
+          captureId: resp.captureId,
+        });
       }
       updateState(currentState);
     },
@@ -400,13 +411,43 @@ function onDocumentClick(e: MouseEvent): void {
 
 function onKeyDown(e: KeyboardEvent): void {
   if (!isPopupOpen()) return;
-  if (e.key === "Escape") {
+  // Skip when focus is on a form field (e.g. the in-popup note textarea
+  // where Enter inserts a newline and Escape may have native handling).
+  const t = e.target as HTMLElement | null;
+  const inForm =
+    t instanceof HTMLInputElement ||
+    t instanceof HTMLTextAreaElement ||
+    t?.isContentEditable;
+  if (e.key === "Escape" && !inForm) {
     currentState = null;
     currentYouTube = null;
     resumeIfWePaused();
     resumeNetflixIfWePaused();
     closePopup();
+    return;
   }
+  // Enter = fast-save when the popup is showing a loaded dictionary
+  // entry and the word isn't already captured. Power-user shortcut so
+  // the flow becomes dblclick → Enter → done.
+  if (
+    e.key === "Enter" &&
+    !inForm &&
+    !e.shiftKey &&
+    currentState?.kind === "loaded" &&
+    !currentState.saved &&
+    !currentState.saving
+  ) {
+    e.preventDefault();
+    triggerSaveFromKey();
+  }
+}
+
+let savedLanguage = "en";
+function triggerSaveFromKey(): void {
+  // doSave reads currentState; the language is passed via the
+  // setHandlers closure normally, so we cache the last-known language
+  // from the most recent dblclick.
+  doSave(savedLanguage);
 }
 
 document.addEventListener("dblclick", onDblClick);
@@ -513,3 +554,4 @@ safeSendMessage<GetKnownWordsResponse>({ type: "get-known-words" }, (resp) => {
 // Netflix: inject the pointer-events override so subtitle text is
 // clickable. No-op on every other site.
 setupNetflix();
+setupYouTube();

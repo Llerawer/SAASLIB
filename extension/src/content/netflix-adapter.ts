@@ -10,6 +10,8 @@
  * still grows and the sentence is preserved as context.
  */
 
+import { LR_BOOK_CURSOR } from "./youtube-adapter";
+
 const SEL = {
   // Each rendered caption line is a <div class="player-timedtext-text-container">.
   // The actual text spans live inside. We accept descendants of either.
@@ -37,6 +39,7 @@ function ensurePointerEventsCSS(): void {
   user-select: text !important;
   -webkit-user-select: text !important;
   -moz-user-select: text !important;
+  cursor: ${LR_BOOK_CURSOR};
 }
 .player-timedtext {
   z-index: 2147483640 !important;
