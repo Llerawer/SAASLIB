@@ -6,8 +6,6 @@ import {
   BookOpen,
   ListTree,
   ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -39,8 +37,6 @@ export type ReaderToolbarProps = {
   onIncFontSize: () => void;
   onDecFontSize: () => void;
   onResetSettings: () => void;
-  onPrev: () => void;
-  onNext: () => void;
   onDeleteBookmark: (id: string) => void;
   onDeleteHighlight: (id: string) => void;
   getColor: (lemma: string) => WordColorId | undefined;
@@ -50,13 +46,26 @@ export type ReaderToolbarProps = {
   currentCfi: string | null;
 };
 
+/**
+ * Two-row reader chrome:
+ *
+ *   Row 1: icon-only function buttons (back · spacer · TOC · words ·
+ *          bookmark · settings) — same on mobile and desktop, no
+ *          mixed-with-text labels to keep the editorial feel.
+ *   Row 2: the book title (serif) + a compact page label as subtitle.
+ *
+ * Prev/next are intentionally absent from the chrome — page navigation
+ * lives in the editorial bottom bar (ReaderProgressBar) where it sits
+ * in the thumb zone. Reader engine still handles swipe + keyboard arrows
+ * independently.
+ */
 export function ReaderToolbar(props: ReaderToolbarProps) {
   const {
     title, pageLabel, toc, progressPct, currentLocation, totalLocations,
     bookmarks, highlights, capturedCount, internalBookId, settings,
     onJumpHref, onJumpPercent, onJumpCfi, onSettingsChange,
     onIncFontSize, onDecFontSize, onResetSettings,
-    onPrev, onNext, onDeleteBookmark, onDeleteHighlight,
+    onDeleteBookmark, onDeleteHighlight,
     getColor, setColor, getCurrentSnippet, currentCfi,
   } = props;
 
@@ -70,93 +79,84 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
     : (pct: number) => { void pct; };
 
   return (
-    <div className="border-b px-4 py-2 flex items-center gap-2">
-      <Link href="/library" aria-label="Volver a la biblioteca">
-        <Button variant="ghost" size="sm" className="gap-1.5">
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Biblioteca</span>
-        </Button>
-      </Link>
-      <h2 className="font-serif text-base sm:text-lg font-semibold flex-1 truncate leading-tight">
-        {title}
-      </h2>
-      <ReaderTocSheet
-        toc={toc}
-        progressPct={progressPct}
-        totalLocations={totalLocations}
-        currentLocation={currentLocation}
-        onJumpToHref={onJumpHref}
-        onJumpToPercent={handleJumpPercent}
-        bookmarks={bookmarks}
-        onJumpToBookmark={onJumpCfi}
-        onDeleteBookmark={onDeleteBookmark}
-        highlights={highlights}
-        onJumpToHighlight={onJumpCfi}
-        onDeleteHighlight={onDeleteHighlight}
-        trigger={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 tabular-nums"
-            aria-label="Navegación e índice"
-            title="Índice + saltar a página"
-          >
-            <ListTree className="h-4 w-4" />
-            <span className="hidden sm:inline">{pageLabel}</span>
+    <div className="border-b">
+      {/* Row 1 — icon-only chrome */}
+      <div className="px-2 sm:px-4 py-1.5 flex items-center gap-0.5">
+        <Link href="/library" aria-label="Volver a la biblioteca">
+          <Button variant="ghost" size="icon" aria-label="Biblioteca">
+            <ArrowLeft className="h-4 w-4" />
           </Button>
-        }
-      />
-      <ReaderWordsPanel
-        bookId={internalBookId}
-        getColor={getColor}
-        setColor={setColor}
-        trigger={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs gap-1.5"
-            aria-label="Palabras capturadas"
-            disabled={!internalBookId}
-          >
-            <BookOpen className="h-4 w-4" />
-            <span className="hidden sm:inline">{capturedCount} capturadas</span>
-            <span className="sm:hidden tabular-nums">{capturedCount}</span>
-          </Button>
-        }
-      />
-      <ReaderBookmarkButton
-        bookId={internalBookId}
-        currentCfi={currentCfi}
-        getSnippet={getCurrentSnippet}
-      />
-      <ReaderSettingsSheet
-        settings={settings}
-        onUpdate={onSettingsChange}
-        onIncFontSize={onIncFontSize}
-        onDecFontSize={onDecFontSize}
-        onReset={onResetSettings}
-        trigger={
-          <Button variant="outline" size="sm" aria-label="Ajustes de lectura">
-            <Settings2 className="h-4 w-4" />
-          </Button>
-        }
-      />
-      <Button
-        variant="outline"
-        size="icon-sm"
-        onClick={onPrev}
-        aria-label="Página anterior"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="outline"
-        size="icon-sm"
-        onClick={onNext}
-        aria-label="Página siguiente"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
+        </Link>
+        <div className="flex-1" />
+        <ReaderTocSheet
+          toc={toc}
+          progressPct={progressPct}
+          totalLocations={totalLocations}
+          currentLocation={currentLocation}
+          onJumpToHref={onJumpHref}
+          onJumpToPercent={handleJumpPercent}
+          bookmarks={bookmarks}
+          onJumpToBookmark={onJumpCfi}
+          onDeleteBookmark={onDeleteBookmark}
+          highlights={highlights}
+          onJumpToHighlight={onJumpCfi}
+          onDeleteHighlight={onDeleteHighlight}
+          trigger={
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Índice + saltar a página"
+              title="Índice"
+            >
+              <ListTree className="h-4 w-4" />
+            </Button>
+          }
+        />
+        <ReaderWordsPanel
+          bookId={internalBookId}
+          getColor={getColor}
+          setColor={setColor}
+          trigger={
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Palabras capturadas (${capturedCount})`}
+              title="Capturadas"
+              disabled={!internalBookId}
+            >
+              <BookOpen className="h-4 w-4" />
+            </Button>
+          }
+        />
+        <ReaderBookmarkButton
+          bookId={internalBookId}
+          currentCfi={currentCfi}
+          getSnippet={getCurrentSnippet}
+        />
+        <ReaderSettingsSheet
+          settings={settings}
+          onUpdate={onSettingsChange}
+          onIncFontSize={onIncFontSize}
+          onDecFontSize={onDecFontSize}
+          onReset={onResetSettings}
+          trigger={
+            <Button variant="ghost" size="icon" aria-label="Ajustes de lectura">
+              <Settings2 className="h-4 w-4" />
+            </Button>
+          }
+        />
+      </div>
+      {/* Row 2 — context (title + page label) */}
+      <div className="px-4 pb-3 pt-0.5">
+        <h2 className="font-serif text-base sm:text-lg font-semibold leading-tight truncate tracking-tight">
+          {title}
+        </h2>
+        {pageLabel && (
+          <p className="text-xs text-muted-foreground tabular mt-0.5">
+            {pageLabel}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

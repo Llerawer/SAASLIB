@@ -382,8 +382,6 @@ export default function ReadPage({
         onIncFontSize={incFontSize}
         onDecFontSize={decFontSize}
         onResetSettings={reset}
-        onPrev={readerPrev}
-        onNext={readerNext}
         onDeleteBookmark={handleDeleteBookmark}
         onDeleteHighlight={handleDeleteHighlight}
         getColor={wordColors.getColor}
@@ -405,8 +403,15 @@ export default function ReadPage({
             <CubeLoader title="Cargando libro" subtitle={title} />
           </div>
         )}
-        <ReaderProgressBar pct={progressPct} />
       </div>
+
+      <ReaderProgressBar
+        pct={progressPct}
+        pageLabel={pageLabel}
+        onJumpPercent={(pct) => {
+          jumpToPercent(pct);
+        }}
+      />
 
       {popup && (
         <WordPopup
