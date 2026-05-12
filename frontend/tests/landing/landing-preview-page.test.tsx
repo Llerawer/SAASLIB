@@ -35,4 +35,25 @@ describe("LandingPreviewPage", () => {
     expect(cta).not.toBeNull();
     expect(cta.textContent).toMatch(/prueba con un libro/i);
   });
+
+  it("renders every section heading in the scroll", () => {
+    render(<LandingPreviewPage />);
+    const headings = [
+      /lees lo que ya te gusta/i,
+      /la extensión vive donde lees/i,
+      /te suena, no solo lo entiendes/i,
+      /las palabras vuelven cuando importa/i,
+      /empieza gratis/i,
+    ];
+    for (const re of headings) {
+      expect(screen.getByRole("heading", { level: 2, name: re })).toBeInTheDocument();
+    }
+  });
+
+  it("renders the editorial footer tagline", () => {
+    render(<LandingPreviewPage />);
+    expect(
+      screen.getByText(/las palabras vuelven cuando las necesitas/i),
+    ).toBeInTheDocument();
+  });
 });
