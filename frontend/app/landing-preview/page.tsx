@@ -3,6 +3,7 @@ import { LandingBgEffects } from "@/components/landing/landing-bg-effects";
 import { SectionCapture } from "@/components/landing/section-capture";
 import { SectionPronunciation } from "@/components/landing/section-pronunciation";
 import { SectionMemory } from "@/components/landing/section-memory";
+import { SectionLibrary } from "@/components/landing/section-library";
 import { SectionHow } from "@/components/landing/section-how";
 import { SectionPricing } from "@/components/landing/section-pricing";
 import { SectionSocial } from "@/components/landing/section-social";
@@ -25,6 +26,8 @@ export default function LandingPreviewPage() {
         <SectionPronunciation />
         <SectionDivider />
         <SectionMemory />
+        <SectionDivider />
+        <SectionLibrary />
         <SectionDivider />
         <SectionHow />
         <SectionDivider />

@@ -41,9 +41,10 @@ describe("LandingPreviewPage", () => {
   it("renders every section heading in the new scroll", () => {
     render(<LandingPreviewPage />);
     const headings = [
-      /captura palabras en cualquier lugar de la web/i,
+      /la extensión vive donde lees/i,
       /las palabras suenan, no solo se escriben/i,
       /tu biblioteca te recuerda/i,
+      /tu biblioteca personal/i,
       /tres pasos\. sin esfuerzo\./i,
       /empieza gratis\. continúa si te ayuda\./i,
       /lo usan para leer en serio/i,

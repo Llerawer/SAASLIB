@@ -52,4 +52,11 @@ describe("HeroStage", () => {
       screen.getByText(/sin tarjeta · funciona en libros, web y video/i),
     ).toBeInTheDocument();
   });
+
+  it("renders the services pills row", () => {
+    render(<HeroStage />);
+    for (const label of ["Lectura", "Extensión", "Pronunciación", "SRS", "Biblioteca", "Stats"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
 });

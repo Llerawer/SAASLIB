@@ -91,6 +91,22 @@ export function HeroStage() {
             Ver cómo funciona →
           </Link>
         </motion.div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: prefersReduced ? 0 : 0.5, ease: REVEAL_EASE, delay: 0.28 }}
+          className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[color:var(--stage-ink-faint)]"
+          style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+        >
+          {["Lectura", "Extensión", "Pronunciación", "SRS", "Biblioteca", "Stats"].map(
+            (s, i) => (
+              <span key={s} className="flex items-center gap-3 text-[0.78rem] italic">
+                {i > 0 && <span aria-hidden="true">·</span>}
+                <span>{s}</span>
+              </span>
+            ),
+          )}
+        </motion.div>
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

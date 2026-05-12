@@ -6,7 +6,7 @@ describe("SectionCapture", () => {
   it("renders the headline", () => {
     render(<SectionCapture />);
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
-      /captura palabras en cualquier lugar de la web/i,
+      /la extensión vive donde lees/i,
     );
   });
 
@@ -17,8 +17,19 @@ describe("SectionCapture", () => {
     expect(target.textContent).toMatch(/evocative/i);
   });
 
-  it("renders 3 mini context thumbnails", () => {
+  it("renders the 4 mini site mockups (substack, youtube, kindle, blog)", () => {
     const { container } = render(<SectionCapture />);
-    expect(container.querySelectorAll("[data-context-thumb]").length).toBe(3);
+    expect(container.querySelector('[data-mini-site="substack"]')).not.toBeNull();
+    expect(container.querySelector('[data-mini-site="youtube"]')).not.toBeNull();
+    expect(container.querySelector('[data-mini-site="kindle"]')).not.toBeNull();
+    expect(container.querySelector('[data-mini-site="blog"]')).not.toBeNull();
+  });
+
+  it("renders the 'Instalar extensión' CTA as an external link", () => {
+    const { container } = render(<SectionCapture />);
+    const cta = container.querySelector("[data-install-cta]") as HTMLAnchorElement;
+    expect(cta).not.toBeNull();
+    expect(cta.textContent).toMatch(/instalar extensión/i);
+    expect(cta.getAttribute("href")).toMatch(/^https?:\/\//);
   });
 });
