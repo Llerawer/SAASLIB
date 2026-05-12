@@ -58,9 +58,14 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
         />
       )}
       <header
+        // Reader on mobile: hide the global AppHeader entirely. The
+        // ReaderToolbar (below) has back-to-library + all reader
+        // controls (TOC, settings, font size, bookmarks) — a second
+        // global header on top of it would just steal screen space and
+        // tap targets. Desktop keeps the autohide-on-hover behavior.
         className={`border-b bg-background/85 backdrop-blur-sm z-30 transition-transform duration-200 ${
           isReader
-            ? "fixed inset-x-0 top-0"
+            ? "fixed inset-x-0 top-0 hidden md:block"
             : "sticky top-0"
         } ${autohide ? "md:-translate-y-full" : ""}`}
         onMouseEnter={isReader ? reveal : undefined}

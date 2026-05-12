@@ -357,7 +357,12 @@ export default function ReadPage({
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    // h-dvh (dynamic viewport height) plus pt-safe so the reader toolbar
+    // doesn't sit under the iOS notch / dynamic island on mobile. On
+    // desktop the AppHeader covers this area; on mobile the global
+    // header is hidden so the toolbar is the topmost element and needs
+    // to respect the safe-area inset itself.
+    <div className="h-[100dvh] flex flex-col pt-safe">
       <ReaderToolbar
         title={title}
         pageLabel={pageLabel}
