@@ -1,5 +1,7 @@
 "use client";
 
+import { SectionReveal } from "./motion-reveal";
+
 /**
  * §7 — Footer. Sober close. One serif tagline + sober links + copyright.
  * No newsletter, no social proof.
@@ -7,7 +9,7 @@
 const LINKS = [
   { label: "Producto", href: "#" },
   { label: "Precios", href: "#precios" },
-  { label: "Extensión", href: "#extension-vive-donde-lees" },
+  { label: "Extensión", href: "#extension" },
   { label: "Privacidad", href: "#" },
   { label: "Términos", href: "#" },
 ];
@@ -18,11 +20,13 @@ export function LandingFooter() {
       id="footer"
       className="relative w-full max-w-[1080px] mx-auto px-6 md:px-10 py-20 md:py-28"
     >
-      <p
+      <SectionReveal
+        as="p"
+        delay={0}
         className="prose-serif italic text-center text-[clamp(1.25rem,2.6vw,1.75rem)] text-[color:var(--stage-ink)] max-w-[40rem] mx-auto leading-snug"
       >
         Las palabras vuelven cuando las necesitas.
-      </p>
+      </SectionReveal>
 
       <nav
         aria-label="Enlaces del pie"
