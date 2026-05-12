@@ -14,13 +14,14 @@ beforeEach(() => {
 import { LandingSidenav } from "@/components/landing/landing-sidenav";
 
 describe("LandingSidenav", () => {
-  it("renders 6 anchor links pointing to the section ids", () => {
+  it("renders 7 anchor links pointing to the section ids", () => {
     const { container } = render(<LandingSidenav />);
     const expected = [
       "#hero",
       "#captura",
       "#pronunciacion",
       "#memoria",
+      "#biblioteca",
       "#como-funciona",
       "#precios",
     ];

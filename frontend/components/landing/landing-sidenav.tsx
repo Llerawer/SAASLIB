@@ -13,6 +13,7 @@ const ITEMS = [
   { id: "captura", label: "Captura" },
   { id: "pronunciacion", label: "Pronunciación" },
   { id: "memoria", label: "Memoria" },
+  { id: "biblioteca", label: "Biblioteca" },
   { id: "como-funciona", label: "Cómo funciona" },
   { id: "precios", label: "Precios" },
 ] as const;
