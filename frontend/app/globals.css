@@ -12,6 +12,7 @@
   --font-serif: var(--font-source-serif);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-geist-sans);
+  --font-bricolage: var(--font-bricolage);
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -304,6 +305,20 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Landing "paper register" scoped tokens. Used only inside `.landing-paper`
+   wrappers so the warm cream / sepia ink palette doesn't leak into the app
+   interior, which has its own theme. Arbitrary-value Tailwind classes
+   (`bg-[color:var(--landing-bg)]`) resolve these. */
+.landing-paper {
+  --landing-bg: oklch(0.96 0.03 78);
+  --landing-ink: oklch(0.22 0.025 50);
+  --landing-ink-muted: oklch(0.45 0.025 55);
+  --landing-ink-faint: oklch(0.62 0.020 55);
+  --landing-accent: oklch(0.56 0.18 38);
+  --landing-accent-soft: oklch(0.56 0.18 38 / 0.12);
+  --landing-hairline: oklch(0.22 0.025 50 / 0.18);
 }
 
 /* Subtle paper-grain background for landing + empty states.
