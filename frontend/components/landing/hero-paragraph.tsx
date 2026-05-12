@@ -31,7 +31,7 @@ export function HeroParagraph({ text, target, underlinedWord, onWordDoubleClick 
   return (
     <p
       aria-hidden="true"
-      className="prose-serif text-lg md:text-xl leading-[1.7] select-none"
+      className="prose-serif text-[1.25rem] md:text-[1.375rem] leading-[1.75] select-none text-[color:var(--landing-ink)]"
       data-target={target}
     >
       {tokens.map((tok, i) => {
@@ -45,7 +45,7 @@ export function HeroParagraph({ text, target, underlinedWord, onWordDoubleClick 
             onDoubleClick={() => onWordDoubleClick(tok.word!)}
             className={
               isUnderlined
-                ? "relative cursor-pointer underline decoration-accent decoration-2 underline-offset-[6px]"
+                ? "relative cursor-pointer underline decoration-[color:var(--landing-accent)] decoration-2 underline-offset-[6px]"
                 : "cursor-pointer"
             }
           >

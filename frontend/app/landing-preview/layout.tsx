@@ -11,7 +11,7 @@ export default function LandingPreviewLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="dark min-h-screen bg-background text-foreground bg-paper-noise">
+    <div className="landing-paper min-h-screen bg-[color:var(--landing-bg)] text-[color:var(--landing-ink)] bg-paper-noise">
       {children}
     </div>
   );
