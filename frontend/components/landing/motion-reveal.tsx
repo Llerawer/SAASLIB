@@ -32,8 +32,8 @@ export function SectionReveal({
     <Comp
       ref={ref as never}
       className={className}
-      initial={{ opacity: 0, y: reduced ? 0 : 20 }}
-      animate={inView ? { opacity: 1, y: 0 } : {}}
+      initial={{ opacity: 0, y: 20 }}
+      animate={inView ? { opacity: 1, y: 0 } : undefined}
       transition={{
         duration: reduced ? 0 : 0.5,
         ease: REVEAL_EASE,

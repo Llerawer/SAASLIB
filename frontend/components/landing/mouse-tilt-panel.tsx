@@ -8,7 +8,7 @@ import {
   useTransform,
   type HTMLMotionProps,
 } from "framer-motion";
-import { type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 /**
  * A panel that tilts a few degrees toward the cursor while hovered. Uses
@@ -27,7 +27,10 @@ export function MouseTiltPanel({
   className?: string;
   style?: React.CSSProperties;
 } & Omit<HTMLMotionProps<"div">, "children" | "style" | "onMouseMove" | "onMouseLeave">) {
-  const reduced = useReducedMotion();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const reducedMotion = useReducedMotion();
+  const reduced = mounted && reducedMotion;
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotateX = useTransform(y, [-1, 1], [maxTilt, -maxTilt]);

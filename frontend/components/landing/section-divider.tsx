@@ -17,8 +17,8 @@ export function SectionDivider() {
         data-testid="section-divider-line"
         className="h-px"
         style={{ backgroundColor: "var(--stage-accent)", opacity: 0.4 }}
-        initial={{ width: reducedMotion ? "120px" : 0 }}
-        animate={inView || reducedMotion ? { width: "120px" } : {}}
+        initial={{ width: 0 }}
+        animate={inView ? { width: "120px" } : undefined}
         transition={{
           duration: reducedMotion ? 0 : 0.8,
           ease: [0.22, 1, 0.36, 1],

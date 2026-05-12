@@ -1,13 +1,17 @@
 "use client";
 
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
+import { useEffect, useState } from "react";
 
 /** Ambient effects behind the hero: slow breathing radial + distant blurred lights.
     Controlled — terracota only, low opacity, slow motion. No particles, no shaders.
     Lights parallax with scroll (one slower, one faster). The centered radial stays
     put — it is the brand breath. */
 export function LandingBgEffects() {
-  const reduced = useReducedMotion();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const reducedMotion = useReducedMotion();
+  const reduced = mounted && reducedMotion;
   const { scrollY } = useScroll();
   const light1Y = useTransform(scrollY, [0, 3000], [0, -200]);
   const light2Y = useTransform(scrollY, [0, 3000], [0, 300]);

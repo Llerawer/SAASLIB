@@ -26,15 +26,16 @@ export function HeroStage() {
   const panelY = useTransform(scrollYProgress, [0, 1], [60, 0]);
   const panelOpacity = useTransform(scrollYProgress, [0, 1], [0.6, 1]);
 
-  const motionStyle = prefersReduced
-    ? {}
-    : {
-        rotateX: panelRotateX,
-        scale: panelScale,
-        y: panelY,
-        opacity: panelOpacity,
-        transformOrigin: "center 80%",
-      };
+  // Always apply scroll-driven values so server + first client render match.
+  // Scroll-tied transforms only move as the user scrolls, so reduced-motion users
+  // are not hit with auto-animations.
+  const motionStyle = {
+    rotateX: panelRotateX,
+    scale: panelScale,
+    y: panelY,
+    opacity: panelOpacity,
+    transformOrigin: "center 80%",
+  };
 
   return (
     <article
@@ -44,7 +45,7 @@ export function HeroStage() {
     >
       <header className="text-center max-w-[44rem] mx-auto mb-12 md:mb-16">
         <motion.p
-          initial={{ opacity: 0, y: prefersReduced ? 0 : 14 }}
+          initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: prefersReduced ? 0 : 0.45, ease: REVEAL_EASE }}
           className="text-xs italic text-[color:var(--stage-accent)] opacity-80 uppercase tracking-[0.18em] mb-4"
@@ -53,7 +54,7 @@ export function HeroStage() {
           Para hispanohablantes que ya leen inglés
         </motion.p>
         <motion.h1
-          initial={{ opacity: 0, y: prefersReduced ? 0 : 20 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: prefersReduced ? 0 : 0.5, ease: REVEAL_EASE, delay: 0.08 }}
           className="text-[clamp(2.25rem,5.5vw,3.75rem)] leading-[1.05] font-medium tracking-[-0.02em] text-[color:var(--stage-ink)]"
@@ -62,7 +63,7 @@ export function HeroStage() {
           Aprende inglés sin dejar de leer lo que amas.
         </motion.h1>
         <motion.p
-          initial={{ opacity: 0, y: prefersReduced ? 0 : 20 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: prefersReduced ? 0 : 0.5, ease: REVEAL_EASE, delay: 0.16 }}
           className="prose-serif italic text-[clamp(1rem,1.6vw,1.25rem)] text-[color:var(--stage-ink-muted)] mt-5 leading-[1.6]"
@@ -70,7 +71,7 @@ export function HeroStage() {
           Lee libros, artículos, videos. Captura palabras sin romper el flow. Tu biblioteca te recuerda.
         </motion.p>
         <motion.div
-          initial={{ opacity: 0, y: prefersReduced ? 0 : 16 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: prefersReduced ? 0 : 0.5, ease: REVEAL_EASE, delay: 0.24 }}
           className="mt-10 flex flex-col md:flex-row items-center justify-center gap-5 md:gap-8"
