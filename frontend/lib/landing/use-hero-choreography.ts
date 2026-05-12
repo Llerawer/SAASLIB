@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { frameAt, STABLE_FRAME_MS, TOTAL_DURATION_MS, type HeroFrame } from "./hero-choreography";
 
 export type UseHeroChoreographyOptions = {
@@ -24,10 +24,17 @@ function detectReducedMotion(): boolean {
 }
 
 export function useHeroChoreography({ active }: UseHeroChoreographyOptions): UseHeroChoreographyReturn {
-  const reducedMotion = useMemo(() => detectReducedMotion(), []);
-  const [t, setT] = useState<number>(reducedMotion ? STABLE_FRAME_MS : 0);
+  // Start identical to SSR (no window). Detect reduced-motion in effect to avoid hydration mismatch.
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [t, setT] = useState<number>(0);
   const [overrideWord, setOverrideWord] = useState<string | null>(null);
   const onceStartRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!detectReducedMotion()) return;
+    setReducedMotion(true);
+    setT(STABLE_FRAME_MS);
+  }, []);
 
   // Drive the loop.
   useEffect(() => {
