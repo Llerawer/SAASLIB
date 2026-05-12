@@ -16,6 +16,8 @@ import type {
   AuthStateResponse,
   ExtMessage,
   ExtResponse,
+  GetKnownWordsResponse,
+  KnownWord,
   LookupClipsResponse,
   LookupResponse,
   PronounceClip,
@@ -102,6 +104,11 @@ async function signIn(email: string, password: string): Promise<{ ok: boolean; e
 
 async function signOut(): Promise<void> {
   await supabase.auth.signOut();
+  // A different user might log in next — drop the cached vocabulary so
+  // we don't show their predecessor's words highlighted across the web.
+  knownWords = null;
+  knownLoadedAt = 0;
+  await chrome.storage.local.remove(KNOWN_STORE_KEY);
 }
 
 async function getAuthState(): Promise<AuthStateResponse> {
@@ -189,10 +196,12 @@ async function saveCapture(
       // General "extension on a random web page" capture — no source.
       body.article_id = null;
     }
-    const data = await apiFetch<Capture>("/api/v1/captures", {
+    type CaptureResp = Capture & { id: string };
+    const data = await apiFetch<CaptureResp>("/api/v1/captures", {
       method: "POST",
       body: JSON.stringify(body),
     });
+    recordCapture(data.word_normalized, data.id);
     return { ok: true, word: data.word_normalized };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
@@ -231,6 +240,99 @@ async function lookupClips(word: string): Promise<LookupClipsResponse> {
 function track(event: string, props?: Record<string, unknown>): void {
   // eslint-disable-next-line no-console
   console.debug("[lr-track]", event, props ?? {});
+}
+
+// --- Known-words cache --------------------------------------------------
+//
+// We pull the user's full vocabulary list (word_normalized → captured_at)
+// from /api/v1/captures once and cache it in memory + chrome.storage so
+// content scripts can underline matches as the user browses. Refreshed
+// in the background after STALE_MS so newly saved words light up without
+// requiring a browser restart.
+
+const KNOWN_STORE_KEY = "lr_known_words_v1";
+const STALE_MS = 5 * 60 * 1000;
+let knownWords: Record<string, KnownWord> | null = null;
+let knownLoadedAt = 0;
+let knownInFlight: Promise<Record<string, KnownWord>> | null = null;
+
+async function fetchKnownWords(): Promise<Record<string, KnownWord>> {
+  // /captures is paginated (max 200); iterate until exhausted. For users
+  // with thousands of captures we'd cap this at e.g. 10 pages, but the
+  // realistic ceiling pre-launch is ~500.
+  type Capture = { id: string; word_normalized: string; captured_at: string };
+  const out: Record<string, KnownWord> = {};
+  const LIMIT = 200;
+  const MAX_PAGES = 20;
+  for (let i = 0; i < MAX_PAGES; i++) {
+    const page = await apiFetch<Capture[]>(
+      `/api/v1/captures?limit=${LIMIT}&offset=${i * LIMIT}`,
+    );
+    if (!Array.isArray(page) || page.length === 0) break;
+    for (const c of page) {
+      // First capture wins (the page comes ordered desc by captured_at,
+      // so we want the FIRST encountered — but if order ever flips,
+      // keeping the most recent timestamp is a safer fallback).
+      const prev = out[c.word_normalized];
+      if (!prev || prev.capturedAt < c.captured_at) {
+        out[c.word_normalized] = {
+          capturedAt: c.captured_at,
+          captureId: c.id,
+        };
+      }
+    }
+    if (page.length < LIMIT) break;
+  }
+  return out;
+}
+
+async function getKnownWords(forceRefresh = false): Promise<Record<string, KnownWord>> {
+  const now = Date.now();
+  if (!forceRefresh && knownWords && now - knownLoadedAt < STALE_MS) {
+    return knownWords;
+  }
+  if (knownInFlight) return knownInFlight;
+  knownInFlight = (async () => {
+    try {
+      const words = await fetchKnownWords();
+      knownWords = words;
+      knownLoadedAt = Date.now();
+      await chrome.storage.local.set({
+        [KNOWN_STORE_KEY]: { words, loadedAt: knownLoadedAt },
+      });
+      return words;
+    } finally {
+      knownInFlight = null;
+    }
+  })();
+  return knownInFlight;
+}
+
+// Hydrate from storage on startup so the first page-load after Chrome
+// boot doesn't have to wait for the network roundtrip.
+void (async () => {
+  const stored = await chrome.storage.local.get(KNOWN_STORE_KEY);
+  const slot = stored[KNOWN_STORE_KEY] as
+    | { words: Record<string, KnownWord>; loadedAt: number }
+    | undefined;
+  if (slot?.words) {
+    knownWords = slot.words;
+    knownLoadedAt = slot.loadedAt;
+  }
+})();
+
+// After a successful save, optimistically add the word to the cache so
+// it lights up on other tabs immediately (next page load) — no waiting
+// for the 5-minute refresh.
+function recordCapture(wordNormalized: string, captureId: string): void {
+  if (!knownWords) knownWords = {};
+  knownWords[wordNormalized] = {
+    capturedAt: new Date().toISOString(),
+    captureId,
+  };
+  void chrome.storage.local.set({
+    [KNOWN_STORE_KEY]: { words: knownWords, loadedAt: knownLoadedAt },
+  });
 }
 
 // Singleton deck window: clicking "Practicar todo" should focus the
@@ -354,6 +456,17 @@ chrome.runtime.onMessage.addListener(
           track(msg.event, msg.props);
           response = { ok: true };
           break;
+        case "get-known-words": {
+          try {
+            const words = await getKnownWords();
+            const r: GetKnownWordsResponse = { ok: true, words };
+            response = r;
+          } catch (err) {
+            const r: GetKnownWordsResponse = { ok: false, error: (err as Error).message };
+            response = r;
+          }
+          break;
+        }
       }
       sendResponse(response);
     })();

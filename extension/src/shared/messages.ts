@@ -53,6 +53,21 @@ export type TrackRequest = {
   props?: Record<string, string | number | boolean | null>;
 };
 
+export type GetKnownWordsRequest = {
+  type: "get-known-words";
+};
+
+/** Map of word_normalized → metadata so the highlighter can show
+ *  "ya guardada hace N días" on click without an extra fetch. */
+export type KnownWord = {
+  capturedAt: string;
+  captureId: string;
+};
+
+export type GetKnownWordsResponse =
+  | { ok: true; words: Record<string, KnownWord> }
+  | { ok: false; error: string };
+
 export type ExtMessage =
   | LookupRequest
   | SaveCaptureRequest
@@ -61,7 +76,8 @@ export type ExtMessage =
   | LookupClipsRequest
   | OpenTabRequest
   | OpenDeckWindowRequest
-  | TrackRequest;
+  | TrackRequest
+  | GetKnownWordsRequest;
 
 export type LookupResponse =
   | { ok: true; data: DictionaryEntry }

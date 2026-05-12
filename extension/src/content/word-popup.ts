@@ -34,6 +34,9 @@ export type PopupState =
       saving: boolean;
       saveError: string | null;
       clips: ClipsState;
+      // ISO timestamp of the first time we saw this word saved. null
+      // means the user has not saved it yet.
+      knownAt: string | null;
     }
   | { kind: "lookup-error"; word: string; position: { x: number; y: number };
       error: string };
@@ -156,6 +159,12 @@ function paint(state: PopupState): void {
   header.appendChild(closeButton());
   popupRoot.appendChild(header);
 
+  if (state.knownAt) {
+    popupRoot.appendChild(
+      elText("div", "lr-known-chip", `✓ Ya guardada · ${relativeTime(state.knownAt)}`),
+    );
+  }
+
   if (entry.translation) {
     popupRoot.appendChild(elText("div", "lr-section-title", "Traducción"));
     popupRoot.appendChild(elText("p", "lr-translation", entry.translation));
@@ -233,6 +242,24 @@ function renderClips(clipsState: ClipsState, word: string): void {
     }
   });
   popupRoot.appendChild(btn);
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "antes";
+  const diffMs = Date.now() - then;
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return "hace instantes";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `hace ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `hace ${hr} h`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `hace ${day} ${day === 1 ? "día" : "días"}`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `hace ${mo} ${mo === 1 ? "mes" : "meses"}`;
+  const yr = Math.floor(mo / 12);
+  return `hace ${yr} ${yr === 1 ? "año" : "años"}`;
 }
 
 // Cache decoded audio per URL so repeated clicks don't re-fetch.
@@ -380,6 +407,16 @@ const STYLES = `
 .lr-btn:hover { background: #c2410c; }
 .lr-btn:disabled { opacity: 0.65; cursor: default; }
 .lr-btn-saved { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+.lr-known-chip {
+  display: inline-block;
+  font-size: 11px;
+  color: #6ee7b7;
+  background: rgba(16,185,129,0.12);
+  border: 1px solid rgba(16,185,129,0.3);
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
 .lr-btn-pronounce {
   width: 100%;
   display: block;

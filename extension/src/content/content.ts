@@ -25,7 +25,13 @@ import {
   pauseIfPlaying,
   resumeIfWePaused,
 } from "./youtube-adapter";
+import {
+  bootKnownWords,
+  findBlockContext,
+  lookupKnown,
+} from "./known-words";
 import type {
+  GetKnownWordsResponse,
   LookupClipsResponse,
   LookupResponse,
   SaveCaptureResponse,
@@ -125,7 +131,13 @@ function onDblClick(e: MouseEvent): void {
     }
   } else {
     currentYouTube = null;
-    contextSentence = extractContextSentence(textNode.data, span.start);
+    // If the click landed inside a known-word highlight wrapper, the
+    // text node only holds the word itself — fall back to the nearest
+    // block ancestor for context so we don't lose the sentence.
+    const block = findBlockContext(textNode, span.start);
+    contextSentence = block
+      ? extractContextSentence(block.fullText, block.absoluteOffset)
+      : extractContextSentence(textNode.data, span.start);
   }
 
   // Open in loading state immediately for snappy UX.
@@ -155,16 +167,20 @@ function onDblClick(e: MouseEvent): void {
           error: resp?.error ?? "No se pudo buscar la palabra.",
         };
       } else {
+        const known = lookupKnown(clientNormalize(word) || word);
         currentState = {
           kind: "loaded",
           word,
           position,
           entry: resp.data,
           contextSentence,
-          saved: false,
+          // If the user has already saved this word, surface that
+          // immediately (no spinner on Save until they re-save).
+          saved: !!known,
           saving: false,
           saveError: null,
           clips: { kind: "loading" },
+          knownAt: known?.capturedAt ?? null,
         };
         // Fire-and-forget clip lookup. Popup stays interactive while
         // clips load; updates when they arrive (or errors quietly).
@@ -251,3 +267,11 @@ function onKeyDown(e: KeyboardEvent): void {
 document.addEventListener("dblclick", onDblClick);
 document.addEventListener("mousedown", onDocumentClick);
 document.addEventListener("keydown", onKeyDown);
+
+// Pull the user's saved-words map from the SW (cached there) and ask
+// the highlighter to underline matches across the page. Cheap and lazy:
+// if the user is signed out, the SW returns an error and we no-op.
+safeSendMessage<GetKnownWordsResponse>({ type: "get-known-words" }, (resp) => {
+  if (!resp || !resp.ok) return;
+  bootKnownWords(resp.words);
+});
