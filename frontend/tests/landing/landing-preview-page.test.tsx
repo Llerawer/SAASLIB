@@ -18,32 +18,35 @@ beforeEach(() => {
 import LandingPreviewPage from "@/app/landing-preview/page";
 
 describe("LandingPreviewPage", () => {
-  it("renders the new product headline", () => {
+  it("renders the product headline", () => {
     const { container } = render(<LandingPreviewPage />);
     const h1 = container.querySelector("h1");
     expect(h1?.textContent).toMatch(/aprende inglés sin dejar de leer lo que amas/i);
   });
 
-  it("renders the tagline", () => {
+  it("renders the hero tagline", () => {
     render(<LandingPreviewPage />);
-    expect(screen.getByText(/lee\.\s*captura\.\s*no olvides\./i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/lee libros, artículos, videos\. captura palabras sin romper el flow/i),
+    ).toBeInTheDocument();
   });
 
-  it("renders the primary CTA 'Prueba con un libro' linking to /signup", () => {
+  it("renders the primary CTA 'Prueba gratis' linking to /signup", () => {
     const { container } = render(<LandingPreviewPage />);
     const cta = container.querySelector('a[href="/signup"]') as HTMLAnchorElement;
     expect(cta).not.toBeNull();
-    expect(cta.textContent).toMatch(/prueba con un libro/i);
+    expect(cta.textContent).toMatch(/prueba gratis/i);
   });
 
-  it("renders every section heading in the scroll", () => {
+  it("renders every section heading in the new scroll", () => {
     render(<LandingPreviewPage />);
     const headings = [
-      /lees lo que ya te gusta/i,
-      /la extensión vive donde lees/i,
-      /te suena, no solo lo entiendes/i,
-      /las palabras vuelven cuando importa/i,
-      /empieza gratis/i,
+      /captura palabras en cualquier lugar de la web/i,
+      /las palabras suenan, no solo se escriben/i,
+      /tu biblioteca te recuerda/i,
+      /tres pasos\. sin esfuerzo\./i,
+      /empieza gratis\. continúa si te ayuda\./i,
+      /lo usan para leer en serio/i,
     ];
     for (const re of headings) {
       expect(screen.getByRole("heading", { level: 2, name: re })).toBeInTheDocument();

@@ -18,10 +18,10 @@ describe("LandingSidenav", () => {
     const { container } = render(<LandingSidenav />);
     const expected = [
       "#hero",
-      "#contenido",
-      "#extension",
+      "#captura",
       "#pronunciacion",
       "#memoria",
+      "#como-funciona",
       "#precios",
     ];
     for (const href of expected) {

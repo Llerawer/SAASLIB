@@ -3,20 +3,22 @@ import { render, screen } from "@testing-library/react";
 import { SectionMemory } from "@/components/landing/section-memory";
 
 describe("SectionMemory", () => {
-  it("renders the headline", () => {
+  it("renders the new headline", () => {
     render(<SectionMemory />);
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
-      /las palabras vuelven cuando importa/i,
+      /tu biblioteca te recuerda/i,
     );
   });
 
-  it("renders 5 mazo cards", () => {
+  it("renders the SRS review mockup flashcard", () => {
     const { container } = render(<SectionMemory />);
-    expect(container.querySelectorAll("[data-deck-card]").length).toBe(5);
+    expect(container.querySelector("[data-flashcard]")).not.toBeNull();
   });
 
-  it("shows the editorial 127 stat", () => {
-    render(<SectionMemory />);
-    expect(screen.getByText("127")).toBeInTheDocument();
+  it("renders 4 grade buttons including 'Bien'", () => {
+    const { container } = render(<SectionMemory />);
+    const buttons = container.querySelectorAll("[data-grade-button]");
+    expect(buttons.length).toBe(4);
+    expect(screen.getByText("Bien")).toBeInTheDocument();
   });
 });

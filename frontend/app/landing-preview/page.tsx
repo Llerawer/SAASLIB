@@ -1,10 +1,11 @@
 import { HeroStage } from "@/components/landing/hero-stage";
 import { LandingBgEffects } from "@/components/landing/landing-bg-effects";
-import { SectionSources } from "@/components/landing/section-sources";
-import { SectionExtension } from "@/components/landing/section-extension";
+import { SectionCapture } from "@/components/landing/section-capture";
 import { SectionPronunciation } from "@/components/landing/section-pronunciation";
 import { SectionMemory } from "@/components/landing/section-memory";
+import { SectionHow } from "@/components/landing/section-how";
 import { SectionPricing } from "@/components/landing/section-pricing";
+import { SectionSocial } from "@/components/landing/section-social";
 import { LandingFooter } from "@/components/landing/landing-footer";
 import { LandingSidenav } from "@/components/landing/landing-sidenav";
 import { ScrollProgress } from "@/components/landing/scroll-progress";
@@ -19,15 +20,17 @@ export default function LandingPreviewPage() {
       <div className="relative">
         <HeroStage />
         <SectionDivider />
-        <SectionSources />
-        <SectionDivider />
-        <SectionExtension />
+        <SectionCapture />
         <SectionDivider />
         <SectionPronunciation />
         <SectionDivider />
         <SectionMemory />
         <SectionDivider />
+        <SectionHow />
+        <SectionDivider />
         <SectionPricing />
+        <SectionDivider />
+        <SectionSocial />
         <LandingFooter />
       </div>
     </main>

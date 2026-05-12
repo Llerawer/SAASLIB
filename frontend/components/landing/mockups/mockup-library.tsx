@@ -4,16 +4,24 @@
  * 2x3 grid of book "covers" rendered in pure HTML/CSS. The top-left book has
  * a small "Continuar leyendo" tag + progress bar.
  */
-const BOOKS = [
+type Tone = "terracota" | "terracota-soft" | "dark" | "cream";
+type Book = {
+  title: string;
+  author: string;
+  tone: Tone;
+  progress?: number;
+};
+
+const BOOKS: readonly Book[] = [
   { title: "The Great Gatsby", author: "F. Scott Fitzgerald", tone: "terracota", progress: 38 },
   { title: "Pride & Prejudice", author: "Jane Austen", tone: "cream" },
   { title: "The Sun Also Rises", author: "Ernest Hemingway", tone: "dark" },
   { title: "Mrs. Dalloway", author: "Virginia Woolf", tone: "terracota-soft" },
   { title: "The Goldfinch", author: "Donna Tartt", tone: "cream" },
   { title: "Anna Karenina", author: "Leo Tolstoy", tone: "dark" },
-] as const;
+];
 
-function toneStyle(tone: (typeof BOOKS)[number]["tone"]): {
+function toneStyle(tone: Tone): {
   bg: string;
   color: string;
   border: string;

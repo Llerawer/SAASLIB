@@ -3,15 +3,15 @@ import { render, screen } from "@testing-library/react";
 import { SectionPronunciation } from "@/components/landing/section-pronunciation";
 
 describe("SectionPronunciation", () => {
-  it("renders the headline", () => {
+  it("renders the new headline", () => {
     render(<SectionPronunciation />);
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
-      /te suena, no solo lo entiendes/i,
+      /las palabras suenan, no solo se escriben/i,
     );
   });
 
-  it("renders 3 clip cards", () => {
+  it("renders 3 clip rows", () => {
     const { container } = render(<SectionPronunciation />);
-    expect(container.querySelectorAll("[data-clip-card]").length).toBe(3);
+    expect(container.querySelectorAll("[data-clip-row]").length).toBe(3);
   });
 });

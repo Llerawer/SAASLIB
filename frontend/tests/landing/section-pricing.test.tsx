@@ -21,8 +21,8 @@ describe("SectionPricing", () => {
     const free = container.querySelector('a[href="/signup"]') as HTMLAnchorElement;
     const pro = container.querySelector('a[href="/signup?plan=pro"]') as HTMLAnchorElement;
     expect(free).not.toBeNull();
-    expect(free.textContent).toMatch(/empieza a leer/i);
+    expect(free.textContent).toMatch(/empezar gratis/i);
     expect(pro).not.toBeNull();
-    expect(pro.textContent).toMatch(/probar pro/i);
+    expect(pro.textContent).toMatch(/empezar pro · \$8\/mes/i);
   });
 });
