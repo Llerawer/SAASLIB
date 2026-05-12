@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
+const inputClass =
+  "w-full px-4 py-3 rounded-md bg-[color:var(--landing-bg)] border border-[color:var(--landing-hairline)] text-[color:var(--landing-ink)] placeholder:text-[color:var(--landing-ink-faint)] focus:outline-none focus:border-[color:var(--landing-accent)] focus:ring-2 focus:ring-[color:var(--landing-accent)]/30 transition-colors";
+
+const labelStyle = { fontFamily: "var(--font-bricolage), sans-serif" } as const;
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -34,19 +36,25 @@ export default function LoginPage() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full space-y-5 border rounded-xl p-6 bg-card shadow-sm"
-    >
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Bienvenido</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <header className="flex flex-col gap-2">
+        <h1 className="prose-serif text-[1.75rem] leading-tight text-[color:var(--landing-ink)]">
+          Bienvenido de vuelta.
+        </h1>
+        <p className="prose-serif italic text-[0.95rem] text-[color:var(--landing-ink-muted)]">
           Entra para continuar leyendo.
         </p>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
-        <Input
+      </header>
+
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="email"
+          className="text-[0.78rem] uppercase tracking-wide text-[color:var(--landing-ink-muted)]"
+          style={labelStyle}
+        >
+          Email
+        </label>
+        <input
           id="email"
           type="email"
           required
@@ -54,40 +62,57 @@ export default function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="tu@email.com"
           autoComplete="email"
+          className={inputClass}
         />
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="password">Contraseña</Label>
-        <Input
+
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="password"
+          className="text-[0.78rem] uppercase tracking-wide text-[color:var(--landing-ink-muted)]"
+          style={labelStyle}
+        >
+          Contraseña
+        </label>
+        <input
           id="password"
           type="password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
+          className={inputClass}
         />
       </div>
+
       {error && (
         <div
-          className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-2.5 rounded-md"
           role="alert"
+          className="text-sm text-[color:var(--landing-accent)] bg-[color:var(--landing-accent-soft)] border border-[color:var(--landing-accent)]/30 rounded-md px-3 py-2"
         >
           {error}
         </div>
       )}
-      <Button type="submit" disabled={loading} className="w-full">
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full inline-flex items-center justify-center rounded-md px-5 py-3 text-base font-medium text-[color:var(--landing-bg)] bg-[color:var(--landing-accent)] hover:opacity-90 disabled:opacity-50 transition-opacity"
+        style={labelStyle}
+      >
         {loading ? "Entrando" : "Entrar"}
-      </Button>
+      </button>
+
       <div className="flex justify-between text-sm">
         <Link
           href="/reset"
-          className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          className="text-[color:var(--landing-ink-muted)] hover:text-[color:var(--landing-ink)] underline-offset-4 hover:underline"
         >
           Olvidé mi contraseña
         </Link>
         <Link
           href="/signup"
-          className="text-accent underline-offset-4 hover:underline"
+          className="text-[color:var(--landing-accent)] underline-offset-4 hover:underline"
         >
           Crear cuenta
         </Link>

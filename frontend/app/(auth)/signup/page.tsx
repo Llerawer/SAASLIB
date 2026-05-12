@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
+const inputClass =
+  "w-full px-4 py-3 rounded-md bg-[color:var(--landing-bg)] border border-[color:var(--landing-hairline)] text-[color:var(--landing-ink)] placeholder:text-[color:var(--landing-ink-faint)] focus:outline-none focus:border-[color:var(--landing-accent)] focus:ring-2 focus:ring-[color:var(--landing-accent)]/30 transition-colors";
+
+const labelStyle = { fontFamily: "var(--font-bricolage), sans-serif" } as const;
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -31,19 +33,25 @@ export default function SignupPage() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full space-y-5 border rounded-xl p-6 bg-card shadow-sm"
-    >
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Crear cuenta</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Empieza a capturar palabras y a repasarlas con SRS.
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <header className="flex flex-col gap-2">
+        <h1 className="prose-serif text-[1.75rem] leading-tight text-[color:var(--landing-ink)]">
+          Empieza tu biblioteca.
+        </h1>
+        <p className="prose-serif italic text-[0.95rem] text-[color:var(--landing-ink-muted)]">
+          Una cuenta gratis. Sin tarjeta para empezar.
         </p>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
-        <Input
+      </header>
+
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="email"
+          className="text-[0.78rem] uppercase tracking-wide text-[color:var(--landing-ink-muted)]"
+          style={labelStyle}
+        >
+          Email
+        </label>
+        <input
           id="email"
           type="email"
           required
@@ -51,11 +59,19 @@ export default function SignupPage() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="tu@email.com"
           autoComplete="email"
+          className={inputClass}
         />
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="password">Contraseña</Label>
-        <Input
+
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="password"
+          className="text-[0.78rem] uppercase tracking-wide text-[color:var(--landing-ink-muted)]"
+          style={labelStyle}
+        >
+          Contraseña
+        </label>
+        <input
           id="password"
           type="password"
           required
@@ -65,27 +81,39 @@ export default function SignupPage() {
           placeholder="mínimo 8 caracteres"
           autoComplete="new-password"
           aria-describedby="password-hint"
+          className={inputClass}
         />
-        <p id="password-hint" className="text-xs text-muted-foreground">
+        <p
+          id="password-hint"
+          className="text-[0.78rem] italic text-[color:var(--landing-ink-faint)]"
+        >
           Al menos 8 caracteres.
         </p>
       </div>
+
       {error && (
         <div
-          className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-2.5 rounded-md"
           role="alert"
+          className="text-sm text-[color:var(--landing-accent)] bg-[color:var(--landing-accent-soft)] border border-[color:var(--landing-accent)]/30 rounded-md px-3 py-2"
         >
           {error}
         </div>
       )}
-      <Button type="submit" disabled={loading} className="w-full">
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full inline-flex items-center justify-center rounded-md px-5 py-3 text-base font-medium text-[color:var(--landing-bg)] bg-[color:var(--landing-accent)] hover:opacity-90 disabled:opacity-50 transition-opacity"
+        style={labelStyle}
+      >
         {loading ? "Creando" : "Crear cuenta"}
-      </Button>
-      <p className="text-sm text-center text-muted-foreground">
+      </button>
+
+      <p className="text-sm text-center text-[color:var(--landing-ink-muted)]">
         ¿Ya tienes cuenta?{" "}
         <Link
           href="/login"
-          className="text-accent underline-offset-4 hover:underline"
+          className="text-[color:var(--landing-accent)] underline-offset-4 hover:underline"
         >
           Entrar
         </Link>
