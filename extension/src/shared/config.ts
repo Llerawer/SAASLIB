@@ -10,3 +10,6 @@ export const SUPABASE_ANON_KEY =
 
 /** Backend API base. Localhost for dev; switch to prod URL when shipping. */
 export const API_BASE = "http://localhost:8100";
+
+/** Frontend SaaS base. Used to open the deck player in a floating window. */
+export const FRONTEND_BASE = "http://localhost:3000";

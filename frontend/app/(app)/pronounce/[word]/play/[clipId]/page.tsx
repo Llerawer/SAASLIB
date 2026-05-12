@@ -42,6 +42,7 @@ export default function PronounceDeckPage({
 
   const accent = sp.get("accent") ?? undefined;
   const channel = sp.get("channel") ?? undefined;
+  const isEmbed = sp.get("embed") === "1";
 
   // Forward reference for `onAdvance`. The controller fires onAdvance from
   // its segment-loop handler in 'auto' mode; that callback needs to call
@@ -170,13 +171,19 @@ export default function PronounceDeckPage({
           break;
         case "Escape":
           e.preventDefault();
-          router.replace(withQuery(`/pronounce/${wordEnc}`, sp));
+          if (isEmbed) {
+            // In the extension's floating window Esc closes the window
+            // outright — there's nowhere to "go back" to.
+            window.close();
+          } else {
+            router.replace(withQuery(`/pronounce/${wordEnc}`, sp));
+          }
           break;
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [handleGoPrev, handleGoNext, ctrl, router, wordEnc, sp]);
+  }, [handleGoPrev, handleGoNext, ctrl, router, wordEnc, sp, isEmbed]);
 
   // ---------------------------------------------------------------------------
   // Early returns (after all hooks)
@@ -237,17 +244,23 @@ export default function PronounceDeckPage({
   const filterChip = [accent, channel].filter(Boolean).join(" · ");
 
   return (
-    <div className="max-w-5xl mx-auto p-4 sm:p-6">
-      {/* Header: back link + word + filter chip + counter */}
+    <div className={isEmbed ? "p-3" : "max-w-5xl mx-auto p-4 sm:p-6"}>
+      {/* Header: back link + word + filter chip + counter. In embed mode
+          we drop the back link (the floating window's own close button is
+          enough) and keep just the word + counter as a tight strip. */}
       <header className="flex items-center gap-3 mb-6 flex-wrap">
-        <Link
-          href={withQuery(`/pronounce/${wordEnc}`, sp)}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          aria-label={`Volver a la galería de ${word}`}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>{word}</span>
-        </Link>
+        {isEmbed ? (
+          <span className="font-serif text-base font-semibold">{word}</span>
+        ) : (
+          <Link
+            href={withQuery(`/pronounce/${wordEnc}`, sp)}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={`Volver a la galería de ${word}`}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>{word}</span>
+          </Link>
+        )}
         {filterChip && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
             {filterChip}

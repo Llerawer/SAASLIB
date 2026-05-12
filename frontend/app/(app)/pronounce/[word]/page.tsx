@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,10 @@ export default function PronouncePage({
 }) {
   const { word: encoded } = use(params);
   const word = decodeURIComponent(encoded);
+  // Browser-extension floating-window mode: drop the chrome (toolbar +
+  // big masthead) so the clip grid owns the small viewport.
+  const sp = useSearchParams();
+  const isEmbed = sp?.get("embed") === "1";
 
   const [accent, setAccent] = useState<string>("all");
   const [channel, setChannel] = useState<string>("");
@@ -35,51 +40,70 @@ export default function PronouncePage({
   const suggestions = data?.suggestions ?? [];
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6">
-      {/* Toolbar row: back + filters. Sits above the editorial masthead so
-          the headword can read as the page subject without compete with chrome. */}
-      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <Link href="/pronounce">
-          <Button variant="ghost" size="sm" aria-label="Volver al buscador">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Buscar otra
-          </Button>
-        </Link>
-        <PronounceFiltersBar
-          accent={accent}
-          channel={channel}
-          onAccentChange={(v) => {
-            setAccent(v);
-            setLimit(PAGE_SIZE);
-          }}
-          onChannelChange={(v) => {
-            setChannel(v);
-            setLimit(PAGE_SIZE);
-          }}
-        />
-      </div>
-      <header className="mb-6">
-        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
-          <span className="size-1 rounded-full bg-accent" aria-hidden />
-          <span>Pronunciación</span>
-          <span aria-hidden className="text-muted-foreground/50">·</span>
-          <span>Clips</span>
-        </div>
-        <h1 className="font-serif font-semibold text-4xl md:text-5xl tracking-tight leading-none">
-          {word}
-        </h1>
-        <div className="mt-3 flex items-center gap-2">
-          <div className="h-px w-10 bg-accent/70" />
-          <div className="h-px flex-1 bg-border" />
-        </div>
-        {data && (
-          <p className="mt-2.5 text-sm text-muted-foreground tabular">
-            {data.total === 0
-              ? "Sin clips encontrados"
-              : `${data.total} clip${data.total === 1 ? "" : "s"} encontrado${data.total === 1 ? "" : "s"}`}
-          </p>
-        )}
-      </header>
+    <div className={isEmbed ? "p-3" : "max-w-7xl mx-auto p-4 sm:p-6"}>
+      {!isEmbed && (
+        <>
+          {/* Toolbar row: back + filters. Sits above the editorial masthead so
+              the headword can read as the page subject without compete with chrome. */}
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <Link href="/pronounce">
+              <Button variant="ghost" size="sm" aria-label="Volver al buscador">
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Buscar otra
+              </Button>
+            </Link>
+            <PronounceFiltersBar
+              accent={accent}
+              channel={channel}
+              onAccentChange={(v) => {
+                setAccent(v);
+                setLimit(PAGE_SIZE);
+              }}
+              onChannelChange={(v) => {
+                setChannel(v);
+                setLimit(PAGE_SIZE);
+              }}
+            />
+          </div>
+          <header className="mb-6">
+            <div className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+              <span className="size-1 rounded-full bg-accent" aria-hidden />
+              <span>Pronunciación</span>
+              <span aria-hidden className="text-muted-foreground/50">·</span>
+              <span>Clips</span>
+            </div>
+            <h1 className="font-serif font-semibold text-4xl md:text-5xl tracking-tight leading-none">
+              {word}
+            </h1>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="h-px w-10 bg-accent/70" />
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            {data && (
+              <p className="mt-2.5 text-sm text-muted-foreground tabular">
+                {data.total === 0
+                  ? "Sin clips encontrados"
+                  : `${data.total} clip${data.total === 1 ? "" : "s"} encontrado${data.total === 1 ? "" : "s"}`}
+              </p>
+            )}
+          </header>
+        </>
+      )}
+
+      {isEmbed && (
+        // Compact masthead for the floating window: a single tight row
+        // showing the word + count, no filters / no "back" CTA.
+        <header className="flex items-baseline justify-between gap-3 mb-3">
+          <h1 className="font-serif font-semibold text-2xl tracking-tight leading-none">
+            {word}
+          </h1>
+          {data && (
+            <span className="text-xs text-muted-foreground tabular">
+              {data.total === 0 ? "Sin clips" : `${data.total} clips`}
+            </span>
+          )}
+        </header>
+      )}
 
       {query.isLoading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

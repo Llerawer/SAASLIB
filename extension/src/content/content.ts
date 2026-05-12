@@ -35,6 +35,43 @@ import type {
 // without us recapturing on every click.
 let currentState: PopupState | null = null;
 
+/** True when the extension is still alive. After a dev reload the old
+ *  content script keeps running in old tabs but chrome.runtime.id goes
+ *  undefined and every sendMessage throws "Extension context invalidated".
+ *  We detect that and become a silent no-op until the tab is refreshed. */
+function extensionAlive(): boolean {
+  try {
+    return !!chrome.runtime?.id;
+  } catch {
+    return false;
+  }
+}
+
+/** sendMessage wrapper that swallows context-invalidated errors —
+ *  both at send-time and inside the response callback (which can fire
+ *  after the extension was reloaded mid-request). */
+function safeSendMessage<T = unknown>(
+  msg: unknown,
+  cb?: (resp: T) => void,
+): void {
+  if (!extensionAlive()) return;
+  try {
+    chrome.runtime.sendMessage(msg, (resp: T) => {
+      try {
+        // Touching chrome.runtime.lastError clears it; reading it on a
+        // dead context throws — which is fine, we catch right below.
+        void chrome.runtime.lastError;
+        if (!extensionAlive()) return;
+        cb?.(resp);
+      } catch {
+        // Context died between request and response. Silent no-op.
+      }
+    });
+  } catch {
+    // Context invalidated between the alive check and the call.
+  }
+}
+
 // Per-capture YouTube context, set when the dblclick happens inside a
 // caption. Cleared on close.
 type YouTubeContext = { videoId: string; timestampS: number };
@@ -105,9 +142,9 @@ function onDblClick(e: MouseEvent): void {
   openPopup(currentState);
 
   // Lookup via service worker.
-  chrome.runtime.sendMessage(
+  safeSendMessage<LookupResponse>(
     { type: "lookup", word, language },
-    (resp: LookupResponse) => {
+    (resp) => {
       // Race: user may have closed or clicked another word in the meantime.
       if (!currentState || currentState.word !== word) return;
       if (!resp || !resp.ok) {
@@ -140,14 +177,17 @@ function onDblClick(e: MouseEvent): void {
 
 function fetchClips(word: string): void {
   const normalized = clientNormalize(word) || word;
-  chrome.runtime.sendMessage(
+  safeSendMessage<LookupClipsResponse>(
     { type: "lookup-clips", word: normalized },
-    (resp: LookupClipsResponse) => {
+    (resp) => {
       if (!currentState || currentState.kind !== "loaded" || currentState.word !== word) return;
       if (!resp || !resp.ok) {
         currentState = { ...currentState, clips: { kind: "error" } };
       } else {
-        currentState = { ...currentState, clips: { kind: "loaded", clips: resp.clips } };
+        currentState = {
+          ...currentState,
+          clips: { kind: "loaded", clips: resp.clips, total: resp.total },
+        };
       }
       updateState(currentState);
     },
@@ -161,7 +201,7 @@ function doSave(language: string): void {
   currentState = { ...currentState, saving: true, saveError: null };
   updateState(currentState);
 
-  chrome.runtime.sendMessage(
+  safeSendMessage<SaveCaptureResponse>(
     {
       type: "save-capture",
       word: clientNormalize(word) || word,
@@ -170,7 +210,7 @@ function doSave(language: string): void {
       videoId: currentYouTube?.videoId ?? null,
       videoTimestampS: currentYouTube?.timestampS ?? null,
     },
-    (resp: SaveCaptureResponse) => {
+    (resp) => {
       if (!currentState || currentState.kind !== "loaded") return;
       if (!resp || !resp.ok) {
         currentState = {

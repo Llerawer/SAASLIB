@@ -11,7 +11,7 @@
 
 import { createClient, type Session } from "@supabase/supabase-js";
 
-import { API_BASE, SUPABASE_ANON_KEY, SUPABASE_URL } from "../shared/config";
+import { API_BASE, FRONTEND_BASE, SUPABASE_ANON_KEY, SUPABASE_URL } from "../shared/config";
 import type {
   AuthStateResponse,
   ExtMessage,
@@ -205,10 +205,13 @@ async function saveCapture(
 async function lookupClips(word: string): Promise<LookupClipsResponse> {
   try {
     type Resp = {
+      total: number;
       clips: Array<PronounceClip & Record<string, unknown>>;
     };
+    // We only need the first clip's id (to deep-link the deck) plus the
+    // total count for the button label. limit=1 keeps the call cheap.
     const data = await apiFetch<Resp>(
-      `/api/v1/pronounce/${encodeURIComponent(word)}?limit=5`,
+      `/api/v1/pronounce/${encodeURIComponent(word)}?limit=1`,
     );
     const clips: PronounceClip[] = data.clips.map((c) => ({
       id: c.id,
@@ -217,7 +220,7 @@ async function lookupClips(word: string): Promise<LookupClipsResponse> {
       sentence_text: c.sentence_text,
       sentence_start_ms: c.sentence_start_ms,
     }));
-    return { ok: true, clips };
+    return { ok: true, clips, total: data.total };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
@@ -228,6 +231,50 @@ async function lookupClips(word: string): Promise<LookupClipsResponse> {
 function track(event: string, props?: Record<string, unknown>): void {
   // eslint-disable-next-line no-console
   console.debug("[lr-track]", event, props ?? {});
+}
+
+// Singleton deck window: clicking "Practicar todo" should focus the
+// existing window (and update its URL) instead of spawning a new one.
+// We track the windowId and the id of its sole tab so we can update
+// the URL in-place.
+let deckWindowId: number | null = null;
+let deckTabId: number | null = null;
+
+chrome.windows.onRemoved.addListener((closedId) => {
+  if (closedId === deckWindowId) {
+    deckWindowId = null;
+    deckTabId = null;
+  }
+});
+
+async function openOrReuseDeckWindow(url: string): Promise<void> {
+  if (deckWindowId !== null) {
+    try {
+      // Verify the cached window still exists. chrome.windows.get
+      // rejects if it doesn't, which falls through to the create path.
+      await chrome.windows.get(deckWindowId);
+      if (deckTabId !== null) {
+        await chrome.tabs.update(deckTabId, { url, active: true });
+      }
+      await chrome.windows.update(deckWindowId, {
+        focused: true,
+        state: "normal",
+      });
+      return;
+    } catch {
+      deckWindowId = null;
+      deckTabId = null;
+    }
+  }
+  const win = await chrome.windows.create({
+    url,
+    type: "popup",
+    width: 520,
+    height: 760,
+    focused: true,
+  });
+  deckWindowId = win.id ?? null;
+  deckTabId = win.tabs?.[0]?.id ?? null;
 }
 
 // Proxy audio fetches: third-party page CSP blocks <audio> from loading
@@ -294,6 +341,15 @@ chrome.runtime.onMessage.addListener(
           await chrome.tabs.create({ url: msg.url });
           response = { ok: true };
           break;
+        case "open-deck-window": {
+          const w = encodeURIComponent(msg.word);
+          const path = msg.clipId
+            ? `/pronounce/${w}/play/${encodeURIComponent(msg.clipId)}?embed=1`
+            : `/pronounce/${w}?embed=1`;
+          await openOrReuseDeckWindow(`${FRONTEND_BASE}${path}`);
+          response = { ok: true };
+          break;
+        }
         case "track":
           track(msg.event, msg.props);
           response = { ok: true };

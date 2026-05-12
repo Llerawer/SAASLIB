@@ -39,6 +39,14 @@ export type OpenTabRequest = {
   url: string;
 };
 
+export type OpenDeckWindowRequest = {
+  type: "open-deck-window";
+  word: string;
+  // Optional clip id — when present, opens straight into the deck play
+  // view; otherwise opens the gallery.
+  clipId?: string;
+};
+
 export type TrackRequest = {
   type: "track";
   event: string;
@@ -52,6 +60,7 @@ export type ExtMessage =
   | FetchAudioRequest
   | LookupClipsRequest
   | OpenTabRequest
+  | OpenDeckWindowRequest
   | TrackRequest;
 
 export type LookupResponse =
@@ -80,7 +89,7 @@ export type PronounceClip = {
 };
 
 export type LookupClipsResponse =
-  | { ok: true; clips: PronounceClip[] }
+  | { ok: true; clips: PronounceClip[]; total: number }
   | { ok: false; error: string };
 
 export type ExtResponse =

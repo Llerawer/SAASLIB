@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Menu, BookOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,11 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import LogoutButton from "@/components/logout-button";
 
 export function AppHeader({ userEmail }: { userEmail: string }) {
+  // Embed mode: the browser extension opens our pages in a small floating
+  // window with ?embed=1. Hide the global nav so the deck/clip player can
+  // own the whole viewport without competing chrome.
+  const sp = useSearchParams();
+  const isEmbed = sp?.get("embed") === "1";
   const [mobileOpen, setMobileOpen] = useState(false);
   // Auto-hide while reading: distraction-free reading mode. Header slides
   // out of view; a thin top-edge trigger zone reveals it on mouse-enter.
@@ -40,6 +45,8 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
     hideTimerRef.current = setTimeout(() => setRevealed(false), 180);
   };
   const autohide = isReader && !revealed;
+
+  if (isEmbed) return null;
 
   return (
     <>
