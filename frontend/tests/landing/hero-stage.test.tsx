@@ -49,7 +49,7 @@ describe("HeroStage", () => {
   it("renders the footnote", () => {
     render(<HeroStage />);
     expect(
-      screen.getByText(/sin tarjeta · funciona en libros, web y video/i),
+      screen.getByText(/sin tarjeta · funciona offline una vez instalada/i),
     ).toBeInTheDocument();
   });
 

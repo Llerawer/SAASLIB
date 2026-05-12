@@ -98,7 +98,7 @@ export function HeroStage() {
           className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[color:var(--stage-ink-faint)]"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
-          {["Lectura", "Extensión", "Pronunciación", "SRS", "Biblioteca", "Stats"].map(
+          {["Lectura", "Extensión", "Pronunciación", "SRS", "Biblioteca", "Stats", "App instalable"].map(
             (s, i) => (
               <span key={s} className="flex items-center gap-3 text-[0.78rem] italic">
                 {i > 0 && <span aria-hidden="true">·</span>}
@@ -114,7 +114,7 @@ export function HeroStage() {
           className="text-[0.78rem] text-[color:var(--stage-ink-faint)] mt-6"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
-          Sin tarjeta · Funciona en libros, web y video · Cancela cuando quieras
+          Sin tarjeta · Funciona offline una vez instalada · Cancela cuando quieras
         </motion.p>
       </header>
 

@@ -57,6 +57,13 @@ export function LandingFooter() {
         className="mt-10 text-center text-xs italic text-[color:var(--stage-ink-faint)] opacity-80"
         style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
       >
+        En iOS Safari, instala como app desde Compartir → Añadir a inicio.
+      </p>
+
+      <p
+        className="mt-3 text-center text-xs italic text-[color:var(--stage-ink-faint)] opacity-70"
+        style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+      >
         LinguaReader · 2026
       </p>
     </footer>
