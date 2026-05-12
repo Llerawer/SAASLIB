@@ -307,6 +307,23 @@
   }
 }
 
+/* Landing "dark stage" scoped tokens. The cream panel sits inside this
+   dark warm world. Arc/Cursor/Raycast register: warm-ink-on-dark with one
+   terracota accent. Apply on the outermost landing wrapper. */
+.landing-stage {
+  --stage-bg: oklch(0.14 0.018 60);
+  --stage-bg-elevated: oklch(0.18 0.020 60);
+  --stage-ink: oklch(0.96 0.012 80);
+  --stage-ink-muted: oklch(0.72 0.014 70);
+  --stage-ink-faint: oklch(0.52 0.014 70);
+  --stage-accent: oklch(0.72 0.16 38);
+  --stage-accent-soft: oklch(0.72 0.16 38 / 0.12);
+  --stage-accent-glow: oklch(0.72 0.16 38 / 0.22);
+  --stage-hairline: oklch(1 0 0 / 0.10);
+  background-color: var(--stage-bg);
+  color: var(--stage-ink);
+}
+
 /* Landing "paper register" scoped tokens. Used only inside `.landing-paper`
    wrappers so the warm cream / sepia ink palette doesn't leak into the app
    interior, which has its own theme. Arbitrary-value Tailwind classes
