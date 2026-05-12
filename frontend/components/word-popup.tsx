@@ -202,7 +202,11 @@ export function WordPopup({
     const popupEl = popupRef.current;
     const actualHeight = popupEl?.offsetHeight ?? ESTIMATED_POPUP_HEIGHT;
 
-    const left = Math.max(8, Math.min(position.x, vw - POPUP_WIDTH - 8));
+    // Effective width = nominal 340 unless the viewport is narrower (the
+    // CSS rule `min(340px, calc(100vw-16px))` shrinks the popup on tiny
+    // screens). Use the smaller of the two so the clamp doesn't overshoot.
+    const effectiveWidth = Math.min(POPUP_WIDTH, vw - 16);
+    const left = Math.max(8, Math.min(position.x, vw - effectiveWidth - 8));
     // Prefer below the pointer; flip above when no room. If neither side
     // fits cleanly, pin to the bottom edge so the bottom buttons stay on
     // screen — covers the case where a tall popup (with note section)
@@ -227,18 +231,15 @@ export function WordPopup({
   // doesn't flash. Avoids the previous "display:none for one frame" gap
   // that read as latency.
   const naivePos = position
-    ? {
-        top: position.y + POPUP_GAP,
-        left: Math.max(
-          8,
-          Math.min(
-            position.x,
-            (typeof window !== "undefined" ? window.innerWidth : 1024) -
-              POPUP_WIDTH -
-              8,
-          ),
-        ),
-      }
+    ? (() => {
+        const vw =
+          typeof window !== "undefined" ? window.innerWidth : 1024;
+        const effectiveWidth = Math.min(POPUP_WIDTH, vw - 16);
+        return {
+          top: position.y + POPUP_GAP,
+          left: Math.max(8, Math.min(position.x, vw - effectiveWidth - 8)),
+        };
+      })()
     : null;
   const style: React.CSSProperties = naivePos
     ? {
@@ -256,7 +257,10 @@ export function WordPopup({
     <div
       ref={popupRef}
       style={style}
-      className="w-[340px] rounded-xl border bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-150"
+      // Viewport-safe width: 340px nominal, but never wider than the screen
+      // minus 16px gutters (8px each side). Critical on iPhone SE / landscape
+      // narrow viewports where 340 > viewport width.
+      className="w-[min(340px,calc(100vw-16px))] rounded-xl border bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-150"
       role="dialog"
       aria-label={`Definición de ${word}`}
     >

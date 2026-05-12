@@ -535,6 +535,7 @@ function CardFace({
                 aria-label="Quitar imagen"
                 title="Quitar imagen"
                 className={cn(
+                  "reveal-on-hover",
                   "absolute top-1 right-1 inline-flex items-center justify-center size-7 rounded-full",
                   "bg-background/85 backdrop-blur-sm border border-border text-foreground/70",
                   "hover:bg-background hover:text-destructive hover:border-destructive/40",

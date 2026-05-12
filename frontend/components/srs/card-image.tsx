@@ -68,6 +68,7 @@ export function CardImage({ cardId, url, alt }: Props) {
         aria-label="Quitar imagen"
         title="Quitar imagen"
         className={cn(
+          "reveal-on-hover",
           "absolute top-2 right-2 inline-flex items-center justify-center size-8 rounded-full",
           "bg-background/85 backdrop-blur-sm border border-border text-foreground/70",
           "hover:bg-background hover:text-destructive hover:border-destructive/40",

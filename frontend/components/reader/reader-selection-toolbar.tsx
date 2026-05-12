@@ -36,12 +36,16 @@ export function ReaderSelectionToolbar({
 }: ReaderSelectionToolbarProps) {
   if (!position) return null;
 
-  // Clamp horizontally so toolbar doesn't fall off-screen.
+  // Clamp horizontally so toolbar doesn't fall off-screen. On viewports
+  // narrower than the nominal 220px (very rare but iPhone SE landscape +
+  // splitview tablet) shrink the toolbar width to fit; the swatches will
+  // overflow into a tighter row but stay reachable.
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const effectiveWidth = Math.min(TOOLBAR_WIDTH, vw - 16);
   const left = Math.max(
     8,
-    Math.min(position.x - TOOLBAR_WIDTH / 2, vw - TOOLBAR_WIDTH - 8),
+    Math.min(position.x - effectiveWidth / 2, vw - effectiveWidth - 8),
   );
   // Float above; flip below if no room above.
   const wantTop = position.y - TOOLBAR_GAP - TOOLBAR_HEIGHT;
@@ -55,7 +59,7 @@ export function ReaderSelectionToolbar({
       role="toolbar"
       aria-label="Subrayar selección"
       className="fixed z-[1000] flex items-center gap-1 rounded-full border bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 px-2 py-1 animate-in fade-in-0 zoom-in-95 duration-100"
-      style={{ top, left, width: TOOLBAR_WIDTH }}
+      style={{ top, left, width: effectiveWidth, maxWidth: "calc(100vw - 16px)" }}
     >
       {HIGHLIGHT_COLOR_IDS.map((id) => (
         <button

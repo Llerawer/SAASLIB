@@ -112,7 +112,7 @@ export function ArticleListItem({ article, sourceName, onSourceClick }: Props) {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              className="reveal-on-hover opacity-0 group-hover:opacity-100 transition-opacity"
               aria-label="Borrar artículo"
             />
           }

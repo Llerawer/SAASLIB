@@ -197,7 +197,7 @@ export function VideoCard({ video, onRetry, onHide }: VideoCardProps) {
       {onHide && (
         <div
           ref={menuRef}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+          className="reveal-on-hover absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
         >
           <button
             type="button"
