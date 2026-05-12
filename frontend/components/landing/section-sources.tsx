@@ -1,5 +1,8 @@
 "use client";
 
+import { SectionReveal } from "./motion-reveal";
+import { MouseTiltPanel } from "./mouse-tilt-panel";
+
 /**
  * §2 — Content sources. Refutes "I have to use your reader" by showing 4
  * surfaces where LinguaReader meets the learner: EPUB, web article, YouTube,
@@ -8,30 +11,42 @@
 export function SectionSources() {
   return (
     <section
-      id="lees-lo-que-te-gusta"
+      id="contenido"
       aria-labelledby="sources-heading"
       className="relative w-full max-w-[1080px] mx-auto px-6 md:px-10 py-20 md:py-32"
     >
       <header className="text-center max-w-[42rem] mx-auto mb-12 md:mb-16">
-        <p
+        <SectionReveal
+          as="p"
+          delay={0}
           className="text-xs italic text-[color:var(--stage-accent)] opacity-80 uppercase tracking-[0.18em] mb-3"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Contenido
-        </p>
-        <h2
+        </SectionReveal>
+        <SectionReveal
+          as="h2"
+          delay={0.08}
           id="sources-heading"
           className="text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.1] font-medium tracking-[-0.01em] text-[color:var(--stage-ink)]"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Lees lo que ya te gusta.
-        </h2>
-        <p className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]">
+        </SectionReveal>
+        <SectionReveal
+          as="p"
+          delay={0.16}
+          className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]"
+        >
           Libros, artículos, videos. LinguaReader te sigue donde leas.
-        </p>
+        </SectionReveal>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-6">
+      <SectionReveal
+        delay={0.24}
+        className="grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-6"
+        style={{ perspective: "1200px" }}
+      >
         <SourcePanel label="EPUB · iBooks · Kindle">
           <p
             className="text-[0.7rem] italic text-[color:var(--landing-ink-muted)] mb-3 lowercase tracking-wide"
@@ -127,7 +142,7 @@ export function SectionSources() {
             streaming · subtítulos en vivo
           </p>
         </SourcePanel>
-      </div>
+      </SectionReveal>
     </section>
   );
 }
@@ -140,7 +155,7 @@ function SourcePanel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="group relative" style={{ perspective: "1600px" }}>
+    <div className="group relative">
       <div
         aria-hidden="true"
         className="absolute -inset-4 rounded-[20px] pointer-events-none opacity-60"
@@ -150,7 +165,8 @@ function SourcePanel({
           filter: "blur(32px)",
         }}
       />
-      <div
+      <MouseTiltPanel
+        maxTilt={5}
         className="landing-paper relative rounded-[14px] bg-paper-noise overflow-hidden border p-6 transition-transform hover:-translate-y-0.5"
         style={{
           backgroundColor: "var(--landing-bg)",
@@ -170,7 +186,7 @@ function SourcePanel({
         >
           {label}
         </div>
-      </div>
+      </MouseTiltPanel>
     </div>
   );
 }

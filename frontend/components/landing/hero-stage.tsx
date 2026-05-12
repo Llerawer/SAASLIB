@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from "framer-motion";
 import { HeroParagraph } from "./hero-paragraph";
 import { HeroMarginalia } from "./hero-marginalia";
 import { HeroDeck } from "./hero-deck";
@@ -13,6 +20,7 @@ const PARAGRAPH =
   "She caught a glimpse of him through the rain, and for a moment everything else stopped mattering.";
 const IPA = "/ɡlɪmps/";
 const GRAVITY_EASE = [0.55, 0.05, 0.85, 0.3] as const;
+const REVEAL_EASE = [0.22, 1, 0.36, 1] as const;
 
 /**
  * The hero lives in a dark warm world. A cream "book panel" floats inside it
@@ -20,15 +28,30 @@ const GRAVITY_EASE = [0.55, 0.05, 0.85, 0.3] as const;
  * but with a book metaphor instead of a code editor. The reading composition
  * (paragraph + marginalia + mazo) stays inside the cream panel; product copy
  * and CTAs live in the outer dark stage.
+ *
+ * Motion: the cream panel scroll-unfolds (rotateX -12 → -2, scale 0.94 → 1,
+ * y 60 → 0, opacity 0.6 → 1) during the first ~viewport of scroll. Reduced
+ * motion users get the static resting state.
  */
 export function HeroStage() {
-  const stageRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLElement | null>(null);
   const [active, setActive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [playKey, setPlayKey] = useState(0);
   const { frame, runOnce, reducedMotion } = useHeroChoreography({
     active: active && !paused,
   });
+  const prefersReduced = useReducedMotion();
+  const copyInView = useInView(stageRef, { once: true, margin: "0px" });
+
+  const { scrollYProgress } = useScroll({
+    target: stageRef,
+    offset: ["start end", "center center"],
+  });
+  const panelRotateX = useTransform(scrollYProgress, [0, 1], [-12, -2]);
+  const panelScale = useTransform(scrollYProgress, [0, 1], [0.94, 1]);
+  const panelY = useTransform(scrollYProgress, [0, 1], [60, 0]);
+  const panelOpacity = useTransform(scrollYProgress, [0, 1], [0.6, 1]);
 
   useEffect(() => {
     const node = stageRef.current;
@@ -55,23 +78,45 @@ export function HeroStage() {
   const topWord = frame.deckCount === FINAL_COUNT ? "glimpse" : null;
   const hairlineActive = frame.popupOpen || frame.fichaFlying || frame.deckCount === FINAL_COUNT;
 
+  const panelStyle = prefersReduced
+    ? {
+        transform: "rotateX(-2deg)",
+        transformOrigin: "center 80%",
+      }
+    : {
+        rotateX: panelRotateX,
+        scale: panelScale,
+        y: panelY,
+        opacity: panelOpacity,
+        transformOrigin: "center 80%",
+      };
+
   return (
     <article
+      id="hero"
       ref={stageRef}
       onMouseEnter={handleMouseEnter}
       className="relative mx-auto w-full max-w-[1080px] px-6 md:px-10 py-12 md:py-20"
     >
       {/* OUTER — dark world copy, top */}
       <header className="text-center max-w-[42rem] mx-auto mb-12 md:mb-16">
-        <h1
+        <motion.h1
+          initial={{ opacity: 0, y: prefersReduced ? 0 : 20 }}
+          animate={copyInView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: prefersReduced ? 0 : 0.5, ease: REVEAL_EASE, delay: 0.08 }}
           className="text-[clamp(2.25rem,5.5vw,3.75rem)] leading-[1.05] font-medium tracking-[-0.02em] text-[color:var(--stage-ink)]"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Aprende inglés sin dejar de leer lo que amas.
-        </h1>
-        <p className="prose-serif italic text-[clamp(1rem,1.6vw,1.25rem)] text-[color:var(--stage-accent)] mt-5">
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0, y: prefersReduced ? 0 : 20 }}
+          animate={copyInView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: prefersReduced ? 0 : 0.5, ease: REVEAL_EASE, delay: 0.16 }}
+          className="prose-serif italic text-[clamp(1rem,1.6vw,1.25rem)] text-[color:var(--stage-accent)] mt-5"
+        >
           Lee. Captura. No olvides.
-        </p>
+        </motion.p>
       </header>
 
       {/* CREAM PANEL — the book */}
@@ -87,16 +132,15 @@ export function HeroStage() {
           }}
         />
 
-        <div
+        <motion.div
           aria-hidden="true"
           className="landing-paper relative rounded-[20px] bg-paper-noise overflow-hidden"
           style={{
             backgroundColor: "var(--landing-bg)",
             color: "var(--landing-ink)",
-            transform: "rotateX(-2deg)",
-            transformOrigin: "center 80%",
             boxShadow:
               "0 40px 80px -20px oklch(0 0 0 / 0.55), 0 12px 24px -8px oklch(0 0 0 / 0.4), inset 0 0 0 1px oklch(0.22 0.025 50 / 0.08)",
+            ...panelStyle,
           }}
         >
           {/* Panel header */}
@@ -178,7 +222,7 @@ export function HeroStage() {
               )}
             </AnimatePresence>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* CTA row */}

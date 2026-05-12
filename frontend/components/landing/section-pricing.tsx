@@ -1,5 +1,7 @@
 "use client";
 
+import { SectionReveal } from "./motion-reveal";
+
 /**
  * §6 — Pricing. Two tiers, editorial copy, no "Most popular" badges, no
  * feature checklists.
@@ -12,25 +14,36 @@ export function SectionPricing() {
       className="relative w-full max-w-[1080px] mx-auto px-6 md:px-10 py-20 md:py-32"
     >
       <header className="text-center max-w-[44rem] mx-auto mb-12 md:mb-16">
-        <p
+        <SectionReveal
+          as="p"
+          delay={0}
           className="text-xs italic text-[color:var(--stage-accent)] opacity-80 uppercase tracking-[0.18em] mb-3"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Precios
-        </p>
-        <h2
+        </SectionReveal>
+        <SectionReveal
+          as="h2"
+          delay={0.08}
           id="pricing-heading"
           className="text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.1] font-medium tracking-[-0.01em] text-[color:var(--stage-ink)]"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Empieza gratis. Continúa si te ayuda.
-        </h2>
-        <p className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]">
+        </SectionReveal>
+        <SectionReveal
+          as="p"
+          delay={0.16}
+          className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]"
+        >
           Sin tarjeta para empezar. Sin manipulación.
-        </p>
+        </SectionReveal>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-[860px] mx-auto">
+      <SectionReveal
+        delay={0.24}
+        className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-[860px] mx-auto"
+      >
         <PricingPanel
           tier="Lector"
           price="Gratis"
@@ -47,7 +60,7 @@ export function SectionPricing() {
           ctaHref="/signup?plan=pro"
           variant="accent"
         />
-      </div>
+      </SectionReveal>
     </section>
   );
 }

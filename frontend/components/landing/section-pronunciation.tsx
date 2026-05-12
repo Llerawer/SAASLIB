@@ -1,5 +1,7 @@
 "use client";
 
+import { SectionReveal } from "./motion-reveal";
+
 /**
  * §4 — Pronunciation. Three clip cards, each with word, IPA, mini waveform,
  * play button, and origin context. Sells "te suena, no solo lo entiendes."
@@ -13,30 +15,42 @@ const CLIPS = [
 export function SectionPronunciation() {
   return (
     <section
-      id="te-suena-no-solo-lo-entiendes"
+      id="pronunciacion"
       aria-labelledby="pronunciation-heading"
       className="relative w-full max-w-[1080px] mx-auto px-6 md:px-10 py-20 md:py-32"
     >
       <header className="text-center max-w-[44rem] mx-auto mb-12 md:mb-16">
-        <p
+        <SectionReveal
+          as="p"
+          delay={0}
           className="text-xs italic text-[color:var(--stage-accent)] opacity-80 uppercase tracking-[0.18em] mb-3"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Pronunciación
-        </p>
-        <h2
+        </SectionReveal>
+        <SectionReveal
+          as="h2"
+          delay={0.08}
           id="pronunciation-heading"
           className="text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.1] font-medium tracking-[-0.01em] text-[color:var(--stage-ink)]"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Te suena, no solo lo entiendes.
-        </h2>
-        <p className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]">
+        </SectionReveal>
+        <SectionReveal
+          as="p"
+          delay={0.16}
+          className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]"
+        >
           Cada palabra viene con la voz de alguien diciéndola en su escena.
-        </p>
+        </SectionReveal>
       </header>
 
-      <div className="relative mx-auto max-w-[820px]" style={{ perspective: "1600px" }}>
+      <SectionReveal
+        delay={0.24}
+        className="relative mx-auto max-w-[820px]"
+        style={{ perspective: "1600px" }}
+      >
         <div
           aria-hidden="true"
           className="absolute -inset-6 rounded-[28px] pointer-events-none"
@@ -63,7 +77,7 @@ export function SectionPronunciation() {
                 <li
                   key={c.word}
                   data-clip-card
-                  className="flex items-center gap-5 md:gap-8 py-5"
+                  className="flex items-center gap-5 md:gap-8 py-5 rounded-[10px] px-3 -mx-3 transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 hover:shadow-[0_8px_24px_-8px_oklch(0.72_0.16_38_/_0.25)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none"
                   style={{
                     borderTopWidth: i === 0 ? 0 : "1px",
                     borderTopStyle: "solid",
@@ -120,7 +134,7 @@ export function SectionPronunciation() {
             </ul>
           </div>
         </div>
-      </div>
+      </SectionReveal>
     </section>
   );
 }

@@ -1,5 +1,8 @@
 "use client";
 
+import { SectionReveal } from "./motion-reveal";
+import { MouseTiltPanel } from "./mouse-tilt-panel";
+
 /**
  * §3 — Extension. Shows LinguaReader popup floating over a word inside a fake
  * web article, hinting at "vive donde lees". Generic browser chrome — no real
@@ -8,30 +11,42 @@
 export function SectionExtension() {
   return (
     <section
-      id="extension-vive-donde-lees"
+      id="extension"
       aria-labelledby="extension-heading"
       className="relative w-full max-w-[1080px] mx-auto px-6 md:px-10 py-20 md:py-32"
     >
       <header className="text-center max-w-[44rem] mx-auto mb-12 md:mb-16">
-        <p
+        <SectionReveal
+          as="p"
+          delay={0}
           className="text-xs italic text-[color:var(--stage-accent)] opacity-80 uppercase tracking-[0.18em] mb-3"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           Extensión
-        </p>
-        <h2
+        </SectionReveal>
+        <SectionReveal
+          as="h2"
+          delay={0.08}
           id="extension-heading"
           className="text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.1] font-medium tracking-[-0.01em] text-[color:var(--stage-ink)]"
           style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
           La extensión vive donde lees.
-        </h2>
-        <p className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]">
+        </SectionReveal>
+        <SectionReveal
+          as="p"
+          delay={0.16}
+          className="prose-serif italic text-[color:var(--stage-ink-muted)] mt-4 text-[clamp(1rem,1.4vw,1.125rem)]"
+        >
           Wikipedia, un blog, un periódico. Doble-click y la palabra se guarda.
-        </p>
+        </SectionReveal>
       </header>
 
-      <div className="relative mx-auto max-w-[820px]" style={{ perspective: "1600px" }}>
+      <SectionReveal
+        delay={0.24}
+        className="relative mx-auto max-w-[820px]"
+        style={{ perspective: "1600px" }}
+      >
         <div
           aria-hidden="true"
           className="absolute -inset-6 rounded-[28px] pointer-events-none"
@@ -41,12 +56,12 @@ export function SectionExtension() {
             filter: "blur(40px)",
           }}
         />
-        <div
+        <MouseTiltPanel
+          maxTilt={3}
           className="landing-paper relative rounded-[18px] bg-paper-noise overflow-hidden"
           style={{
             backgroundColor: "var(--landing-bg)",
             color: "var(--landing-ink)",
-            transform: "rotateX(-1.5deg)",
             transformOrigin: "center 80%",
             boxShadow:
               "0 30px 60px -16px oklch(0 0 0 / 0.5), 0 8px 20px -6px oklch(0 0 0 / 0.35), inset 0 0 0 1px oklch(0.22 0.025 50 / 0.08)",
@@ -180,8 +195,8 @@ export function SectionExtension() {
               </p>
             </div>
           </div>
-        </div>
-      </div>
+        </MouseTiltPanel>
+      </SectionReveal>
     </section>
   );
 }
