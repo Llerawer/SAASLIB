@@ -254,12 +254,36 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Prevent any descendant from causing horizontal page scroll. `clip` is
+     preferred over `hidden` because it doesn't establish a new scroll
+     container — avoids breaking position:sticky / scroll-restoration. */
+  html,
+  body {
+    overflow-x: clip;
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "ss01", "cv11";
+    /* Mobile-first: base reading size is 16px so iOS Safari won't auto-zoom
+       focused inputs (anything <16px triggers zoom). Bumped to 17px from
+       md: up so desktop reads slightly larger without harming mobile. */
+    font-size: 16px;
   }
   html {
     @apply font-sans;
+    /* Cover the notch / dynamic island. Pairs with .pt-safe / .pb-safe
+       utilities below for content that sits at the edges. */
+    /* (viewport meta `viewport-fit=cover` is set by Next 16 default; this
+        is the CSS side of that pairing.) */
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Inputs / textareas / selects: explicit 16px floor on mobile to suppress
+     iOS auto-zoom. Tailwind utilities like `text-sm` (14px) on form fields
+     reintroduce zoom — beware. */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1rem);
   }
   /* Editorial serif utility for reading content */
   .prose-serif {
@@ -271,6 +295,46 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/* =========================================================================
+   Mobile foundations — utilities that pair with PWA + safe areas + thumb
+   ergonomics. These are global so any surface can opt in without per-page
+   reimplementation. Keep this section tight — anything page-specific lives
+   with the page, not here.
+   ========================================================================= */
+
+/* ----- Safe area utilities (iOS notch + Android nav bar) ----- */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pl-safe { padding-left: env(safe-area-inset-left); }
+.pr-safe { padding-right: env(safe-area-inset-right); }
+.px-safe {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+/* Additive variants — preserve existing padding and add the safe inset on
+   top. Use these when a CTA/sheet already has px-4 but you also need to
+   respect the notch (very common in sticky bottom bars). */
+.pb-safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + var(--pb-safe-extra, 0px)); }
+.pt-safe-top    { padding-top:    calc(env(safe-area-inset-top)    + var(--pt-safe-extra, 0px)); }
+
+/* ----- Touch target floor -----
+   Apple HIG + Material Design both recommend ≥44px tappable area. Apply
+   this on any clickable element that doesn't already have generous size
+   from a component library. Use ON THE ELEMENT THAT RECEIVES THE TAP,
+   not on a wrapper. */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ----- No hover assumption -----
+   For surfaces that hide affordances behind hover on desktop, this class
+   keeps them visible always on coarse pointers (touch). Apply on the
+   parent of any "appears on hover" affordance. */
+@media (pointer: coarse) {
+  .reveal-on-hover { opacity: 1 !important; }
 }
 
 @keyframes lr-card-in {

@@ -48,6 +48,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#C77B5F",
+  // viewport-fit=cover lets content extend behind the iOS notch / Android nav
+  // bar; pair with the .pt-safe / .pb-safe utilities in globals.css when
+  // placing content at the edges.
+  viewportFit: "cover",
   // initial-scale=1 viewport meta is added by default in Next 16.
 };
 
