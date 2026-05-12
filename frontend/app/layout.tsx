@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Source_Serif_4, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { Providers } from "@/components/providers";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AppBadgeSync } from "@/components/pwa/app-badge-sync";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,6 +36,19 @@ const bricolage = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: "LinguaReader",
   description: "Lee en inglés, captura palabras, repasa con SRS.",
+  applicationName: "LinguaReader",
+  appleWebApp: {
+    capable: true,
+    title: "LinguaReader",
+    statusBarStyle: "default",
+  },
+  // /manifest.webmanifest is served automatically from app/manifest.ts.
+  // Next 16 also auto-links app/icon.png + app/apple-icon.png in <head>.
+};
+
+export const viewport: Viewport = {
+  themeColor: "#C77B5F",
+  // initial-scale=1 viewport meta is added by default in Next 16.
 };
 
 export default function RootLayout({
@@ -50,7 +64,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <ThemeProvider>
-          <Providers>{children}</Providers>
+          <Providers>
+            <AppBadgeSync />
+            {children}
+          </Providers>
           <Toaster />
         </ThemeProvider>
       </body>

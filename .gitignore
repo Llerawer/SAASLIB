@@ -41,3 +41,9 @@ backend/data/*
 
 # Superpowers brainstorming sessions
 .superpowers/
+
+# Serwist / PWA build artifacts (generated, not source)
+frontend/public/sw.js
+frontend/public/sw.js.map
+frontend/public/swe-worker-*.js
+frontend/public/workbox-*.js
