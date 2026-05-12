@@ -550,7 +550,7 @@ chrome.runtime.onMessage.addListener(
    _sender,
    sendResponse) => {
     void (async () => {
-      let response: ExtResponse | { ok: boolean; error?: string } | void;
+      let response: ExtResponse | { ok: boolean; error?: string } | void = undefined;
       switch (msg.type) {
         case "lookup":
           response = await lookup(msg.word, msg.language);

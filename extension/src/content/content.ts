@@ -140,19 +140,11 @@ function onDblClick(e: MouseEvent): void {
     return;
   }
 
-  // Netflix: dblclick is bound to fullscreen-toggle on the player.
-  // If the user is double-clicking the subtitle, we want our popup,
-  // NOT fullscreen. Detect early via point and swallow the event
-  // before Netflix's own listener runs.
-  let elAtPoint: Element | null = null;
-  if (isNetflixWatchPage()) {
-    elAtPoint = document.elementFromPoint(e.clientX, e.clientY);
-    if (elAtPoint?.closest(".player-timedtext")) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    }
-  }
+  // Netflix note: dblclick fights with Netflix's own fullscreen-toggle
+  // and is unreliable. Right-click → "Guardar selección" is the
+  // canonical capture path on Netflix (see context menu in SW). We
+  // still keep the regular dblclick path below so it works if the
+  // event does reach us (e.g. video paused, subtitle stable).
 
   let textNode: Text | null = null;
   let startOffset = 0;
@@ -417,9 +409,7 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 }
 
-// Capture phase so player overlays that swallow events (Netflix) don't
-// prevent us from seeing the dblclick first.
-document.addEventListener("dblclick", onDblClick, true);
+document.addEventListener("dblclick", onDblClick);
 document.addEventListener("mousedown", onDocumentClick);
 document.addEventListener("keydown", onKeyDown);
 
