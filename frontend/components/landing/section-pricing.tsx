@@ -48,7 +48,7 @@ export function SectionPricing() {
           tier="Lector"
           price="Gratis"
           description="Lee con captura y revisión espaciada. Hasta 1 libro por mes. Pronunciaciones limitadas. Es bastante para descubrir si te queda."
-          ctaLabel="Empieza a leer"
+          ctaLabel="Empezar gratis"
           ctaHref="/signup"
           variant="muted"
         />
@@ -56,7 +56,7 @@ export function SectionPricing() {
           tier="Lector frecuente"
           price="$8/mes"
           description="Lectura sin límite, biblioteca sincronizada, pronunciaciones ilimitadas, extensión activa en toda la web. Para quienes lo van a usar todos los días."
-          ctaLabel="Probar Pro"
+          ctaLabel="Empezar Pro · $8/mes"
           ctaHref="/signup?plan=pro"
           variant="accent"
         />
