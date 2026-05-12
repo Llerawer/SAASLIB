@@ -24,16 +24,18 @@ function detectReducedMotion(): boolean {
 }
 
 export function useHeroChoreography({ active }: UseHeroChoreographyOptions): UseHeroChoreographyReturn {
-  // Start identical to SSR (no window). Detect reduced-motion in effect to avoid hydration mismatch.
+  const [mounted, setMounted] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [t, setT] = useState<number>(0);
   const [overrideWord, setOverrideWord] = useState<string | null>(null);
   const onceStartRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!detectReducedMotion()) return;
-    setReducedMotion(true);
-    setT(STABLE_FRAME_MS);
+    setMounted(true);
+    if (detectReducedMotion()) {
+      setReducedMotion(true);
+      setT(STABLE_FRAME_MS);
+    }
   }, []);
 
   // Drive the loop.
@@ -71,7 +73,12 @@ export function useHeroChoreography({ active }: UseHeroChoreographyOptions): Use
     setT(1000); // jump straight to underline frame
   }, []);
 
-  const baseFrame = reducedMotion ? frameAt(STABLE_FRAME_MS) : frameAt(t);
+  // Before mount, force the t=0 frame so SSR and first client render are identical.
+  const baseFrame = !mounted
+    ? frameAt(0)
+    : reducedMotion
+      ? frameAt(STABLE_FRAME_MS)
+      : frameAt(t);
   const frame: HeroFrame = overrideWord
     ? { ...baseFrame, underlinedWord: overrideWord }
     : baseFrame;
