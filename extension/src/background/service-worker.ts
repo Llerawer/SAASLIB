@@ -16,7 +16,9 @@ import type {
   AuthStateResponse,
   ExtMessage,
   ExtResponse,
+  LookupClipsResponse,
   LookupResponse,
+  PronounceClip,
   SaveCaptureResponse,
 } from "../shared/messages";
 
@@ -124,22 +126,69 @@ async function lookup(word: string, language: string): Promise<LookupResponse> {
   }
 }
 
+// --- YouTube auto-ingest -------------------------------------------------
+//
+// First time we see a videoId, ensure the video exists in our DB so the
+// capture FK doesn't fail. Dedupe in-flight requests with a Map keyed
+// by videoId — multiple rapid captures on the same video share one
+// ingest promise instead of firing N parallel /ingest calls.
+
+const pendingIngests = new Map<string, Promise<{ ok: boolean; error?: string }>>();
+const knownVideos = new Set<string>();
+
+async function ensureVideoIngested(videoId: string): Promise<{ ok: boolean; error?: string }> {
+  if (knownVideos.has(videoId)) return { ok: true };
+  const existing = pendingIngests.get(videoId);
+  if (existing) return existing;
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const p = (async () => {
+    try {
+      await apiFetch("/api/v1/videos/ingest", {
+        method: "POST",
+        body: JSON.stringify({ url: youtubeUrl }),
+      });
+      knownVideos.add(videoId);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    } finally {
+      pendingIngests.delete(videoId);
+    }
+  })();
+  pendingIngests.set(videoId, p);
+  return p;
+}
+
 async function saveCapture(
   word: string,
   contextSentence: string | null,
   language: string,
+  videoId: string | null = null,
+  videoTimestampS: number | null = null,
 ): Promise<SaveCaptureResponse> {
   try {
+    // If this is a YouTube capture, make sure the video exists in our
+    // DB before posting the capture — captures.py validates the FK.
+    if (videoId) {
+      const ing = await ensureVideoIngested(videoId);
+      if (!ing.ok) {
+        return { ok: false, error: `No se pudo registrar el video: ${ing.error}` };
+      }
+    }
+
     type Capture = { word_normalized: string };
-    const body = {
+    const body: Record<string, unknown> = {
       word,
       context_sentence: contextSentence,
       language,
-      // article_id null + no book_id/video_id → captures.py treats this
-      // as a "general" capture with no source linkage. Future v2: add
-      // kind: "extension" or kind: "web" if we want explicit tracking.
-      article_id: null,
     };
+    if (videoId) {
+      body.video_id = videoId;
+      body.video_timestamp_s = videoTimestampS ?? 0;
+    } else {
+      // General "extension on a random web page" capture — no source.
+      body.article_id = null;
+    }
     const data = await apiFetch<Capture>("/api/v1/captures", {
       method: "POST",
       body: JSON.stringify(body),
@@ -148,6 +197,37 @@ async function saveCapture(
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
+}
+
+// Look up YouTube pronunciation clips for a word.
+// Backend route is /api/v1/pronounce/{word} and returns the full deck
+// payload; we slim it down to the few fields the popup actually needs.
+async function lookupClips(word: string): Promise<LookupClipsResponse> {
+  try {
+    type Resp = {
+      clips: Array<PronounceClip & Record<string, unknown>>;
+    };
+    const data = await apiFetch<Resp>(
+      `/api/v1/pronounce/${encodeURIComponent(word)}?limit=5`,
+    );
+    const clips: PronounceClip[] = data.clips.map((c) => ({
+      id: c.id,
+      video_id: c.video_id,
+      accent: c.accent ?? null,
+      sentence_text: c.sentence_text,
+      sentence_start_ms: c.sentence_start_ms,
+    }));
+    return { ok: true, clips };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+// Telemetry hook. v1 just console.debug — wire to a backend endpoint
+// when we add /api/v1/telemetry. The call sites stay stable.
+function track(event: string, props?: Record<string, unknown>): void {
+  // eslint-disable-next-line no-console
+  console.debug("[lr-track]", event, props ?? {});
 }
 
 // Proxy audio fetches: third-party page CSP blocks <audio> from loading
@@ -186,7 +266,13 @@ chrome.runtime.onMessage.addListener(
           response = await lookup(msg.word, msg.language);
           break;
         case "save-capture":
-          response = await saveCapture(msg.word, msg.contextSentence, msg.language);
+          response = await saveCapture(
+            msg.word,
+            msg.contextSentence,
+            msg.language,
+            msg.videoId ?? null,
+            msg.videoTimestampS ?? null,
+          );
           break;
         case "auth-state":
           response = await getAuthState();
@@ -200,6 +286,17 @@ chrome.runtime.onMessage.addListener(
           break;
         case "fetch-audio":
           response = await fetchAudio(msg.url);
+          break;
+        case "lookup-clips":
+          response = await lookupClips(msg.word);
+          break;
+        case "open-tab":
+          await chrome.tabs.create({ url: msg.url });
+          response = { ok: true };
+          break;
+        case "track":
+          track(msg.event, msg.props);
+          response = { ok: true };
           break;
       }
       sendResponse(response);

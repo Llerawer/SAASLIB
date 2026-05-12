@@ -14,6 +14,10 @@ export type SaveCaptureRequest = {
   word: string;
   contextSentence: string | null;
   language: string;
+  // When set, capture is linked to a YouTube video. SW will ensure the
+  // video exists in our DB (auto-ingest) before saving.
+  videoId?: string | null;
+  videoTimestampS?: number | null;
 };
 
 export type AuthStateRequest = {
@@ -25,11 +29,30 @@ export type FetchAudioRequest = {
   url: string;
 };
 
+export type LookupClipsRequest = {
+  type: "lookup-clips";
+  word: string;
+};
+
+export type OpenTabRequest = {
+  type: "open-tab";
+  url: string;
+};
+
+export type TrackRequest = {
+  type: "track";
+  event: string;
+  props?: Record<string, string | number | boolean | null>;
+};
+
 export type ExtMessage =
   | LookupRequest
   | SaveCaptureRequest
   | AuthStateRequest
-  | FetchAudioRequest;
+  | FetchAudioRequest
+  | LookupClipsRequest
+  | OpenTabRequest
+  | TrackRequest;
 
 export type LookupResponse =
   | { ok: true; data: DictionaryEntry }
@@ -48,11 +71,25 @@ export type FetchAudioResponse =
   | { ok: true; dataUrl: string }
   | { ok: false; error: string };
 
+export type PronounceClip = {
+  id: string;
+  video_id: string;
+  accent: string | null;
+  sentence_text: string;
+  sentence_start_ms: number;
+};
+
+export type LookupClipsResponse =
+  | { ok: true; clips: PronounceClip[] }
+  | { ok: false; error: string };
+
 export type ExtResponse =
   | LookupResponse
   | SaveCaptureResponse
   | AuthStateResponse
-  | FetchAudioResponse;
+  | FetchAudioResponse
+  | LookupClipsResponse
+  | { ok: boolean; error?: string };
 
 /** Mirrors backend GET /api/v1/dictionary/{word} response. */
 export type DictionaryEntry = {

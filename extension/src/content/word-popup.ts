@@ -9,16 +9,32 @@
  *   close()          → tear down
  */
 
-import type { DictionaryEntry, LookupResponse, SaveCaptureResponse } from "../shared/messages";
+import type {
+  DictionaryEntry,
+  LookupResponse,
+  PronounceClip,
+  SaveCaptureResponse,
+} from "../shared/messages";
+
+export type ClipsState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "loaded"; clips: PronounceClip[] }
+  | { kind: "error" };
 
 export type PopupState =
   | { kind: "loading"; word: string; position: { x: number; y: number } }
-  | { kind: "loaded"; word: string; position: { x: number; y: number };
+  | {
+      kind: "loaded";
+      word: string;
+      position: { x: number; y: number };
       entry: DictionaryEntry;
       contextSentence: string | null;
       saved: boolean;
       saving: boolean;
-      saveError: string | null }
+      saveError: string | null;
+      clips: ClipsState;
+    }
   | { kind: "lookup-error"; word: string; position: { x: number; y: number };
       error: string };
 
@@ -155,6 +171,8 @@ function paint(state: PopupState): void {
     popupRoot.appendChild(elText("p", "lr-context", `"${contextSentence}"`));
   }
 
+  renderClips(state.clips, state.word);
+
   // Save button
   const footer = el("div", "lr-footer");
   if (state.saveError) {
@@ -175,6 +193,65 @@ function paint(state: PopupState): void {
   });
   footer.appendChild(btn);
   popupRoot.appendChild(footer);
+}
+
+function renderClips(clipsState: ClipsState, word: string): void {
+  if (!popupRoot) return;
+  if (clipsState.kind === "idle") return;
+
+  popupRoot.appendChild(elText("div", "lr-section-title", "Escuchá en clips"));
+
+  if (clipsState.kind === "loading") {
+    popupRoot.appendChild(elText("p", "lr-subtle", "Buscando clips…"));
+    return;
+  }
+  if (clipsState.kind === "error" || clipsState.clips.length === 0) {
+    popupRoot.appendChild(
+      elText("p", "lr-subtle", "Sin clips para esta palabra (todavía)."),
+    );
+    return;
+  }
+
+  const list = el("div", "lr-clips");
+  for (const c of clipsState.clips) {
+    const row = el("button", "lr-clip-row") as HTMLButtonElement;
+    const flag = accentFlag(c.accent);
+    const flagEl = elText("span", "lr-clip-flag", flag);
+    const text = elText("span", "lr-clip-text", `"${c.sentence_text}"`);
+    const meta = elText("span", "lr-clip-meta", `▶ ${formatTime(c.sentence_start_ms)}`);
+    row.appendChild(flag === "" ? elText("span", "lr-clip-flag", "🌐") : flagEl);
+    row.appendChild(text);
+    row.appendChild(meta);
+    row.addEventListener("click", () => {
+      const startS = Math.max(0, Math.floor(c.sentence_start_ms / 1000) - 1);
+      const url = `https://www.youtube.com/watch?v=${c.video_id}&t=${startS}s`;
+      void chrome.runtime.sendMessage({ type: "open-tab", url });
+      void chrome.runtime.sendMessage({
+        type: "track",
+        event: "clip_opened",
+        props: { word, video_id: c.video_id, accent: c.accent ?? null },
+      });
+    });
+    list.appendChild(row);
+  }
+  popupRoot.appendChild(list);
+}
+
+function accentFlag(accent: string | null): string {
+  if (!accent) return "";
+  const a = accent.toLowerCase();
+  if (a.includes("us") || a === "en-us") return "🇺🇸";
+  if (a.includes("gb") || a.includes("uk") || a === "en-gb") return "🇬🇧";
+  if (a.includes("au")) return "🇦🇺";
+  if (a.includes("ca")) return "🇨🇦";
+  return "🌐";
+}
+
+function formatTime(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 // Cache decoded audio per URL so repeated clicks don't re-fetch.
@@ -321,6 +398,35 @@ const STYLES = `
 .lr-btn:hover { background: #c2410c; }
 .lr-btn:disabled { opacity: 0.65; cursor: default; }
 .lr-btn-saved { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+.lr-clips { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.lr-clip-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid #2a2a30;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #e5e5e7;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.lr-clip-row:hover { background: #1f1f25; border-color: #3a3a42; }
+.lr-clip-flag { font-size: 13px; flex-shrink: 0; }
+.lr-clip-text {
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: rgba(229,229,231,0.85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lr-clip-meta { color: #a1a1aa; font-size: 11px; flex-shrink: 0; }
 `;
 
 export type { LookupResponse, SaveCaptureResponse };

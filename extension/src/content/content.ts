@@ -16,11 +16,29 @@ import {
   updateState,
   type PopupState,
 } from "./word-popup";
-import type { LookupResponse, SaveCaptureResponse } from "../shared/messages";
+import {
+  getCurrentCaptionLine,
+  getCurrentTimestampSeconds,
+  getCurrentVideoId,
+  isInsideCaption,
+  isYouTubeWatchPage,
+  pauseIfPlaying,
+  resumeIfWePaused,
+} from "./youtube-adapter";
+import type {
+  LookupClipsResponse,
+  LookupResponse,
+  SaveCaptureResponse,
+} from "../shared/messages";
 
 // Track the current popup state so save handler can read context info
 // without us recapturing on every click.
 let currentState: PopupState | null = null;
+
+// Per-capture YouTube context, set when the dblclick happens inside a
+// caption. Cleared on close.
+type YouTubeContext = { videoId: string; timestampS: number };
+let currentYouTube: YouTubeContext | null = null;
 
 function detectLanguage(): string {
   // The page's lang attribute is the best hint we have. Strip region.
@@ -52,8 +70,26 @@ function onDblClick(e: MouseEvent): void {
   if (!WORD_RE.test(word)) return;
 
   const language = detectLanguage();
-  const contextSentence = extractContextSentence(textNode.data, span.start);
   const position = { x: e.clientX, y: e.clientY };
+
+  // YouTube special-case: if the dblclick landed inside a caption, we
+  // grab the video id + timestamp + the full caption line as context.
+  // Pause the player so the user has time to read the popup.
+  let contextSentence: string | null;
+  if (isYouTubeWatchPage() && isInsideCaption(textNode)) {
+    const videoId = getCurrentVideoId();
+    if (videoId) {
+      currentYouTube = { videoId, timestampS: getCurrentTimestampSeconds() };
+      contextSentence = getCurrentCaptionLine(textNode) ?? extractContextSentence(textNode.data, span.start);
+      pauseIfPlaying();
+    } else {
+      currentYouTube = null;
+      contextSentence = extractContextSentence(textNode.data, span.start);
+    }
+  } else {
+    currentYouTube = null;
+    contextSentence = extractContextSentence(textNode.data, span.start);
+  }
 
   // Open in loading state immediately for snappy UX.
   currentState = { kind: "loading", word, position };
@@ -61,6 +97,8 @@ function onDblClick(e: MouseEvent): void {
     onSave: () => doSave(language),
     onClose: () => {
       currentState = null;
+      currentYouTube = null;
+      resumeIfWePaused();
       closePopup();
     },
   });
@@ -89,7 +127,27 @@ function onDblClick(e: MouseEvent): void {
           saved: false,
           saving: false,
           saveError: null,
+          clips: { kind: "loading" },
         };
+        // Fire-and-forget clip lookup. Popup stays interactive while
+        // clips load; updates when they arrive (or errors quietly).
+        fetchClips(word);
+      }
+      updateState(currentState);
+    },
+  );
+}
+
+function fetchClips(word: string): void {
+  const normalized = clientNormalize(word) || word;
+  chrome.runtime.sendMessage(
+    { type: "lookup-clips", word: normalized },
+    (resp: LookupClipsResponse) => {
+      if (!currentState || currentState.kind !== "loaded" || currentState.word !== word) return;
+      if (!resp || !resp.ok) {
+        currentState = { ...currentState, clips: { kind: "error" } };
+      } else {
+        currentState = { ...currentState, clips: { kind: "loaded", clips: resp.clips } };
       }
       updateState(currentState);
     },
@@ -109,6 +167,8 @@ function doSave(language: string): void {
       word: clientNormalize(word) || word,
       contextSentence,
       language,
+      videoId: currentYouTube?.videoId ?? null,
+      videoTimestampS: currentYouTube?.timestampS ?? null,
     },
     (resp: SaveCaptureResponse) => {
       if (!currentState || currentState.kind !== "loaded") return;
@@ -133,6 +193,8 @@ function onDocumentClick(e: MouseEvent): void {
   const target = e.target as Element | null;
   if (target?.closest("#lr-extension-host")) return;
   currentState = null;
+  currentYouTube = null;
+  resumeIfWePaused();
   closePopup();
 }
 
@@ -140,6 +202,8 @@ function onKeyDown(e: KeyboardEvent): void {
   if (!isPopupOpen()) return;
   if (e.key === "Escape") {
     currentState = null;
+    currentYouTube = null;
+    resumeIfWePaused();
     closePopup();
   }
 }
