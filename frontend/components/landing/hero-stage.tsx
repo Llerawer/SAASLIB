@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { HeroParagraph } from "./hero-paragraph";
 import { HeroMarginalia } from "./hero-marginalia";
@@ -16,10 +15,11 @@ const IPA = "/ɡlɪmps/";
 const GRAVITY_EASE = [0.55, 0.05, 0.85, 0.3] as const;
 
 /**
- * The hero IS a page of a book — single editorial column on cream paper.
- * The copy ("Glimpse." + sub) lives inside the composition, marginalia and
- * the mazo are figures in the margins, and a thin terracota hairline ties
- * the captured word to the mazo to sell the imagen-marca even when paused.
+ * The hero lives in a dark warm world. A cream "book panel" floats inside it
+ * with a soft glow halo + subtle rotateX perspective, channeling Arc/Cursor/Raycast
+ * but with a book metaphor instead of a code editor. The reading composition
+ * (paragraph + marginalia + mazo) stays inside the cream panel; product copy
+ * and CTAs live in the outer dark stage.
  */
 export function HeroStage() {
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -52,126 +52,155 @@ export function HeroStage() {
     setPlayKey((k) => k + 1);
   }
 
-  // Top ficha shows "glimpse" once the deck has ticked up to FINAL_COUNT
-  // (i.e., after the ficha-flight has landed). Before that the deck is "empty".
   const topWord = frame.deckCount === FINAL_COUNT ? "glimpse" : null;
-  // The hairline is barely visible most of the time; it brightens during the
-  // popup-open frame and during the ficha-flight to land the connection.
   const hairlineActive = frame.popupOpen || frame.fichaFlying || frame.deckCount === FINAL_COUNT;
 
   return (
     <article
       ref={stageRef}
       onMouseEnter={handleMouseEnter}
-      aria-hidden="true"
-      className="relative mx-auto w-full max-w-[640px] px-6 md:px-8"
+      className="relative mx-auto w-full max-w-[1080px] px-6 md:px-10 py-12 md:py-20"
     >
-      {/* Chapter title — Bricolage italic, lowercase, calm */}
-      <p
-        className="text-sm italic text-[color:var(--landing-ink-muted)] mb-8 lowercase tracking-wide"
-        style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
-      >
-        Capítulo I · Glimpse
-      </p>
+      {/* OUTER — dark world copy, top */}
+      <header className="text-center max-w-[42rem] mx-auto mb-12 md:mb-16">
+        <h1
+          className="text-[clamp(2.25rem,5.5vw,3.75rem)] leading-[1.05] font-medium tracking-[-0.02em] text-[color:var(--stage-ink)]"
+          style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+        >
+          Aprende inglés sin dejar de leer lo que amas.
+        </h1>
+        <p className="prose-serif italic text-[clamp(1rem,1.6vw,1.25rem)] text-[color:var(--stage-accent)] mt-5">
+          Lee. Captura. No olvides.
+        </p>
+      </header>
 
-      {/* Headline — the imagen-marca word, huge serif italic in terracota */}
-      <h1 className="prose-serif italic text-[clamp(4rem,10vw,9rem)] leading-[0.95] text-[color:var(--landing-accent)] tracking-[-0.03em]">
-        Glimpse.
-      </h1>
+      {/* CREAM PANEL — the book */}
+      <div className="relative mx-auto max-w-[760px]" style={{ perspective: "1600px" }}>
+        {/* Soft glow halo behind the panel */}
+        <div
+          aria-hidden="true"
+          className="absolute -inset-8 rounded-[28px] pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse at center, oklch(0.72 0.16 38 / 0.18), transparent 70%)",
+            filter: "blur(40px)",
+          }}
+        />
 
-      {/* Sub-headline — promise, serif normal, ink */}
-      <p className="prose-serif text-[clamp(1.25rem,2.5vw,1.75rem)] text-[color:var(--landing-ink)] mt-4 mb-12 max-w-[40ch]">
-        Y ahora ya no se te olvida.
-      </p>
+        <div
+          aria-hidden="true"
+          className="landing-paper relative rounded-[20px] bg-paper-noise overflow-hidden"
+          style={{
+            backgroundColor: "var(--landing-bg)",
+            color: "var(--landing-ink)",
+            transform: "rotateX(-2deg)",
+            transformOrigin: "center 80%",
+            boxShadow:
+              "0 40px 80px -20px oklch(0 0 0 / 0.55), 0 12px 24px -8px oklch(0 0 0 / 0.4), inset 0 0 0 1px oklch(0.22 0.025 50 / 0.08)",
+          }}
+        >
+          {/* Panel header */}
+          <p
+            className="text-xs italic text-[color:var(--landing-ink-muted)] px-8 md:px-10 pt-8 md:pt-10 lowercase tracking-wide"
+            style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+          >
+            capítulo i · glimpse
+          </p>
 
-      {/* Thin editorial rule */}
-      <div className="h-px w-24 bg-[color:var(--landing-hairline)] mb-10" />
+          {/* Reading row: paragraph + marginalia */}
+          <div className="relative grid grid-cols-1 md:grid-cols-[1fr_auto] gap-y-10 gap-x-6 md:gap-x-10 items-start px-8 md:px-10 pt-6 pb-8 md:pb-10">
+            <div className="max-w-[42ch]">
+              <HeroParagraph
+                text={PARAGRAPH}
+                target="glimpse"
+                underlinedWord={frame.underlinedWord}
+                onWordDoubleClick={handleWordDblClick}
+              />
+            </div>
 
-      {/* Reading column: paragraph on the left, marginalia + mazo on the right.
-          On mobile the marginalia column collapses below the paragraph. */}
-      <div className="relative grid grid-cols-1 md:grid-cols-[1fr_auto] gap-y-10 gap-x-8 md:gap-x-12 items-start">
-        <div className="max-w-[42ch]">
-          <HeroParagraph
-            text={PARAGRAPH}
-            target="glimpse"
-            underlinedWord={frame.underlinedWord}
-            onWordDoubleClick={handleWordDblClick}
-          />
-        </div>
+            <div className="flex flex-col gap-10 md:pt-1 md:min-w-[110px]">
+              <div className="min-h-[64px]">
+                <AnimatePresence>
+                  {frame.popupOpen && (
+                    <motion.div
+                      key="marginalia"
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -6 }}
+                      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <HeroMarginalia
+                        ipa={IPA}
+                        playing={frame.waveformPlaying}
+                        onPlay={() => setPlayKey((k) => k + 1)}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
-        <div className="flex flex-col gap-12 md:pt-1">
-          <div className="min-h-[64px]">
+              <HeroDeck count={frame.deckCount} topWord={topWord} />
+            </div>
+
+            {/* Connecting hairline */}
+            <svg
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 hidden md:block w-full h-full"
+              preserveAspectRatio="none"
+              viewBox="0 0 500 320"
+            >
+              <path
+                d="M 180 30 Q 320 110, 430 230"
+                stroke="var(--landing-accent)"
+                strokeWidth="1"
+                fill="none"
+                opacity={hairlineActive ? 0.4 : 0.12}
+                style={{ transition: "opacity 600ms ease-out" }}
+              />
+            </svg>
+
+            {/* Ficha flying */}
             <AnimatePresence>
-              {frame.popupOpen && (
+              {frame.fichaFlying && (
                 <motion.div
-                  key="marginalia"
-                  initial={{ opacity: 0, x: -4 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -4 }}
-                  transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                  key="ficha"
+                  initial={{ x: 200, y: 30, rotate: 0, opacity: 1 }}
+                  animate={{ x: 420, y: 240, rotate: -8, opacity: 0.9 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.6, ease: GRAVITY_EASE }}
+                  className="pointer-events-none absolute left-0 top-0 h-[60px] w-[90px] rounded-[10px] border border-[color:var(--landing-hairline)] bg-[color:var(--landing-bg)] flex items-center justify-center"
+                  style={{ boxShadow: "0 4px 12px -4px rgb(0 0 0 / 0.18)" }}
                 >
-                  <HeroMarginalia
-                    ipa={IPA}
-                    playing={frame.waveformPlaying}
-                    onPlay={() => setPlayKey((k) => k + 1)}
-                  />
+                  <span className="prose-serif italic text-[0.875rem] text-[color:var(--landing-ink)]">
+                    glimpse
+                  </span>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-
-          <HeroDeck count={frame.deckCount} topWord={topWord} />
         </div>
-
-        {/* Connecting hairline — SVG path from under the word toward the mazo.
-            Static at low opacity so the still frame reads as composed; brighter
-            during the popup + flight to dramatize the capture. */}
-        <svg
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 hidden md:block"
-          width="100%"
-          height="100%"
-          preserveAspectRatio="none"
-          viewBox="0 0 500 320"
-        >
-          <path
-            d="M 180 40 Q 320 120, 420 240"
-            stroke="var(--landing-accent)"
-            strokeWidth="0.6"
-            fill="none"
-            opacity={hairlineActive ? 0.4 : 0.12}
-            style={{ transition: "opacity 600ms ease-out" }}
-          />
-        </svg>
-
-        {/* Ficha flying — small card detaches from the word and arcs toward the mazo */}
-        <AnimatePresence>
-          {frame.fichaFlying && (
-            <motion.div
-              key="ficha"
-              initial={{ x: 0, y: 0, rotate: 0, opacity: 1 }}
-              animate={{ x: 320, y: 220, rotate: -8, opacity: 0.9 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.6, ease: GRAVITY_EASE }}
-              className="pointer-events-none absolute left-0 top-0 h-[60px] w-[90px] rounded-[10px] border border-[color:var(--landing-hairline)] bg-[color:var(--landing-bg)] flex items-center justify-center"
-              style={{ boxShadow: "0 4px 12px -4px rgb(0 0 0 / 0.15)" }}
-            >
-              <span className="prose-serif italic text-[0.875rem] text-[color:var(--landing-ink)]">
-                glimpse
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
-      {/* Bottom rule + single CTA + audio toggle */}
-      <div className="mt-16 flex items-center justify-between gap-8 border-t border-[color:var(--landing-hairline)] pt-8">
-        <Link
+      {/* CTA row */}
+      <div className="mt-12 md:mt-16 flex flex-col md:flex-row items-center justify-center gap-5 md:gap-8">
+        <a
           href="/signup"
-          className="prose-serif italic text-[1.125rem] text-[color:var(--landing-accent)] hover:opacity-70 transition-opacity"
+          className="inline-flex items-center justify-center rounded-full px-6 py-3 text-base font-medium text-[color:var(--stage-bg)] bg-[color:var(--stage-accent)] hover:opacity-90 transition-opacity"
+          style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
         >
-          Abre un libro →
-        </Link>
+          Prueba con un libro
+        </a>
+        <a
+          href="#how-it-works"
+          className="text-[color:var(--stage-ink-muted)] hover:text-[color:var(--stage-ink)] transition-colors text-sm"
+          style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+        >
+          Ver demo →
+        </a>
+      </div>
+
+      {/* Audio toggle — bottom corner of the stage */}
+      <div className="absolute bottom-6 right-6">
         <HeroAudioToggle playKey={playKey} />
       </div>
     </article>

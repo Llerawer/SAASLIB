@@ -56,7 +56,7 @@ export function HeroAudioToggle({ playKey }: HeroAudioToggleProps) {
       onClick={toggle}
       aria-pressed={enabled}
       aria-label={enabled ? "Silenciar audio" : "Activar audio"}
-      className="inline-flex h-7 w-7 items-center justify-center text-[color:var(--landing-ink-muted)] hover:text-[color:var(--landing-ink)] transition-colors"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--stage-hairline)] bg-[color:var(--stage-bg-elevated)]/80 text-[color:var(--stage-ink-muted)] hover:text-[color:var(--stage-ink)] transition-colors"
       style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
     >
       <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
