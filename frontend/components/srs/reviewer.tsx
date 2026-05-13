@@ -124,6 +124,17 @@ export function Reviewer({
             // by the mutation's onError, so the user can simply re-grade.
             toast.error("No se guardó la calificación. Volvé a intentar.");
           },
+          onSuccess: (result) => {
+            // Leech auto-suspension: the backend pulled this card from
+            // the queue after too many lapses. Tell the user explicitly
+            // so the disappearance isn't mysterious.
+            if (result?.suspended_as_leech) {
+              toast.info(
+                `"${snap.word}" se marcó como leech (${result.lapses ?? "?"} fallos). Suspendida — la podés reactivar editándola.`,
+                { duration: 6000 },
+              );
+            }
+          },
         },
       );
     },

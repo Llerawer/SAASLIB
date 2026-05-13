@@ -11,7 +11,7 @@ to card_schedule, deletes the review row.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -23,6 +23,7 @@ from app.db.supabase_client import get_user_client
 from app.schemas.reviews import GradeInput, GradeResult, ReviewQueueCard, UndoResult
 from app.services import fsrs_scheduler
 from app.services import stats as stats_service
+from app.services.srs_config import DAILY_NEW_CARD_CAP, LEECH_LAPSE_THRESHOLD
 
 router = APIRouter(prefix="/api/v1/reviews", tags=["reviews"])
 
@@ -67,6 +68,38 @@ async def queue(
     )
     if not sched:
         return []
+
+    # Daily new-card cap: prevent burnout when a freshly promoted batch
+    # of captures dumps hundreds of state=0 cards into the queue at once.
+    # We count how many never-reviewed cards have transitioned out of
+    # state=0 in the last 24h (i.e. how many "intros" the user already
+    # did today) and drop new (state=0) cards from the queue once the
+    # remaining budget is exhausted.
+    new_in_queue = [s for s in sched if int(s.get("fsrs_state") or 0) == 0]
+    if new_in_queue:
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        rev_today = (
+            client.table("reviews")
+            .select("fsrs_state_before", count="exact")
+            .eq("user_id", auth.user_id)
+            .gte("reviewed_at", since)
+            .execute()
+        )
+        intros_today = sum(
+            1
+            for r in (rev_today.data or [])
+            if int((r.get("fsrs_state_before") or {}).get("state", -1)) == 0
+        )
+        remaining = max(0, DAILY_NEW_CARD_CAP - intros_today)
+        if remaining < len(new_in_queue):
+            keep_ids = {s["card_id"] for s in new_in_queue[:remaining]}
+            sched = [
+                s
+                for s in sched
+                if int(s.get("fsrs_state") or 0) != 0 or s["card_id"] in keep_ids
+            ]
+            if not sched:
+                return []
     card_ids = [s["card_id"] for s in sched]
     deck_ids = _build_queue_filter(client, deck_id)
     cards_q = client.table("cards").select("*").in_("id", card_ids)
@@ -135,10 +168,31 @@ async def grade(
         before = fsrs_scheduler.ScheduleSnapshot.from_db_row(sched)
         after = fsrs_scheduler.grade(before, body.grade)
 
+        # Maintain fsrs_lapses/fsrs_reps ourselves — the FSRS lib state we
+        # snapshot doesn't carry these counters, and the schema's
+        # default-0 columns were going stale. A "lapse" = Again rating
+        # while the card had graduated (state >= 2 Review/Relearning).
+        prev_reps = int(sched.get("fsrs_reps") or 0)
+        prev_lapses = int(sched.get("fsrs_lapses") or 0)
+        reps_after = prev_reps + 1
+        is_lapse = body.grade == 1 and before.state >= 2
+        lapses_after = prev_lapses + (1 if is_lapse else 0)
+
+        # Leech auto-suspend: once a card crosses the threshold, set
+        # suspended_at so the queue stops surfacing it. Saves the user
+        # from the spiral of seeing the same impossible card every day.
+        is_leech = lapses_after >= LEECH_LAPSE_THRESHOLD
+
+        update_payload = after.to_dict()
+        update_payload["fsrs_reps"] = reps_after
+        update_payload["fsrs_lapses"] = lapses_after
+        if is_leech:
+            update_payload["suspended_at"] = datetime.now(timezone.utc).isoformat()
+
         # CAS update: only succeeds if last_reviewed_at hasn't changed since read.
         update = (
             client.table("card_schedule")
-            .update(after.to_dict())
+            .update(update_payload)
             .eq("card_id", card_id)
             .eq("user_id", auth.user_id)
         )
@@ -167,6 +221,8 @@ async def grade(
                 state_before=before.to_review_payload(),
                 state_after=after.to_review_payload(),
                 review_id=review_ins.data[0]["id"],
+                suspended_as_leech=is_leech,
+                lapses=lapses_after,
             )
 
         # Race lost: someone else graded between our read and update. Retry.
@@ -203,7 +259,34 @@ async def undo(
     before = fsrs_scheduler.ScheduleSnapshot.from_review_payload(
         rev["fsrs_state_before"]
     )
-    client.table("card_schedule").update(before.to_dict()).eq(
+    # Decrement the counters we incremented in grade(); also lift the
+    # leech suspension if undoing this lapse pulls the count back below
+    # the threshold. Reading current schedule once to compute the diff.
+    cur = (
+        client.table("card_schedule")
+        .select("fsrs_reps,fsrs_lapses,suspended_at")
+        .eq("card_id", rev["card_id"])
+        .eq("user_id", auth.user_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    cur_reps = int((cur[0] if cur else {}).get("fsrs_reps") or 0)
+    cur_lapses = int((cur[0] if cur else {}).get("fsrs_lapses") or 0)
+    grade_was = int(rev.get("grade") or 0)
+    before_state = int((rev.get("fsrs_state_before") or {}).get("state", 0))
+    was_lapse = grade_was == 1 and before_state >= 2
+    reps_after = max(0, cur_reps - 1)
+    lapses_after = max(0, cur_lapses - (1 if was_lapse else 0))
+    payload = before.to_dict()
+    payload["fsrs_reps"] = reps_after
+    payload["fsrs_lapses"] = lapses_after
+    # If we're unwinding the very review that suspended this card as a
+    # leech, clear suspended_at so it re-enters the queue.
+    if (cur[0] if cur else {}).get("suspended_at") is not None and lapses_after < LEECH_LAPSE_THRESHOLD:
+        payload["suspended_at"] = None
+    client.table("card_schedule").update(payload).eq(
         "card_id", rev["card_id"]
     ).eq("user_id", auth.user_id).execute()
     client.table("reviews").delete().eq("id", rev["id"]).execute()

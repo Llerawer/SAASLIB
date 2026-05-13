@@ -564,6 +564,11 @@ export type GradeResult = {
   state_before: Record<string, unknown>;
   state_after: Record<string, unknown>;
   review_id: string;
+  /** True when this grade pushed the card past the leech threshold and
+   *  the backend auto-suspended it. UI surfaces a banner so the user
+   *  knows the card won't keep reappearing in the queue. */
+  suspended_as_leech?: boolean;
+  lapses?: number;
 };
 
 export function useReviewQueue(deckId: string | null = null) {

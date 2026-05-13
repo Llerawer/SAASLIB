@@ -40,6 +40,11 @@ class GradeResult(BaseModel):
     state_before: dict
     state_after: dict
     review_id: str
+    # True when this grade pushed the card past the leech threshold
+    # and the backend auto-suspended it. UI surfaces a banner so the
+    # user knows the card won't keep reappearing.
+    suspended_as_leech: bool = False
+    lapses: int = 0
 
 
 class UndoResult(BaseModel):
