@@ -214,7 +214,7 @@ export function VideoSubsPanel({
                 onClick={onToggleHideSubs}
                 className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 flex items-center justify-center transition-colors"
                 aria-label={hideSubs ? "Mostrar subtítulos" : "Ocultar subtítulos"}
-                title={hideSubs ? "Mostrar subtítulos (H)" : "Ocultar subtítulos (H)"}
+                title={hideSubs ? "Mostrar subtítulos" : "Ocultar subtítulos"}
               >
                 {hideSubs ? (
                   <EyeOff className="h-3.5 w-3.5" />
@@ -285,7 +285,7 @@ export function VideoSubsPanel({
               ? "opacity-0 pointer-events-none transition-opacity duration-150"
               : "opacity-100 transition-opacity duration-150"
           }`}
-          title={hideSubs ? "Subs ocultos (pulsa H para mostrar)" : undefined}
+          title={hideSubs ? "Subs ocultos" : undefined}
         >
           <CueWords
             cue={currentCue}
@@ -340,7 +340,7 @@ function CueRow({
           ? "opacity-0 pointer-events-none transition-opacity duration-150"
           : "opacity-100 transition-opacity duration-150"
       }`}
-      title={hideSubs ? "Subs ocultos (H para mostrar)" : "Saltar a este cue"}
+      title={hideSubs ? "Subs ocultos" : "Saltar a este cue"}
     >
       {cue.text}
     </button>

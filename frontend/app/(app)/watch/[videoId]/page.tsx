@@ -432,8 +432,6 @@ export default function WatchPage({
         setLoop((v) => !v);
       } else if (e.key === "p" || e.key === "P") {
         setAutoPause((v) => !v);
-      } else if (e.key === "h" || e.key === "H") {
-        setHideSubs((v) => !v);
       } else if (e.key === "a" || e.key === "A") {
         setPointA(playerRef.current?.getCurrentTime() ?? currentTime);
       } else if (e.key === "b" || e.key === "B") {

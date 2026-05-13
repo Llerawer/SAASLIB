@@ -39,7 +39,6 @@ const GROUPS: { title: string; rows: { keys: string[]; label: string }[] }[] = [
   {
     title: "Vista",
     rows: [
-      { keys: ["H"], label: "Ocultar / mostrar subtítulos" },
       { keys: ["?"], label: "Mostrar esta ayuda" },
       { keys: ["Esc"], label: "Cerrar diálogos / popup" },
     ],
