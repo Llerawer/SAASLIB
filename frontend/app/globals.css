@@ -409,3 +409,79 @@
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/></svg>");
   background-repeat: repeat;
 }
+
+/* =========================================================================
+   "Warm room lights" — multi-layer atmospheric backdrop for auth + similar
+   dark scenes. Replaces shader libraries with CSS-only radial gradients
+   that drift ULTRA slowly (almost imperceptible). Target: "habitación de
+   lectura con luz cálida moviéndose lentamente", NOT "GPU shader benchmark".
+
+   Three light sources, each terracota / warm-brown only. No neon, no
+   pulsing, no glow rings. Drift cycles 32–44s so motion is felt, not seen.
+   ========================================================================= */
+
+@keyframes warm-light-drift-1 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(40px, -28px, 0); }
+}
+@keyframes warm-light-drift-2 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(-32px, 36px, 0); }
+}
+@keyframes warm-light-drift-3 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(20px, 24px, 0); }
+}
+
+.warm-room-light {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(90px);
+  will-change: transform;
+}
+.warm-room-light--1 {
+  top: -8%;
+  left: -6%;
+  width: 38vw;
+  max-width: 480px;
+  height: 38vw;
+  max-height: 480px;
+  background: radial-gradient(circle, oklch(0.72 0.16 38 / 0.18), transparent 70%);
+  animation: warm-light-drift-1 36s ease-in-out infinite;
+}
+.warm-room-light--2 {
+  bottom: -10%;
+  right: -8%;
+  width: 44vw;
+  max-width: 560px;
+  height: 44vw;
+  max-height: 560px;
+  background: radial-gradient(circle, oklch(0.62 0.14 50 / 0.14), transparent 70%);
+  filter: blur(110px);
+  animation: warm-light-drift-2 44s ease-in-out infinite;
+  animation-delay: -8s;
+}
+.warm-room-light--3 {
+  top: 38%;
+  right: 12%;
+  width: 26vw;
+  max-width: 320px;
+  height: 26vw;
+  max-height: 320px;
+  background: radial-gradient(circle, oklch(0.72 0.16 38 / 0.08), transparent 70%);
+  animation: warm-light-drift-3 32s ease-in-out infinite;
+  animation-delay: -14s;
+}
+
+/* Bottom vignette — adds page-edge depth without darkening the whole frame */
+.warm-room-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 60%,
+    oklch(0 0 0 / 0.22) 100%
+  );
+}

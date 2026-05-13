@@ -26,19 +26,36 @@ export default function AuthLayout({
     <div className="relative min-h-screen flex flex-col md:flex-row">
       {/* LEFT — dark warm scene */}
       <aside className="landing-stage relative md:flex-[3] md:min-w-0 px-6 md:px-12 py-8 md:py-14 flex flex-col overflow-hidden">
-        {/* Static, subtle radial — no breathing */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse 55% 45% at 35% 45%, oklch(0.72 0.16 38 / 0.10), transparent 70%)",
-          }}
-        />
+        {/* Atmospheric warm-room lights — three CSS radials drifting at 32–44s.
+            "Luz cálida en biblioteca con neblina cálida moviéndose lentamente",
+            no shaders, no neón, no pulsing. Reduced motion via globals.css. */}
+        <div aria-hidden="true" className="warm-room-light warm-room-light--1" />
+        <div aria-hidden="true" className="warm-room-light warm-room-light--2" />
+        <div aria-hidden="true" className="warm-room-light warm-room-light--3" />
+        <div aria-hidden="true" className="warm-room-vignette" />
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 bg-paper-noise opacity-30"
         />
+
+        {/* Faint literary glyph — large outlined book silhouette near the
+            bottom-left, bleed off-canvas. Barely visible (~3% opacity). */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 200 200"
+          className="pointer-events-none absolute -bottom-12 -left-12 w-[280px] h-[280px] text-[color:var(--stage-accent)] opacity-[0.04]"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+        >
+          <path d="M30 50 L100 36 L100 170 L30 184 Z" />
+          <path d="M170 50 L100 36 L100 170 L170 184 Z" />
+          <line x1="100" y1="36" x2="100" y2="170" />
+          <line x1="50" y1="64" x2="88" y2="56" />
+          <line x1="50" y1="80" x2="88" y2="72" />
+          <line x1="112" y1="56" x2="150" y2="64" />
+          <line x1="112" y1="72" x2="150" y2="80" />
+        </svg>
 
         <Link
           href="/"
