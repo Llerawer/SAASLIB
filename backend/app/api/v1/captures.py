@@ -3,9 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from datetime import datetime, timezone
+
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
-from app.db.supabase_client import get_user_client
+from app.db.supabase_client import get_admin_client, get_user_client
 from app.schemas.captures import CaptureCreate, CaptureOut, CaptureUpdate
 from app.services import prompt_template, word_lookup
 from app.services.enrichment.factory import get_provider
@@ -415,22 +417,31 @@ async def enrich_batch(
             failed += 1
             continue
 
-        # Map the provider's flat dict onto the captures columns.
-        # The enrichment schema uses *_es suffixes (Spanish target);
-        # captures columns are language-neutral (translation / definition).
-        # We write defensively — only set non-null fields so a partial
-        # provider response doesn't wipe existing data.
-        patch: dict = {}
+        # Persist into word_cache (global per word+language cache). The
+        # captures endpoint JOINs word_cache to surface translation /
+        # definition / ipa / examples, so writing here is what makes
+        # the enriched fields appear next time the UI reads the capture.
+        # word_cache has no user_id (it's intentionally global) so we
+        # use the admin client to bypass RLS.
+        cache_row = {
+            "word_normalized": word,
+            "language": r.get("language") or "en",
+            "source": "local_dict" if is_local else "llm",
+            "source_version": result.get("model") or ("local_dict" if is_local else "llm"),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
         if result.get("translation"):
-            patch["translation"] = result["translation"]
+            cache_row["translation"] = result["translation"]
         if result.get("definition_es") or result.get("definition"):
-            patch["definition"] = result.get("definition_es") or result.get("definition")
+            cache_row["definition"] = result.get("definition_es") or result.get("definition")
         if result.get("ipa"):
-            patch["ipa"] = result["ipa"]
+            cache_row["ipa"] = result["ipa"]
         if result.get("examples_es") or result.get("examples"):
-            patch["examples"] = result.get("examples_es") or result.get("examples")
-        if patch:
-            client.table("captures").update(patch).eq("id", r["id"]).execute()
+            cache_row["examples"] = result.get("examples_es") or result.get("examples")
+        admin = get_admin_client()
+        admin.table("word_cache").upsert(
+            cache_row, on_conflict="word_normalized,language"
+        ).execute()
         enriched += 1
         if is_local:
             local += 1
