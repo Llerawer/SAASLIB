@@ -34,6 +34,65 @@ const SKIP_TAGS = new Set([
   "NOSCRIPT",
 ]);
 
+const TYPOGRAPHY_STYLE_ID = "lr-reader-typography";
+
+/**
+ * Inject a typography stylesheet into the EPUB iframe ONCE per chapter.
+ * The rules fix three things that fight reading on small screens:
+ *
+ *   1. EPUBs from Gutenberg / Calibre default to `text-align: justify`
+ *      with no hyphenation. On a 360px-wide phone column that creates
+ *      enormous word-spacing gaps mid-line ("river of white"). The
+ *      `@media (max-width: 700px)` block flips justify off so mobile
+ *      pages flow left-aligned like Kindle and Apple Books.
+ *
+ *   2. Even on desktop, `hyphens: auto` (with the EPUB's `<html lang=>`
+ *      attribute) lets the browser break long words at syllables and
+ *      reduces the worst justified-line gaps. Cheap, defensible, every
+ *      modern engine supports it.
+ *
+ *   3. `text-rendering: optimizeLegibility` + `-webkit-font-smoothing:
+ *      antialiased` improves perceived sharpness on hi-DPI displays
+ *      without changing layout.
+ *
+ * Idempotent: keyed by element id. Re-running on the same doc is a no-op.
+ */
+function ensureReaderTypography(doc: Document): void {
+  if (doc.getElementById(TYPOGRAPHY_STYLE_ID)) return;
+  const style = doc.createElement("style");
+  style.id = TYPOGRAPHY_STYLE_ID;
+  style.textContent = `
+    html {
+      -webkit-hyphens: auto;
+      hyphens: auto;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    body p, body div, body li, body blockquote, body td, body th {
+      hyphens: auto !important;
+      -webkit-hyphens: auto !important;
+      word-spacing: normal !important;
+    }
+    /* Mobile / narrow columns: kill justify (it creates gaping word
+       spacing on short lines) and clamp top/bottom paragraph margins
+       so paragraphs don't drift apart on tight screens. */
+    @media (max-width: 700px) {
+      body p, body div, body li, body blockquote, body td, body th {
+        text-align: left !important;
+        text-justify: none !important;
+        word-spacing: normal !important;
+      }
+      body p {
+        margin-top: 0.4em !important;
+        margin-bottom: 0.4em !important;
+      }
+    }
+  `;
+  // Append to <head> when available, else to <body> as a fallback.
+  (doc.head ?? doc.body)?.appendChild(style);
+}
+
 export function applyInlineTheme(
   doc: Document | null | undefined,
   foreground: string,
@@ -41,6 +100,10 @@ export function applyInlineTheme(
   background?: string,
 ): void {
   if (!doc?.body) return;
+  // Inject typography rules first — these are layout-affecting, so
+  // doing them before the inline color/font loop avoids a second
+  // reflow when the styles take effect.
+  ensureReaderTypography(doc);
   // Force bg on iframe html + body (EPUB body is typically transparent;
   // epub.js wraps the iframe in additional divs that don't inherit the
   // outer viewer's bg, so the iframe shows whatever's behind unless we
