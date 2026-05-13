@@ -73,24 +73,73 @@ router = APIRouter(prefix="/api/v1/cards", tags=["cards"])
 
 _STORAGE_BUCKET = "cards-media"
 
+# Read access for the cards-media bucket goes through signed URLs:
+# the bucket is PRIVATE (see migration 20) so the legacy public-URL
+# path returned 403 and the <img> never rendered. Signed URLs are
+# stateless JWTs that include the path + expiry, so they work as the
+# src of an <img> tag without further auth.
+_SIGNED_URL_TTL_SECONDS = 60 * 60  # 1h; covers a long review session
+
 
 def _media_path_to_url(path: str | None) -> str | None:
-    """Convert a stored Supabase Storage object path into a public URL.
-
-    The DB column holds the path relative to the bucket
-    (e.g. "<user_id>/<card_id>/image.jpg") because that's what
-    create_signed_upload_url and the frontend's PUT both round-trip on.
-    The browser <img src> needs an absolute URL, so prefix it with the
-    bucket's public endpoint here. Idempotent: if a row already holds
-    a fully-qualified URL (legacy data, manual fix-ups), leave it
-    alone.
-    """
+    """Single-path variant. Round-trips to Supabase Storage to mint a
+    signed URL. For endpoints that hand out many cards in one response
+    (queue, list) prefer _media_paths_to_urls() to avoid the per-card
+    network call."""
     if not path:
         return None
     if path.startswith("http://") or path.startswith("https://"):
         return path
-    base = settings.SUPABASE_URL.rstrip("/")
-    return f"{base}/storage/v1/object/public/{_STORAGE_BUCKET}/{path}"
+    try:
+        resp = (
+            get_admin_client()
+            .storage.from_(_STORAGE_BUCKET)
+            .create_signed_url(path, _SIGNED_URL_TTL_SECONDS)
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("create_signed_url failed for %s: %s", path, exc)
+        return None
+    # supabase-py returns {"signedURL": "..."} (camelCase) or
+    # {"signedUrl": "..."} depending on version — accept both.
+    return resp.get("signedURL") or resp.get("signedUrl")
+
+
+def _media_paths_to_urls(paths: list[str]) -> dict[str, str]:
+    """Batch variant: ONE storage call signs N paths. Returns a map of
+    {original_path: signed_url}. Paths that are already fully-qualified
+    URLs (legacy data) round-trip unchanged. Empty/None paths are
+    filtered out by the caller.
+    """
+    if not paths:
+        return {}
+    # Carve out already-absolute URLs — no signing needed.
+    out: dict[str, str] = {}
+    to_sign: list[str] = []
+    for p in paths:
+        if not p:
+            continue
+        if p.startswith("http://") or p.startswith("https://"):
+            out[p] = p
+        else:
+            to_sign.append(p)
+    if not to_sign:
+        return out
+    try:
+        rows = (
+            get_admin_client()
+            .storage.from_(_STORAGE_BUCKET)
+            .create_signed_urls(to_sign, _SIGNED_URL_TTL_SECONDS)
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("create_signed_urls failed for %d paths: %s", len(to_sign), exc)
+        return out
+    for row in rows or []:
+        # supabase-py: each item has {"path": "...", "signedURL"|"signedUrl": "..."}
+        path = row.get("path")
+        url = row.get("signedURL") or row.get("signedUrl")
+        if path and url:
+            out[path] = url
+    return out
 
 
 def _row_to_card(row: dict) -> CardOut:

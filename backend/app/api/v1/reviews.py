@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.api.v1.cards import _media_path_to_url
+from app.api.v1.cards import _media_path_to_url, _media_paths_to_urls
 from app.api.v1.decks import _resolve_subtree_ids
 from app.core.auth import AuthInfo, get_auth
 from app.core.rate_limit import limiter
@@ -128,6 +128,20 @@ async def queue(
     cards = cards_q.execute().data or []
     cards_by_id = {c["id"]: c for c in cards}
 
+    # Batch-sign image+audio URLs for ALL cards in ONE storage call.
+    # The bucket is private; the legacy public-URL path returned 403
+    # and the <img> tags rendered nothing. Signed URLs work as <img>
+    # src directly because the token rides in the query string.
+    media_paths: list[str] = []
+    for c in cards:
+        img = c.get("user_image_url")
+        aud = c.get("user_audio_url")
+        if img:
+            media_paths.append(img)
+        if aud:
+            media_paths.append(aud)
+    signed_media = _media_paths_to_urls(media_paths) if media_paths else {}
+
     # Batch-fetch a cloze context per card. Each card has a
     # source_capture_ids uuid[] (max 20); the FIRST element is the
     # earliest/representative capture for that lemma. We collect one
@@ -179,8 +193,8 @@ async def queue(
                 fsrs_state=int(s["fsrs_state"]),
                 fsrs_difficulty=s.get("fsrs_difficulty"),
                 fsrs_stability=s.get("fsrs_stability"),
-                user_image_url=_media_path_to_url(c.get("user_image_url")),
-                user_audio_url=_media_path_to_url(c.get("user_audio_url")),
+                user_image_url=signed_media.get(c.get("user_image_url") or ""),
+                user_audio_url=signed_media.get(c.get("user_audio_url") or ""),
                 flag=int(c.get("flag") or 0),
                 enrichment=c.get("enrichment"),
                 cloze_context=_pick_cloze(c["word"], contexts_by_card.get(c["id"])),
