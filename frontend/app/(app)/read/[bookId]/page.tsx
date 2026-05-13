@@ -140,56 +140,13 @@ export default function ReadPage({
     [settings, isMobile],
   );
 
-  // Chrome auto-hide + true fullscreen for immersive reading.
-  //
-  // When the user taps the title, the in-app chrome (toolbar + progress
-  // bar) hides AND the page requests OS fullscreen so the system status
-  // bar / nav bar disappear too. The book gets the entire screen,
-  // claiming the cobre status-bar strip on Android. Reverse on chrome
-  // restore. Fullscreen API isn't supported uniformly (iOS Safari is
-  // limited), so calls are best-effort: failures degrade silently to
-  // "chrome hidden, status bar still visible".
+  // Chrome auto-hide for less-cluttered reading. NO Fullscreen API —
+  // tried it briefly but epub.js doesn't auto-resize when the viewport
+  // dimensions change, leaving the rendition rendering off-screen
+  // (visible as a black page after entering fullscreen). The system
+  // status bar staying visible is a smaller compromise than a broken
+  // book; only the in-app chrome toggles here.
   const [chromeHidden, setChromeHidden] = useState(false);
-
-  const enterImmersive = () => {
-    setChromeHidden(true);
-    const el = typeof document !== "undefined" ? document.documentElement : null;
-    if (el && el.requestFullscreen) {
-      el.requestFullscreen().catch(() => {
-        // Permission denied / unsupported — silent fallback.
-      });
-    }
-  };
-
-  const exitImmersive = () => {
-    setChromeHidden(false);
-    if (
-      typeof document !== "undefined" &&
-      document.fullscreenElement &&
-      document.exitFullscreen
-    ) {
-      document.exitFullscreen().catch(() => {});
-    }
-  };
-
-  // If the user exits fullscreen via OS gesture (swipe down, Esc on
-  // desktop, etc.) keep the in-app chrome in sync — restore it.
-  useEffect(() => {
-    function onFsChange() {
-      if (
-        typeof document !== "undefined" &&
-        !document.fullscreenElement &&
-        chromeHidden
-      ) {
-        setChromeHidden(false);
-      }
-    }
-    if (typeof document !== "undefined") {
-      document.addEventListener("fullscreenchange", onFsChange);
-      return () =>
-        document.removeEventListener("fullscreenchange", onFsChange);
-    }
-  }, [chromeHidden]);
 
   // ---------- Derived data (memoized — F1) ----------
   const capturedMap = useMemo(
@@ -455,7 +412,7 @@ export default function ReadPage({
           setColor={wordColors.setColor}
           getCurrentSnippet={getCurrentSnippet}
           currentCfi={currentCfi}
-          onTapTitle={enterImmersive}
+          onTapTitle={() => setChromeHidden(true)}
         />
       )}
 
@@ -465,31 +422,31 @@ export default function ReadPage({
         </div>
       )}
 
+      {/* Immersive mode affordance: a slim 28px bar above the viewer
+          when chrome is hidden. Lives OUTSIDE the viewer container so
+          it never overlaps book content (previous iterations put the
+          chevron `absolute` inside the viewer, where it landed on top
+          of the first lines of the page). The bar takes a thin sliver
+          at the top — visible but ergonomically out of the way of the
+          reading surface. */}
+      {chromeHidden && (
+        <button
+          type="button"
+          onClick={() => setChromeHidden(false)}
+          className="h-7 flex items-center justify-center bg-transparent text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 transition-colors"
+          aria-label="Mostrar controles del lector"
+          title="Mostrar controles"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      )}
+
       <div className="flex-1 relative">
         <div ref={viewerRef} className="absolute inset-0" />
         {readerStatus !== "ready" && readerStatus !== "error" && (
           <div className="absolute inset-0 flex items-center justify-center bg-background">
             <CubeLoader title="Cargando libro" subtitle={title} />
           </div>
-        )}
-        {/* Immersive mode affordance: minimal chevron at top-center
-            when chrome is hidden. Earlier iterations tried a full-area
-            overlay (blocked swipe/scroll) and a labeled pill (took too
-            much vertical space from the page). This icon-only version
-            is just-discoverable-enough: low opacity, no label, sits in
-            the safe-area inset of the now-fullscreen viewport so it
-            doesn't eat into the reading surface. */}
-        {chromeHidden && (
-          <button
-            type="button"
-            onClick={exitImmersive}
-            className="absolute left-1/2 -translate-x-1/2 z-10 inline-flex items-center justify-center size-7 rounded-full bg-foreground/8 backdrop-blur-sm text-foreground/55 hover:bg-foreground/15 hover:text-foreground/80 transition-colors"
-            style={{ top: "calc(env(safe-area-inset-top, 0px) + 4px)" }}
-            aria-label="Mostrar controles del lector"
-            title="Mostrar controles"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
         )}
       </div>
 

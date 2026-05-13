@@ -5,6 +5,13 @@ export const alt =
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
+// Generate on-demand instead of prerendering at build time. The build
+// was failing in satori (`Cannot read properties of undefined (reading
+// '256')`) when GitHub raw-font fetches returned HTML 404s. Dynamic
+// generation runs at request time, so the OG crawler triggers a fresh
+// fetch with proper network conditions; cached after the first hit.
+export const dynamic = "force-dynamic";
+
 // Colors that match the hero's warm-dark / cream identity.
 const BG = "#211814";
 const INK = "#F5EFE2";
@@ -19,7 +26,17 @@ async function tryFetchFont(url: string): Promise<ArrayBuffer | null> {
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
-    return await res.arrayBuffer();
+    const ct = res.headers.get("content-type") ?? "";
+    // GitHub raw URLs sometimes redirect to an HTML 404 page that
+    // returns 200 OK with text/html. Satori then crashes deep inside
+    // its TTF parser ("Cannot read properties of undefined (reading
+    // '256')"). Gate on a font-like content-type so non-binary
+    // responses bail out cleanly and the build falls back to system
+    // fonts.
+    if (!ct.includes("font") && !ct.includes("octet-stream")) return null;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength < 1024) return null; // sanity: real fonts are >> 1KB
+    return buf;
   } catch {
     return null;
   }
