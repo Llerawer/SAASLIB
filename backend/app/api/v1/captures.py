@@ -8,6 +8,8 @@ from app.core.rate_limit import limiter
 from app.db.supabase_client import get_user_client
 from app.schemas.captures import CaptureCreate, CaptureOut, CaptureUpdate
 from app.services import prompt_template, word_lookup
+from app.services.enrichment.factory import get_provider
+from app.services.enrichment.local_dict import has_entry as local_dict_has_entry
 from app.services.normalize import normalize
 
 
@@ -293,3 +295,140 @@ async def batch_prompt(
         raise HTTPException(404, "No captures found")
     markdown = prompt_template.build_prompt(rows)
     return BatchPromptOutput(markdown=markdown, count=len(rows))
+
+
+# ---------- Enrichment: cascade preview + batch ------------------------
+#
+# The vocabulary page surfaces a single "Enriquecer" action. The flow is:
+#   1. Frontend calls /enrich-preview with capture_ids → backend counts
+#      how many words already exist in the local dictionary (no LLM
+#      needed) vs how many will fall through to the LLM. Modal shows
+#      this breakdown so the user knows what they're paying.
+#   2. On confirm, frontend calls /enrich-batch with the same ids →
+#      backend iterates and runs each through the configured provider
+#      chain (LocalDictionaryProvider first, then Gemini/Groq).
+#
+# Both endpoints are short, rate-limited, and only touch captures that
+# belong to auth.user_id (RLS enforced via get_user_client).
+
+
+class EnrichPreviewRequest(BaseModel):
+    capture_ids: list[str] = Field(..., min_length=1, max_length=200)
+
+
+class EnrichPreviewResponse(BaseModel):
+    total: int
+    local_hits: int
+    llm_required: int
+    # Conservative estimate: ~2s per LLM word (network + model latency).
+    # Local hits add ~0s. The frontend uses this to populate the confirm
+    # modal. It's intentionally approximate; production might refine.
+    estimated_seconds: int
+
+
+class EnrichBatchRequest(BaseModel):
+    capture_ids: list[str] = Field(..., min_length=1, max_length=200)
+
+
+class EnrichBatchResponse(BaseModel):
+    enriched: int
+    local_hits: int
+    llm_hits: int
+    failed: int
+
+
+LLM_SECONDS_PER_WORD = 2  # rough — user sees this as part of the modal copy
+
+
+def _fetch_user_captures(client, user_id: str, ids: list[str]) -> list[dict]:
+    rows = (
+        client.table("captures")
+        .select("*")
+        .in_("id", ids)
+        .eq("user_id", user_id)
+        .execute()
+        .data
+        or []
+    )
+    return rows
+
+
+@router.post("/enrich-preview", response_model=EnrichPreviewResponse)
+@limiter.limit("60/minute")
+async def enrich_preview(
+    request: Request,
+    body: EnrichPreviewRequest,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Count local-dict hits vs LLM-required for a set of captures.
+    No external calls; just in-memory dictionary lookups. Cheap enough
+    to call every time the modal opens."""
+    client = get_user_client(auth.jwt)
+    rows = _fetch_user_captures(client, auth.user_id, body.capture_ids)
+    local = sum(1 for r in rows if local_dict_has_entry(r["word_normalized"]))
+    llm = len(rows) - local
+    return EnrichPreviewResponse(
+        total=len(rows),
+        local_hits=local,
+        llm_required=llm,
+        estimated_seconds=llm * LLM_SECONDS_PER_WORD,
+    )
+
+
+@router.post("/enrich-batch", response_model=EnrichBatchResponse)
+@limiter.limit("10/minute")
+async def enrich_batch(
+    request: Request,
+    body: EnrichBatchRequest,
+    auth: AuthInfo = Depends(get_auth),
+):
+    """Run each capture's word through the provider chain and persist
+    the result to captures.enrichment. Sequential by design: LLM
+    providers have per-minute quotas, parallel calls trip rate limits
+    fast. The dictionary path is instant so the user only waits on the
+    LLM tail."""
+    client = get_user_client(auth.jwt)
+    rows = _fetch_user_captures(client, auth.user_id, body.capture_ids)
+    if not rows:
+        raise HTTPException(404, "No captures found")
+
+    provider = get_provider()
+    if provider is None:
+        raise HTTPException(503, "No enrichment provider configured")
+
+    provider.reset_keys()  # restore any rate-limited LLM keys
+
+    enriched = local = llm = failed = 0
+    for r in rows:
+        word = r["word_normalized"]
+        is_local = local_dict_has_entry(word)
+        try:
+            result = await provider.enrich(
+                word=word,
+                context=r.get("context_sentence"),
+                language=r.get("language", "en"),
+            )
+        except Exception:
+            result = None
+
+        if result is None:
+            failed += 1
+            continue
+
+        # Tag which path filled it so analytics + future re-enrich
+        # logic can distinguish cache hits from paid LLM responses.
+        client.table("captures").update({"enrichment": result}).eq(
+            "id", r["id"]
+        ).execute()
+        enriched += 1
+        if is_local:
+            local += 1
+        else:
+            llm += 1
+
+    return EnrichBatchResponse(
+        enriched=enriched,
+        local_hits=local,
+        llm_hits=llm,
+        failed=failed,
+    )

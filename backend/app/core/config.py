@@ -34,7 +34,10 @@ class Settings(BaseSettings):
     # Gemini's daily quota burns through, Groq picks up automatically (if
     # GROQ_API_KEYS is configured). Single-provider setups still work — the
     # chain trivially collapses to one element.
-    ENRICHMENT_PROVIDERS: str = "gemini,groq"
+    # Order matters: providers are tried left-to-right and the first
+    # non-None result wins. local_dict goes first so high-frequency
+    # words skip the LLM round-trip entirely (saves quota + latency).
+    ENRICHMENT_PROVIDERS: str = "local_dict,gemini,groq"
     GEMINI_API_KEYS: str = ""  # comma-separated, e.g. "AIza...,AIza...,AIza..."
     GROQ_API_KEYS: str = ""    # comma-separated, e.g. "gsk_...,gsk_..."
     # How often the enrichment cron runs (minutes). 5 is the V1 default.

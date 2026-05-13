@@ -1,0 +1,358 @@
+{
+  "_meta": {
+    "version": 1,
+    "description": "Local English→Spanish enrichment dictionary. Seeded with high-frequency words so we can answer them without paying an LLM round-trip. Schema matches what the enrichment chain returns (translation, ipa, definition_es, examples_es, part_of_speech). Extend by appending entries; reload on backend restart.",
+    "lang_source": "en",
+    "lang_target": "es"
+  },
+  "almost": {
+    "translation": "casi",
+    "ipa": "ˈɔːl.məʊst",
+    "definition_es": "Muy cerca de algo, sin llegar a serlo o suceder por completo.",
+    "examples_es": ["Casi llego tarde.", "Es casi imposible de creer."],
+    "part_of_speech": "adverb"
+  },
+  "always": {
+    "translation": "siempre",
+    "ipa": "ˈɔːl.weɪz",
+    "definition_es": "En todo momento; en todas las ocasiones.",
+    "examples_es": ["Siempre llega temprano.", "Te recordaré siempre."],
+    "part_of_speech": "adverb"
+  },
+  "article": {
+    "translation": "artículo",
+    "ipa": "ˈɑːr.tɪ.kəl",
+    "definition_es": "Texto escrito sobre un tema, publicado en un periódico, revista o sitio web.",
+    "examples_es": ["Leí un artículo interesante hoy.", "El artículo trata sobre clima."],
+    "part_of_speech": "noun"
+  },
+  "articles": {
+    "translation": "artículos",
+    "ipa": "ˈɑːr.tɪ.kəlz",
+    "definition_es": "Plural de 'article'. Textos escritos sobre temas específicos.",
+    "examples_es": ["Suelo leer artículos sobre ciencia.", "Publicó varios artículos este año."],
+    "part_of_speech": "noun"
+  },
+  "book": {
+    "translation": "libro",
+    "ipa": "bʊk",
+    "definition_es": "Conjunto de hojas impresas o manuscritas, encuadernadas, que tratan sobre un tema.",
+    "examples_es": ["Compré un libro nuevo.", "Este libro me cambió la vida."],
+    "part_of_speech": "noun"
+  },
+  "books": {
+    "translation": "libros",
+    "ipa": "bʊks",
+    "definition_es": "Plural de 'book'.",
+    "examples_es": ["Tengo demasiados libros.", "Los libros viajan con nosotros."],
+    "part_of_speech": "noun"
+  },
+  "video": {
+    "translation": "video",
+    "ipa": "ˈvɪd.i.oʊ",
+    "definition_es": "Grabación de imágenes en movimiento, especialmente para reproducir en pantalla.",
+    "examples_es": ["Vi un video sobre cocina.", "Subió el video a YouTube."],
+    "part_of_speech": "noun"
+  },
+  "videos": {
+    "translation": "videos",
+    "ipa": "ˈvɪd.i.oʊz",
+    "definition_es": "Plural de 'video'.",
+    "examples_es": ["Sus videos son educativos.", "Hay miles de videos sobre el tema."],
+    "part_of_speech": "noun"
+  },
+  "more": {
+    "translation": "más",
+    "ipa": "mɔːr",
+    "definition_es": "Mayor cantidad o grado de algo.",
+    "examples_es": ["Quiero más café.", "Necesito más tiempo."],
+    "part_of_speech": "determiner"
+  },
+  "people": {
+    "translation": "gente, personas",
+    "ipa": "ˈpiː.pəl",
+    "definition_es": "Conjunto de seres humanos, considerados colectivamente.",
+    "examples_es": ["Hay mucha gente en la plaza.", "Esas personas son amables."],
+    "part_of_speech": "noun"
+  },
+  "year": {
+    "translation": "año",
+    "ipa": "jɪər",
+    "definition_es": "Período de doce meses, especialmente uno que comienza el 1 de enero.",
+    "examples_es": ["El año que viene viajaré.", "Hace un año que no la veo."],
+    "part_of_speech": "noun"
+  },
+  "years": {
+    "translation": "años",
+    "ipa": "jɪərz",
+    "definition_es": "Plural de 'year'.",
+    "examples_es": ["Tengo treinta años.", "Pasaron muchos años."],
+    "part_of_speech": "noun"
+  },
+  "time": {
+    "translation": "tiempo, vez",
+    "ipa": "taɪm",
+    "definition_es": "Magnitud que mide la duración o secuencia de los sucesos; también, una ocasión.",
+    "examples_es": ["No tengo tiempo.", "Es la primera vez que vengo."],
+    "part_of_speech": "noun"
+  },
+  "world": {
+    "translation": "mundo",
+    "ipa": "wɜːrld",
+    "definition_es": "Conjunto de todas las cosas existentes; la Tierra y todo lo que la habita.",
+    "examples_es": ["El mundo está cambiando rápido.", "Viajó por todo el mundo."],
+    "part_of_speech": "noun"
+  },
+  "way": {
+    "translation": "manera, camino",
+    "ipa": "weɪ",
+    "definition_es": "Modo de hacer algo o ruta para llegar a un lugar.",
+    "examples_es": ["Lo hizo a su manera.", "Conozco el camino al mar."],
+    "part_of_speech": "noun"
+  },
+  "day": {
+    "translation": "día",
+    "ipa": "deɪ",
+    "definition_es": "Período de 24 horas; tiempo entre el amanecer y el anochecer.",
+    "examples_es": ["Hoy es un día especial.", "Trabajamos todo el día."],
+    "part_of_speech": "noun"
+  },
+  "want": {
+    "translation": "querer, desear",
+    "ipa": "wɒnt",
+    "definition_es": "Tener deseo de obtener o hacer algo.",
+    "examples_es": ["Quiero un café.", "¿Qué quieres hacer hoy?"],
+    "part_of_speech": "verb"
+  },
+  "know": {
+    "translation": "saber, conocer",
+    "ipa": "noʊ",
+    "definition_es": "Tener información o estar familiarizado con algo o alguien.",
+    "examples_es": ["No sé la respuesta.", "Conozco a María desde niña."],
+    "part_of_speech": "verb"
+  },
+  "think": {
+    "translation": "pensar, creer",
+    "ipa": "θɪŋk",
+    "definition_es": "Considerar mentalmente; tener una opinión.",
+    "examples_es": ["Pienso en ti todos los días.", "Creo que tiene razón."],
+    "part_of_speech": "verb"
+  },
+  "make": {
+    "translation": "hacer, fabricar",
+    "ipa": "meɪk",
+    "definition_es": "Crear, producir o causar que algo exista o suceda.",
+    "examples_es": ["Voy a hacer una tarta.", "Eso me hace feliz."],
+    "part_of_speech": "verb"
+  },
+  "take": {
+    "translation": "tomar, llevar",
+    "ipa": "teɪk",
+    "definition_es": "Coger algo o llevarlo a otro sitio.",
+    "examples_es": ["Toma este regalo.", "Lo llevé al hospital."],
+    "part_of_speech": "verb"
+  },
+  "see": {
+    "translation": "ver",
+    "ipa": "siː",
+    "definition_es": "Percibir con la vista; comprender.",
+    "examples_es": ["Veo el mar desde mi ventana.", "¿Ves lo que digo?"],
+    "part_of_speech": "verb"
+  },
+  "good": {
+    "translation": "bueno",
+    "ipa": "ɡʊd",
+    "definition_es": "De alta calidad; agradable, satisfactorio o moralmente correcto.",
+    "examples_es": ["Es un buen libro.", "Eres una buena persona."],
+    "part_of_speech": "adjective"
+  },
+  "great": {
+    "translation": "genial, grandioso",
+    "ipa": "ɡreɪt",
+    "definition_es": "De gran tamaño, importancia o calidad sobresaliente.",
+    "examples_es": ["Pasamos un gran día.", "Es una idea genial."],
+    "part_of_speech": "adjective"
+  },
+  "new": {
+    "translation": "nuevo",
+    "ipa": "njuː",
+    "definition_es": "Que existe o se conoce desde hace poco; reciente.",
+    "examples_es": ["Tengo un coche nuevo.", "Es una experiencia nueva."],
+    "part_of_speech": "adjective"
+  },
+  "first": {
+    "translation": "primero",
+    "ipa": "fɜːrst",
+    "definition_es": "Que ocupa el lugar inicial en una secuencia.",
+    "examples_es": ["Soy el primero de la fila.", "Es la primera vez."],
+    "part_of_speech": "adjective"
+  },
+  "last": {
+    "translation": "último",
+    "ipa": "læst",
+    "definition_es": "Que ocupa el lugar final; también, durar.",
+    "examples_es": ["Es la última oportunidad.", "El concierto duró tres horas."],
+    "part_of_speech": "adjective"
+  },
+  "long": {
+    "translation": "largo",
+    "ipa": "lɔːŋ",
+    "definition_es": "De gran longitud o duración.",
+    "examples_es": ["El camino es largo.", "Fue una larga espera."],
+    "part_of_speech": "adjective"
+  },
+  "right": {
+    "translation": "correcto, derecho",
+    "ipa": "raɪt",
+    "definition_es": "Correcto, justo, o el lado opuesto al izquierdo.",
+    "examples_es": ["Es la respuesta correcta.", "Gira a la derecha."],
+    "part_of_speech": "adjective"
+  },
+  "different": {
+    "translation": "diferente",
+    "ipa": "ˈdɪf.ər.ənt",
+    "definition_es": "No igual; distinto de otra cosa.",
+    "examples_es": ["Pensamos de manera diferente.", "Es una cultura diferente."],
+    "part_of_speech": "adjective"
+  },
+  "important": {
+    "translation": "importante",
+    "ipa": "ɪmˈpɔːr.tənt",
+    "definition_es": "Que tiene gran valor, peso o influencia.",
+    "examples_es": ["Esto es muy importante.", "Tomó una decisión importante."],
+    "part_of_speech": "adjective"
+  },
+  "after": {
+    "translation": "después de",
+    "ipa": "ˈæf.tər",
+    "definition_es": "En un momento o posición posterior a otro.",
+    "examples_es": ["Vino después del almuerzo.", "Llegó después que yo."],
+    "part_of_speech": "preposition"
+  },
+  "before": {
+    "translation": "antes de",
+    "ipa": "bɪˈfɔːr",
+    "definition_es": "En un momento o posición anterior a otro.",
+    "examples_es": ["Llámame antes de salir.", "Lo vi antes que tú."],
+    "part_of_speech": "preposition"
+  },
+  "between": {
+    "translation": "entre",
+    "ipa": "bɪˈtwiːn",
+    "definition_es": "En el espacio o relación que separa dos elementos.",
+    "examples_es": ["Quedó entre los árboles.", "Hay diferencia entre los dos."],
+    "part_of_speech": "preposition"
+  },
+  "through": {
+    "translation": "a través de",
+    "ipa": "θruː",
+    "definition_es": "De un lado a otro; por medio de.",
+    "examples_es": ["Caminé a través del parque.", "Lo aprendí a través de la práctica."],
+    "part_of_speech": "preposition"
+  },
+  "while": {
+    "translation": "mientras",
+    "ipa": "waɪl",
+    "definition_es": "Durante el tiempo que ocurre otra cosa.",
+    "examples_es": ["Estudio mientras escucho música.", "Mientras llueva, no salgo."],
+    "part_of_speech": "conjunction"
+  },
+  "because": {
+    "translation": "porque",
+    "ipa": "bɪˈkɔːz",
+    "definition_es": "Introduce la causa o razón de algo.",
+    "examples_es": ["No fui porque estaba cansado.", "Porque sí."],
+    "part_of_speech": "conjunction"
+  },
+  "although": {
+    "translation": "aunque",
+    "ipa": "ɔːlˈðoʊ",
+    "definition_es": "A pesar del hecho de que; introduce contraste.",
+    "examples_es": ["Aunque llovía, fuimos.", "Aunque cueste, vale la pena."],
+    "part_of_speech": "conjunction"
+  },
+  "many": {
+    "translation": "muchos",
+    "ipa": "ˈmen.i",
+    "definition_es": "Gran cantidad de algo numerable.",
+    "examples_es": ["Tengo muchos amigos.", "Pasaron muchas horas."],
+    "part_of_speech": "determiner"
+  },
+  "much": {
+    "translation": "mucho",
+    "ipa": "mʌtʃ",
+    "definition_es": "Gran cantidad de algo no numerable.",
+    "examples_es": ["No tengo mucho dinero.", "Hay mucho que hacer."],
+    "part_of_speech": "determiner"
+  },
+  "every": {
+    "translation": "cada",
+    "ipa": "ˈev.ri",
+    "definition_es": "Cada uno de los elementos de un conjunto.",
+    "examples_es": ["Cada día es diferente.", "Cada persona es única."],
+    "part_of_speech": "determiner"
+  },
+  "few": {
+    "translation": "pocos",
+    "ipa": "fjuː",
+    "definition_es": "Un número pequeño de algo.",
+    "examples_es": ["Tengo pocos minutos.", "Vinieron pocas personas."],
+    "part_of_speech": "determiner"
+  },
+  "today": {
+    "translation": "hoy",
+    "ipa": "təˈdeɪ",
+    "definition_es": "En este día; en la época actual.",
+    "examples_es": ["Hoy es martes.", "Hoy en día todo es digital."],
+    "part_of_speech": "adverb"
+  },
+  "tomorrow": {
+    "translation": "mañana",
+    "ipa": "təˈmɔːr.oʊ",
+    "definition_es": "En el día que sigue al de hoy.",
+    "examples_es": ["Mañana iremos al cine.", "Hasta mañana."],
+    "part_of_speech": "adverb"
+  },
+  "yesterday": {
+    "translation": "ayer",
+    "ipa": "ˈjes.tər.deɪ",
+    "definition_es": "En el día anterior al de hoy.",
+    "examples_es": ["Ayer llovió todo el día.", "Lo vi ayer."],
+    "part_of_speech": "adverb"
+  },
+  "often": {
+    "translation": "a menudo",
+    "ipa": "ˈɔː.fən",
+    "definition_es": "Con frecuencia; muchas veces.",
+    "examples_es": ["A menudo viajo en tren.", "Eso no pasa a menudo."],
+    "part_of_speech": "adverb"
+  },
+  "never": {
+    "translation": "nunca",
+    "ipa": "ˈnev.ər",
+    "definition_es": "En ningún momento.",
+    "examples_es": ["Nunca digas nunca.", "Nunca he ido a Japón."],
+    "part_of_speech": "adverb"
+  },
+  "very": {
+    "translation": "muy",
+    "ipa": "ˈver.i",
+    "definition_es": "En grado alto; en gran medida.",
+    "examples_es": ["Estoy muy cansado.", "Es muy interesante."],
+    "part_of_speech": "adverb"
+  },
+  "really": {
+    "translation": "realmente, de verdad",
+    "ipa": "ˈriː.ə.li",
+    "definition_es": "De forma genuina o efectiva.",
+    "examples_es": ["¿Realmente lo crees?", "Es realmente bueno."],
+    "part_of_speech": "adverb"
+  },
+  "maybe": {
+    "translation": "quizás, tal vez",
+    "ipa": "ˈmeɪ.bi",
+    "definition_es": "Indica posibilidad sin certeza.",
+    "examples_es": ["Quizás venga mañana.", "Tal vez tengas razón."],
+    "part_of_speech": "adverb"
+  }
+}

@@ -24,6 +24,7 @@ from app.core.config import settings
 from .chain import ChainProvider
 from .gemini import GeminiProvider
 from .groq import GroqProvider
+from .local_dict import LocalDictionaryProvider
 from .protocol import EnrichmentProvider
 
 log = logging.getLogger(__name__)
@@ -37,8 +38,14 @@ def get_provider() -> EnrichmentProvider | None:
 
     providers: list[EnrichmentProvider] = []
     for name in names:
-        if name == "gemini":
-            p: EnrichmentProvider = GeminiProvider()
+        if name == "local_dict":
+            # Always sits at the head of the chain when configured.
+            # On hit: returns instantly, never touches the LLM.
+            # On miss: returns None → chain falls through to the next
+            # provider in the configured order.
+            p: EnrichmentProvider = LocalDictionaryProvider()
+        elif name == "gemini":
+            p = GeminiProvider()
         elif name == "groq":
             p = GroqProvider()
         else:
