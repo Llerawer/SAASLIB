@@ -5,13 +5,6 @@ export const alt =
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-// Generate on-demand instead of prerendering at build time. The build
-// was failing in satori (`Cannot read properties of undefined (reading
-// '256')`) when GitHub raw-font fetches returned HTML 404s. Dynamic
-// generation runs at request time, so the OG crawler triggers a fresh
-// fetch with proper network conditions; cached after the first hit.
-export const dynamic = "force-dynamic";
-
 // Colors that match the hero's warm-dark / cream identity.
 const BG = "#211814";
 const INK = "#F5EFE2";
@@ -22,73 +15,14 @@ const CREAM_INK = "#3A2E26";
 const CREAM_INK_MUTED = "#7A6B5D";
 const GLIMPSE_BG = "rgba(199, 123, 95, 0.18)";
 
-async function tryFetchFont(url: string): Promise<ArrayBuffer | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const ct = res.headers.get("content-type") ?? "";
-    // GitHub raw URLs sometimes redirect to an HTML 404 page that
-    // returns 200 OK with text/html. Satori then crashes deep inside
-    // its TTF parser ("Cannot read properties of undefined (reading
-    // '256')"). Gate on a font-like content-type so non-binary
-    // responses bail out cleanly and the build falls back to system
-    // fonts.
-    if (!ct.includes("font") && !ct.includes("octet-stream")) return null;
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength < 1024) return null; // sanity: real fonts are >> 1KB
-    return buf;
-  } catch {
-    return null;
-  }
-}
-
+// System-font stacks. We skip GitHub font fetching to avoid satori
+// crashes when the network or CDN behaves badly. The resulting image
+// looks editorial at OG scales (text is 60+px) without needing a
+// custom-loaded Source Serif.
 export default async function OpengraphImage() {
-  // Best-effort font loading. If any fetch fails (sandbox / offline build),
-  // ImageResponse falls back to the bundled system sans — layout stays intact.
-  const [serifItalic, serifBold, bricolage] = await Promise.all([
-    tryFetchFont(
-      "https://github.com/google/fonts/raw/main/ofl/sourceserif4/SourceSerif4-Italic%5Bopsz%2Cwght%5D.ttf",
-    ),
-    tryFetchFont(
-      "https://github.com/google/fonts/raw/main/ofl/sourceserif4/SourceSerif4%5Bopsz%2Cwght%5D.ttf",
-    ),
-    tryFetchFont(
-      "https://github.com/google/fonts/raw/main/ofl/bricolagegrotesque/BricolageGrotesque%5Bopsz%2Cwdth%2Cwght%5D.ttf",
-    ),
-  ]);
-
-  const fonts: Array<{
-    name: string;
-    data: ArrayBuffer;
-    style?: "normal" | "italic";
-    weight?: 400 | 500 | 600 | 700;
-  }> = [];
-  if (bricolage)
-    fonts.push({
-      name: "Bricolage Grotesque",
-      data: bricolage,
-      style: "normal",
-      weight: 500,
-    });
-  if (serifBold)
-    fonts.push({
-      name: "Source Serif 4",
-      data: serifBold,
-      style: "normal",
-      weight: 600,
-    });
-  if (serifItalic)
-    fonts.push({
-      name: "Source Serif 4",
-      data: serifItalic,
-      style: "italic",
-      weight: 400,
-    });
-
   const sansStack =
-    '"Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif';
-  const serifStack =
-    '"Source Serif 4", Georgia, "Iowan Old Style", serif';
+    'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const serifStack = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
 
   return new ImageResponse(
     (
@@ -466,7 +400,6 @@ export default async function OpengraphImage() {
     ),
     {
       ...size,
-      fonts: fonts.length > 0 ? fonts : undefined,
     },
   );
 }
