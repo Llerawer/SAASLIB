@@ -96,17 +96,22 @@ export function EditCardSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="max-h-[90vh] flex flex-col p-0"
+        // dvh > vh on iOS so the sheet doesn't hide behind the bottom
+        // browser chrome. Up to 92% so the user still sees a hint of
+        // the page behind and knows they can dismiss.
+        className="max-h-[92dvh] flex flex-col p-0"
       >
-        <SheetHeader className="px-6 pt-6">
-          <SheetTitle className="flex items-baseline justify-between gap-3 flex-wrap">
+        <SheetHeader className="px-4 sm:px-6 pt-5 sm:pt-6">
+          <SheetTitle className="flex items-baseline justify-between gap-3 flex-wrap text-base sm:text-lg">
             <span>Editar tarjeta</span>
             {card && (
               <span className="flex items-baseline gap-2 text-sm text-muted-foreground">
                 <span className="font-serif font-semibold text-foreground">
                   {card.word}
                 </span>
-                {card.ipa && <span className="font-mono">{card.ipa}</span>}
+                {card.ipa && (
+                  <span className="font-mono hidden sm:inline">{card.ipa}</span>
+                )}
                 {card.cefr && (
                   <span className="text-xs px-1.5 py-0.5 rounded border tabular">
                     {card.cefr}
@@ -117,12 +122,16 @@ export function EditCardSheet({
           </SheetTitle>
         </SheetHeader>
 
-        <div className="px-6 pb-4 grid gap-4 overflow-y-auto flex-1">
+        <div className="px-4 sm:px-6 pb-4 grid gap-4 overflow-y-auto flex-1">
           <Field icon={Languages} label="Traducción">
             <input
               value={translation}
               onChange={(e) => setTranslation(e.target.value)}
-              className="border rounded-md px-3 py-2 bg-background font-serif text-base"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="text"
+              className="border rounded-md px-3 py-2.5 bg-background font-serif text-base min-h-11"
             />
           </Field>
           <Field icon={BookOpen} label="Definición">
@@ -130,7 +139,7 @@ export function EditCardSheet({
               value={definition}
               onChange={(e) => setDefinition(e.target.value)}
               rows={3}
-              className="border rounded-md px-3 py-2 bg-background font-serif"
+              className="border rounded-md px-3 py-2.5 bg-background font-serif text-base"
             />
           </Field>
           <Field icon={Lightbulb} label="Mnemotecnia">
@@ -138,7 +147,7 @@ export function EditCardSheet({
               value={mnemonic}
               onChange={(e) => setMnemonic(e.target.value)}
               rows={2}
-              className="border rounded-md px-3 py-2 bg-background font-serif"
+              className="border rounded-md px-3 py-2.5 bg-background font-serif text-base"
             />
           </Field>
           <Field icon={StickyNote} label="Notas">
@@ -146,7 +155,7 @@ export function EditCardSheet({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="border rounded-md px-3 py-2 bg-background font-serif"
+              className="border rounded-md px-3 py-2.5 bg-background font-serif text-base"
             />
           </Field>
 
@@ -168,11 +177,24 @@ export function EditCardSheet({
           )}
         </div>
 
-        <div className="sticky bottom-0 px-6 py-3 bg-card border-t flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+        {/* Sticky CTA bar with safe-area inset for iPhone home indicator.
+            Tap targets bumped to min-h-11 (44 px) per Apple HIG. */}
+        <div
+          className="sticky bottom-0 px-4 sm:px-6 py-3 bg-card border-t flex justify-end gap-2"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="min-h-11 px-4"
+          >
             Cancelar
           </Button>
-          <Button onClick={save} disabled={update.isPending}>
+          <Button
+            onClick={save}
+            disabled={update.isPending}
+            className="min-h-11 px-5 flex-1 sm:flex-initial"
+          >
             Guardar
           </Button>
         </div>

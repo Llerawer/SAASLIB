@@ -74,19 +74,47 @@ export function MediaUpload({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <label className="text-xs uppercase tracking-wide text-muted-foreground mb-1 block">Imagen</label>
+        <label className="text-xs uppercase tracking-wide text-muted-foreground mb-2 block">
+          Imagen
+        </label>
         {imageUrl ? (
-          <div className="flex items-center gap-2">
-            <img src={imageUrl} alt="" className="h-16 w-16 object-cover rounded border" />
-            <Button size="sm" variant="ghost" onClick={() => remove("image")} disabled={busy === "image"}>
+          <div className="flex items-center gap-3">
+            {/* 80×80 thumb (mobile-touchable) — clicking opens full-size
+                in a new tab so the user can verify what they uploaded. */}
+            <button
+              type="button"
+              onClick={() => window.open(imageUrl, "_blank", "noopener,noreferrer")}
+              className="block size-20 rounded border bg-muted/30 overflow-hidden flex-shrink-0 focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Ver imagen completa"
+            >
+              <img
+                src={imageUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
+            </button>
+            <Button
+              variant="ghost"
+              onClick={() => remove("image")}
+              disabled={busy === "image"}
+              className="min-h-11"
+            >
               <X className="h-4 w-4 mr-1" /> Quitar
             </Button>
           </div>
         ) : (
-          <Button size="sm" variant="outline" onClick={() => imgInput.current?.click()} disabled={busy === "image"}>
-            <ImageIcon className="h-4 w-4 mr-1" /> Añadir imagen
+          <Button
+            variant="outline"
+            onClick={() => imgInput.current?.click()}
+            disabled={busy === "image"}
+            className="min-h-11 w-full sm:w-auto"
+          >
+            <ImageIcon className="h-4 w-4 mr-2" />
+            {busy === "image" ? "Subiendo…" : "Añadir imagen"}
           </Button>
         )}
         <input
@@ -103,17 +131,30 @@ export function MediaUpload({
       </div>
 
       <div>
-        <label className="text-xs uppercase tracking-wide text-muted-foreground mb-1 block">Audio (≤30 s)</label>
+        <label className="text-xs uppercase tracking-wide text-muted-foreground mb-2 block">
+          Audio (≤30 s)
+        </label>
         {audioUrl ? (
-          <div className="flex items-center gap-2">
-            <audio controls src={audioUrl} className="h-8" />
-            <Button size="sm" variant="ghost" onClick={() => remove("audio")} disabled={busy === "audio"}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <audio controls src={audioUrl} className="h-10 flex-1 min-w-0" />
+            <Button
+              variant="ghost"
+              onClick={() => remove("audio")}
+              disabled={busy === "audio"}
+              className="min-h-11"
+            >
               <X className="h-4 w-4 mr-1" /> Quitar
             </Button>
           </div>
         ) : (
-          <Button size="sm" variant="outline" onClick={() => audInput.current?.click()} disabled={busy === "audio"}>
-            <Mic className="h-4 w-4 mr-1" /> Grabar / subir
+          <Button
+            variant="outline"
+            onClick={() => audInput.current?.click()}
+            disabled={busy === "audio"}
+            className="min-h-11 w-full sm:w-auto"
+          >
+            <Mic className="h-4 w-4 mr-2" />
+            {busy === "audio" ? "Subiendo…" : "Grabar / subir"}
           </Button>
         )}
         <input
