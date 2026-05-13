@@ -44,6 +44,9 @@ export type ReaderToolbarProps = {
   setColor: (lemma: string, color: WordColorId) => void;
   getCurrentSnippet: () => Promise<string>;
   currentCfi: string | null;
+  /** When supplied, the title row becomes tappable and fires this on
+   *  click — used to enter immersive ("chrome hidden") reading mode. */
+  onTapTitle?: () => void;
 };
 
 /**
@@ -67,6 +70,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
     onIncFontSize, onDecFontSize, onResetSettings,
     onDeleteBookmark, onDeleteHighlight,
     getColor, setColor, getCurrentSnippet, currentCfi,
+    onTapTitle,
   } = props;
 
   // Derived locally — avoids a redundant boolean prop that duplicates totalLocations info.
@@ -146,17 +150,39 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           }
         />
       </div>
-      {/* Row 2 — context (title + page label) */}
-      <div className="px-4 pb-3 pt-0.5">
-        <h2 className="font-serif text-base sm:text-lg font-semibold leading-tight truncate tracking-tight">
-          {title}
-        </h2>
-        {pageLabel && (
-          <p className="text-xs text-muted-foreground tabular mt-0.5">
-            {pageLabel}
-          </p>
-        )}
-      </div>
+      {/* Row 2 — context (title + page label). Tappable when onTapTitle
+          is supplied — collapses to immersive mode in the parent. The
+          button styling is intentionally invisible (no hover bg etc.)
+          because the title looks like text, not a button. */}
+      {onTapTitle ? (
+        <button
+          type="button"
+          onClick={onTapTitle}
+          className="block w-full text-left px-4 pb-3 pt-0.5 cursor-pointer focus-visible:outline-none focus-visible:bg-muted/40 transition-colors"
+          aria-label="Ocultar controles del lector"
+          title="Tap para ocultar"
+        >
+          <h2 className="font-serif text-base sm:text-lg font-semibold leading-tight truncate tracking-tight">
+            {title}
+          </h2>
+          {pageLabel && (
+            <p className="text-xs text-muted-foreground tabular mt-0.5">
+              {pageLabel}
+            </p>
+          )}
+        </button>
+      ) : (
+        <div className="px-4 pb-3 pt-0.5">
+          <h2 className="font-serif text-base sm:text-lg font-semibold leading-tight truncate tracking-tight">
+            {title}
+          </h2>
+          {pageLabel && (
+            <p className="text-xs text-muted-foreground tabular mt-0.5">
+              {pageLabel}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -36,6 +36,7 @@ import {
 } from "@/lib/api/queries";
 import { useEpubReader, type TextSelectionEvent } from "@/lib/reader/use-epub-reader";
 import { useReaderSettings } from "@/lib/reader/settings";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import { useWordColors } from "@/lib/reader/word-colors";
 import { buildFormToLemma } from "@/lib/reader/form-to-lemma";
 import { formatPageLabel } from "@/lib/reader/page-label";
@@ -124,6 +125,27 @@ export default function ReadPage({
   // ---------- Settings (localStorage hook) ----------
   const { settings, update, incFontSize, decFontSize, reset } = useReaderSettings();
   const wordColors = useWordColors(internalBookId);
+  const isMobile = useIsMobile();
+
+  // On phones a two-page spread crams text into unreadable narrow columns.
+  // Override at engine level so even if the user toggled "Dos hojas" on
+  // desktop and then picked up their phone, the reader renders single-page.
+  // The settings sheet also hides the spread/gesture sections on mobile
+  // (see reader-settings-sheet.tsx) so the UI matches reality.
+  const effectiveSettings = useMemo(
+    () =>
+      isMobile
+        ? { ...settings, spread: "single" as const }
+        : settings,
+    [settings, isMobile],
+  );
+
+  // Chrome auto-hide: tap on the reader area toggles the chrome (toolbar
+  // + bottom progress bar). Lets the reader go true-fullscreen for
+  // immersive reading; a single tap anywhere on the content brings the
+  // controls back. Default visible so the first-time UX makes the chrome
+  // obvious.
+  const [chromeHidden, setChromeHidden] = useState(false);
 
   // ---------- Derived data (memoized — F1) ----------
   const capturedMap = useMemo(
@@ -144,7 +166,7 @@ export default function ReadPage({
   const reader = useEpubReader({
     epubUrl,
     initialCfi,
-    settings,
+    settings: effectiveSettings,
     highlights: highlightsQuery.data ?? [],
     capturedMap,
     getWordColor: wordColors.getColor,
@@ -363,32 +385,35 @@ export default function ReadPage({
     // header is hidden so the toolbar is the topmost element and needs
     // to respect the safe-area inset itself.
     <div className="h-[100dvh] flex flex-col pt-safe">
-      <ReaderToolbar
-        title={title}
-        pageLabel={pageLabel}
-        toc={readerToc}
-        progressPct={progressPct}
-        currentLocation={currentLocation}
-        totalLocations={totalLocations}
-        bookmarks={bookmarks.data ?? []}
-        highlights={highlightsQuery.data ?? []}
-        capturedCount={mergedCapturedSize}
-        internalBookId={internalBookId}
-        settings={settings}
-        onJumpHref={jumpToHref}
-        onJumpPercent={jumpToPercent}
-        onJumpCfi={jumpToCfi}
-        onSettingsChange={update}
-        onIncFontSize={incFontSize}
-        onDecFontSize={decFontSize}
-        onResetSettings={reset}
-        onDeleteBookmark={handleDeleteBookmark}
-        onDeleteHighlight={handleDeleteHighlight}
-        getColor={wordColors.getColor}
-        setColor={wordColors.setColor}
-        getCurrentSnippet={getCurrentSnippet}
-        currentCfi={currentCfi}
-      />
+      {!chromeHidden && (
+        <ReaderToolbar
+          title={title}
+          pageLabel={pageLabel}
+          toc={readerToc}
+          progressPct={progressPct}
+          currentLocation={currentLocation}
+          totalLocations={totalLocations}
+          bookmarks={bookmarks.data ?? []}
+          highlights={highlightsQuery.data ?? []}
+          capturedCount={mergedCapturedSize}
+          internalBookId={internalBookId}
+          settings={settings}
+          onJumpHref={jumpToHref}
+          onJumpPercent={jumpToPercent}
+          onJumpCfi={jumpToCfi}
+          onSettingsChange={update}
+          onIncFontSize={incFontSize}
+          onDecFontSize={decFontSize}
+          onResetSettings={reset}
+          onDeleteBookmark={handleDeleteBookmark}
+          onDeleteHighlight={handleDeleteHighlight}
+          getColor={wordColors.getColor}
+          setColor={wordColors.setColor}
+          getCurrentSnippet={getCurrentSnippet}
+          currentCfi={currentCfi}
+          onTapTitle={() => setChromeHidden(true)}
+        />
+      )}
 
       {readerError && (
         <div className="bg-destructive/10 text-destructive text-sm p-3 border-b border-destructive/30">
@@ -403,15 +428,30 @@ export default function ReadPage({
             <CubeLoader title="Cargando libro" subtitle={title} />
           </div>
         )}
+        {/* Immersive overlay: when chrome is hidden, a tap anywhere on
+            the reader surface brings the chrome back. The overlay also
+            blocks iframe interaction while hidden — reading mode is
+            visual-only; to capture a word the user taps once to wake
+            the chrome, then double-clicks the word. */}
+        {chromeHidden && (
+          <button
+            type="button"
+            onClick={() => setChromeHidden(false)}
+            className="absolute inset-0 z-10 cursor-pointer"
+            aria-label="Mostrar controles del lector"
+          />
+        )}
       </div>
 
-      <ReaderProgressBar
-        pct={progressPct}
-        pageLabel={pageLabel}
-        onJumpPercent={(pct) => {
-          jumpToPercent(pct);
-        }}
-      />
+      {!chromeHidden && (
+        <ReaderProgressBar
+          pct={progressPct}
+          pageLabel={pageLabel}
+          onJumpPercent={(pct) => {
+            jumpToPercent(pct);
+          }}
+        />
+      )}
 
       {popup && (
         <WordPopup

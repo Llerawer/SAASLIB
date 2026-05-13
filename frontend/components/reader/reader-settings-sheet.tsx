@@ -159,7 +159,13 @@ export function ReaderSettingsSheet({
           </div>
         </Section>
 
-        <Section label="Página">
+        {/* `Página` (spread) and the gesture-axis section are desktop-only.
+            On mobile a two-page spread crams text into unreadable columns;
+            the page also forces spread="single" at engine level on small
+            viewports (see effectiveSettings in app/(app)/read/[bookId]/page.tsx)
+            so even if a user toggled "Dos hojas" on desktop and then picked
+            up their phone, the reader renders single-page. */}
+        <Section label="Página" className="hidden md:block">
           <div className="grid grid-cols-2 gap-2">
             {SPREAD_OPTIONS.map((s) => (
               <Pill
@@ -177,7 +183,7 @@ export function ReaderSettingsSheet({
         </Section>
 
         {settings.spread === "single" && (
-          <Section label="Dirección del gesto">
+          <Section label="Dirección del gesto" className="hidden md:block">
             <div className="grid grid-cols-2 gap-2">
               {GESTURE_OPTIONS.map((g) => (
                 <Pill
@@ -215,13 +221,15 @@ function Section({
   label,
   icon,
   children,
+  className,
 }: {
   label: string;
   icon?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", className)}>
       <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
         {icon}
         {label}
