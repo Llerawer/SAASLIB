@@ -82,9 +82,12 @@ Tres familias, cada una con un trabajo:
 
 | Familia | Para qué | Pesos |
 |---|---|---|
-| **Geist Sans** | UI controls, labels, navigation, badges, headings cortos | 400, 500, 600, 700 |
+| **Bricolage Grotesque** | Marketing chrome (landing + auth headlines, CTAs, labels, kickers) | 300, 400, 500 |
+| **Geist Sans** | App-interior UI (reader chrome, sidebar nav, badges, in-app buttons) | 400, 500, 600, 700 |
 | **Source Serif 4** | Definiciones, ejemplos, contexto, sinopsis, todo lo "leído" en la app | 400, 600 italic |
 | **Geist Mono** | IPA, lemma, valores numéricos en stats | 400 |
+
+Bricolage es la sans del marketing-register; Geist es la sans del product-register. Cumplen el mismo rol (UI sans) en sus respectivos registros — las superficies de marca reciben el corte más distintivo.
 
 **Escala** (1.25 ratio):
 - `text-xs` 12px (mínimo absoluto, para captions)

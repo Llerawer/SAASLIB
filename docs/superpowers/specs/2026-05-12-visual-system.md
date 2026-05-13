@@ -73,8 +73,11 @@ Si todo es oscuro + serif + contemplativo + silencioso sin un toque humano, el p
 | Familia | Dónde vive | Dónde NO |
 |---|---|---|
 | **Source Serif 4** | Headlines de landing, h1 de masthead, texto-de-lectura largo (reader, párrafos de empty states emocionales), citas | UI funcional, botones, labels, mobile chrome, inputs |
-| **Geist Sans** | Toda la interfaz: botones, labels, body de cards, sub-copy, navegación, forms | Headlines emocionales, IPA |
+| **Bricolage Grotesque** | Marketing chrome: landing + auth (kickers, labels, CTAs, pill rows, footnotes), bookplate de auth | Body de lectura, IPA, UI funcional dentro de la app |
+| **Geist Sans** | App-interior UI: botones, labels, body de cards, sub-copy, navegación, forms del reader/SRS/biblioteca | Headlines emocionales, IPA, marketing surfaces |
 | **Geist Mono** | IPA, contadores (`128`), timestamps, deck counts, tokens de teclado, metadata "captured 3d ago" | Body, headlines, cualquier prosa |
+
+> **Nota sobre las dos sans.** Brand-register (landing, auth, emails marketing) usa Bricolage Grotesque; product-register (reader, biblioteca, SRS, settings) usa Geist Sans. Ambas satisfacen "una sola sans bien elegida" en su registro — el corte más distintivo (Bricolage) vive en las superficies de marca, el corte neutro (Geist) en el producto día a día. Las dos sans nunca conviven dentro de una misma pantalla.
 
 ### Escala (rem, base 16px)
 
