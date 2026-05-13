@@ -57,6 +57,7 @@ export function ReviewCard({
         translation: card.translation,
         definition: card.definition,
         examples: card.examples,
+        cloze_context: card.cloze_context,
         dateString: localDateString(),
       }),
     [card],
@@ -197,6 +198,14 @@ function findMaskedExample(
   card: ReviewQueueCard,
 ): { original: string; masked: string } | null {
   if (variant !== "cloze") return null;
+  // Prefer the user's own captured context — the sentence they actually
+  // saw when they decided this word was worth saving. Falls back to a
+  // dictionary example only when the capture context isn't usable
+  // (short fragment, missing word, or this card has no captures yet).
+  if (card.cloze_context) {
+    const m = maskCloze(card.cloze_context, card.word, card.word_normalized);
+    if (m) return { original: card.cloze_context, masked: m };
+  }
   for (const ex of card.examples) {
     const m = maskCloze(ex, card.word, card.word_normalized);
     if (m) return { original: ex, masked: m };

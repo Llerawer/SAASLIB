@@ -557,6 +557,12 @@ export type ReviewQueueCard = {
   deck_id: string;
   // Null until the backend enrichment worker processes the card.
   enrichment: import("@/lib/srs/enrichment").Enrichment | null;
+  /** When set, the reviewer renders this sentence with the headword
+   *  blanked out as the card's front, training production recall
+   *  ("complete the sentence") instead of bare recognition. Backend
+   *  picks it from the card's first source capture if it's long
+   *  enough and actually contains the word. */
+  cloze_context: string | null;
 };
 
 export type GradeResult = {

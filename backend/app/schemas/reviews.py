@@ -33,6 +33,12 @@ class ReviewQueueCard(BaseModel):
     # null until the cron worker processes the card. UI must render OK
     # without it.
     enrichment: dict | None = None
+    # Cloze front: the captured context_sentence (from the card's most
+    # recent source capture) when it's substantive enough to teach
+    # production — i.e. >= 24 chars and the headword actually appears
+    # in it. The frontend renders this with the word blanked out as the
+    # card's front, falling back to the bare word when null.
+    cloze_context: str | None = None
 
 
 class GradeResult(BaseModel):

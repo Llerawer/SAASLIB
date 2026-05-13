@@ -8,6 +8,10 @@ export type VariantInput = {
   translation: string | null;
   definition: string | null;
   examples: string[];
+  /** The user's captured context, when long enough and containing the
+   *  headword. Preferred cloze source over dictionary examples — it's
+   *  the sentence the user actually saw. */
+  cloze_context?: string | null;
   /** YYYY-MM-DD local date string */
   dateString: string;
 };
@@ -31,12 +35,17 @@ export function resolveVariant(input: VariantInput): Variant {
   const idx = fnv1a32(`${input.card_id}|${input.dateString}`) % 3;
   let chosen = CANDIDATES[idx];
 
-  // Fallback: cloze sin ejemplo válido → production
+  // Fallback: cloze sin oración masqueable → production. Captured
+  // context wins as the cloze source when present; otherwise we scan
+  // the dictionary examples.
   if (chosen === "cloze") {
-    const can = input.examples.some(
+    const canFromContext =
+      !!input.cloze_context &&
+      maskCloze(input.cloze_context, input.word, input.word_normalized) !== null;
+    const canFromExamples = input.examples.some(
       (ex) => maskCloze(ex, input.word, input.word_normalized) !== null,
     );
-    if (!can) chosen = "production";
+    if (!canFromContext && !canFromExamples) chosen = "production";
   }
 
   // Fallback: production sin translation NI definition → recognition

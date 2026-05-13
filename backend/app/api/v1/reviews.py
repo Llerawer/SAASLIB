@@ -39,6 +39,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Minimum length for a captured sentence to be useful as a cloze front.
+# Shorter than this and the user either sees a fragment ("Yes.") or the
+# target word IS most of the line — neither teaches production.
+_CLOZE_MIN_CONTEXT_LEN = 24
+
+
+def _pick_cloze(word: str, context: str | None) -> str | None:
+    """Return the context to render as cloze front, or None to fall
+    back to the bare-word front. Triggers when context is long enough
+    AND actually contains the headword (case-insensitive)."""
+    if not context:
+        return None
+    ctx = context.strip()
+    if len(ctx) < _CLOZE_MIN_CONTEXT_LEN:
+        return None
+    if word.lower() not in ctx.lower():
+        return None
+    return ctx
+
+
 @router.get("/queue", response_model=list[ReviewQueueCard])
 @limiter.limit("60/minute")
 async def queue(
@@ -107,6 +127,36 @@ async def queue(
         cards_q = cards_q.in_("deck_id", deck_ids)
     cards = cards_q.execute().data or []
     cards_by_id = {c["id"]: c for c in cards}
+
+    # Batch-fetch a cloze context per card. Each card has a
+    # source_capture_ids uuid[] (max 20); the FIRST element is the
+    # earliest/representative capture for that lemma. We collect one
+    # capture id per card, do ONE SELECT, then assemble per-card
+    # contexts in Python. Saves N+1 round-trips.
+    candidate_caps: list[str] = []
+    cap_to_card: dict[str, str] = {}
+    for c in cards:
+        ids = c.get("source_capture_ids") or []
+        if not ids:
+            continue
+        first = ids[0]
+        candidate_caps.append(first)
+        cap_to_card[first] = c["id"]
+    contexts_by_card: dict[str, str] = {}
+    if candidate_caps:
+        cap_rows = (
+            client.table("captures")
+            .select("id,context_sentence")
+            .in_("id", candidate_caps)
+            .execute()
+            .data
+            or []
+        )
+        for row in cap_rows:
+            ctx = (row.get("context_sentence") or "").strip()
+            cid = cap_to_card.get(row["id"])
+            if cid and ctx:
+                contexts_by_card[cid] = ctx
     out: list[ReviewQueueCard] = []
     for s in sched:
         c = cards_by_id.get(s["card_id"])
@@ -133,6 +183,7 @@ async def queue(
                 user_audio_url=_media_path_to_url(c.get("user_audio_url")),
                 flag=int(c.get("flag") or 0),
                 enrichment=c.get("enrichment"),
+                cloze_context=_pick_cloze(c["word"], contexts_by_card.get(c["id"])),
             )
         )
     return out
