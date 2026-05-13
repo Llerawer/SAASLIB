@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ListVideo, Loader2 } from "lucide-react";
+import { Check, ListVideo, Loader2 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import type { SeriesOut } from "@/lib/series/queries";
 
 function fmtDuration(seconds: number | null): string {
@@ -20,6 +21,7 @@ function fmtDuration(seconds: number | null): string {
 export function SeriesCard({ series }: { series: SeriesOut }) {
   const isImporting =
     series.import_status === "importing" || series.import_status === "pending";
+  const isDone = series.import_status === "done";
   const progressPct =
     series.video_count > 0
       ? Math.round(
@@ -31,7 +33,14 @@ export function SeriesCard({ series }: { series: SeriesOut }) {
   return (
     <Link
       href={`/series/${series.id}`}
-      className="group relative block rounded-lg border border-border bg-card hover:border-foreground/20 transition-colors overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(
+        "group relative block rounded-lg border bg-card transition-colors overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        // Done: warm accent border signals "esto es tuyo, está completo".
+        // Otherwise: neutral border like a regular video card.
+        isDone
+          ? "border-accent/40 hover:border-accent/70"
+          : "border-border hover:border-foreground/20",
+      )}
       aria-label={`Serie: ${series.title}`}
     >
       <div
@@ -58,6 +67,15 @@ export function SeriesCard({ series }: { series: SeriesOut }) {
           <ListVideo className="h-3 w-3" />
           <span>{series.video_count}</span>
         </div>
+        {isDone && (
+          <div
+            className="absolute top-2 left-2 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white shadow-sm"
+            aria-label="Serie completa"
+            title="Serie completa"
+          >
+            <Check className="h-3 w-3" strokeWidth={3} />
+          </div>
+        )}
         {isImporting && (
           <div className="absolute inset-x-0 bottom-0 h-1 bg-foreground/10">
             <div
