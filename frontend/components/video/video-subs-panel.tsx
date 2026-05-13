@@ -262,10 +262,10 @@ export function VideoSubsPanel({
             popupOpen ? "bg-muted/30 rounded-md px-2 -mx-2" : ""
           } ${
             hideSubs
-              ? "blur-md hover:blur-none focus-within:blur-none transition-[filter] duration-200"
-              : ""
+              ? "opacity-0 pointer-events-none transition-opacity duration-150"
+              : "opacity-100 transition-opacity duration-150"
           }`}
-          title={hideSubs ? "Subs ocultos — pasa el cursor para revelar (H)" : undefined}
+          title={hideSubs ? "Subs ocultos (pulsa H para mostrar)" : undefined}
         >
           <CueWords
             cue={currentCue}
@@ -317,10 +317,10 @@ function CueRow({
           : ""
       } ${
         hideSubs
-          ? "blur-md hover:blur-none focus:blur-none transition-[filter] duration-200"
-          : ""
+          ? "opacity-0 pointer-events-none transition-opacity duration-150"
+          : "opacity-100 transition-opacity duration-150"
       }`}
-      title={hideSubs ? "Subs ocultos — pasa el cursor (H)" : "Saltar a este cue"}
+      title={hideSubs ? "Subs ocultos (H para mostrar)" : "Saltar a este cue"}
     >
       {cue.text}
     </button>
