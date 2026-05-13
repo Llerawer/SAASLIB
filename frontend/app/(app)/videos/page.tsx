@@ -14,7 +14,10 @@ import {
 import { VideoCard } from "@/components/video/video-card";
 import { VideoCardSkeleton } from "@/components/video/video-card-skeleton";
 import { HiddenVideosSection } from "@/components/video/hidden-videos-section";
-import { parseVideoId } from "@/lib/video/parse-url";
+import { SeriesCard } from "@/components/video/series-card";
+import { SeriesImportModal } from "@/components/video/series-import-modal";
+import { useListSeries } from "@/lib/series/queries";
+import { isPlaylistUrl, parseVideoId } from "@/lib/video/parse-url";
 import { videoErrorCopy } from "@/lib/video/error-messages";
 
 // "Continuar viendo" thresholds: only show videos where the user is
@@ -29,10 +32,13 @@ const CONTINUE_MAX_ITEMS = 4;
 export default function VideosPage() {
   const router = useRouter();
   const list = useListVideos();
+  const series = useListSeries();
   const ingest = useIngestVideo();
   const hideVideo = useHideVideo();
   const unhideVideo = useUnhideVideo();
   const [url, setUrl] = useState("");
+  // Set when the user submits a URL that turns out to be a playlist.
+  const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
 
   function dispatchIngest(rawUrl: string, navigateTo: boolean) {
     const videoId = parseVideoId(rawUrl);
@@ -71,6 +77,15 @@ export default function VideosPage() {
     const trimmed = url.trim();
     if (!trimmed) {
       toast.info("Pega una URL de YouTube para empezar.");
+      return;
+    }
+    // Playlist URL → open preview modal instead of immediate ingest.
+    // We check playlist FIRST: a `?v=...&list=...` URL is both video and
+    // playlist, and the user's intent when sharing-with-list is the
+    // series, not just the one video.
+    if (isPlaylistUrl(trimmed)) {
+      setPlaylistUrl(trimmed);
+      setUrl("");
       return;
     }
     dispatchIngest(trimmed, true);
@@ -131,6 +146,46 @@ export default function VideosPage() {
       return bT - aT;
     })
     .slice(0, CONTINUE_MAX_ITEMS);
+
+  // Main grid excludes anything already in "Continuar viendo" to avoid
+  // double-renders. Then group: a video with a series_id collapses
+  // into ONE SeriesCard. Standalones render as VideoCards as before.
+  // The grid sorts by updated_at desc so a freshly-imported series
+  // floats to the top naturally.
+  const continueIds = new Set(continueWatching.map((v) => v.video_id));
+  const restVideos = (list.data ?? []).filter(
+    (v) => !continueIds.has(v.video_id),
+  );
+  const seriesById = new Map(
+    (series.data ?? []).map((s) => [s.id, s] as const),
+  );
+  const standaloneVideos = restVideos.filter((v) => !v.series_id);
+  const seenSeriesIds = new Set<string>();
+  type GridCard =
+    | { kind: "video"; updatedAt: string; data: (typeof restVideos)[number] }
+    | {
+        kind: "series";
+        updatedAt: string;
+        data: NonNullable<ReturnType<typeof seriesById.get>>;
+      };
+  const gridCards: GridCard[] = [];
+  for (const v of standaloneVideos) {
+    gridCards.push({ kind: "video", updatedAt: v.updated_at, data: v });
+  }
+  for (const v of restVideos) {
+    if (!v.series_id || seenSeriesIds.has(v.series_id)) continue;
+    const s = seriesById.get(v.series_id);
+    if (!s) continue;
+    seenSeriesIds.add(v.series_id);
+    gridCards.push({ kind: "series", updatedAt: s.updated_at, data: s });
+  }
+  // Also include series with NO videos yet (just-started import).
+  for (const s of series.data ?? []) {
+    if (seenSeriesIds.has(s.id)) continue;
+    seenSeriesIds.add(s.id);
+    gridCards.push({ kind: "series", updatedAt: s.updated_at, data: s });
+  }
+  gridCards.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-6">
@@ -252,20 +307,32 @@ export default function VideosPage() {
         </section>
       )}
 
-      {!isInitialLoading && (list.data?.length ?? 0) > 0 && (
+      {!isInitialLoading && gridCards.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {list.data?.map((v) => (
-            <VideoCard
-              key={v.video_id}
-              video={v}
-              onRetry={handleRetry}
-              onHide={handleHide}
-            />
-          ))}
+          {gridCards.map((c) =>
+            c.kind === "series" ? (
+              <SeriesCard key={`s-${c.data.id}`} series={c.data} />
+            ) : (
+              <VideoCard
+                key={c.data.video_id}
+                video={c.data}
+                onRetry={handleRetry}
+                onHide={handleHide}
+              />
+            ),
+          )}
         </div>
       )}
 
       <HiddenVideosSection />
+
+      <SeriesImportModal
+        url={playlistUrl ?? ""}
+        open={!!playlistUrl}
+        onOpenChange={(next) => {
+          if (!next) setPlaylistUrl(null);
+        }}
+      />
     </div>
   );
 }

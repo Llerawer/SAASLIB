@@ -376,6 +376,9 @@ export type VideoListItem = {
   last_viewed_at: string | null;
   /** Words this user captured from this video (0 if none). */
   captures_count: number;
+  /** When set, this video belongs to an imported series. The /videos
+   * grid groups by this so users see one card per series. */
+  series_id: string | null;
 };
 
 export type VideoCue = {
@@ -832,6 +835,7 @@ export function useIngestVideo() {
           last_position_s: null,
           last_viewed_at: null,
           captures_count: 0,
+          series_id: null,
         };
         return [optimistic, ...(old ?? [])];
       });
