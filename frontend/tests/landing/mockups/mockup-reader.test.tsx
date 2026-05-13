@@ -16,8 +16,10 @@ describe("MockupReader", () => {
     expect(target.textContent).toMatch(/glimpse/i);
   });
 
-  it("shows the captured-word footer count", () => {
+  it("no longer carries the captured-word count in the cream-panel footer (now in the floating mazo)", () => {
     render(<MockupReader />);
-    expect(screen.getByText(/127 palabras capturadas/i)).toBeInTheDocument();
+    expect(screen.queryByText(/127 palabras capturadas/i)).not.toBeInTheDocument();
+    // Progress percentage stays on the cream panel.
+    expect(screen.getByText(/15%/)).toBeInTheDocument();
   });
 });

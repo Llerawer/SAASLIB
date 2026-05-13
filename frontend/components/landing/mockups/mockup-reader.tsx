@@ -197,17 +197,12 @@ export function MockupReader({ tilt = true }: { tilt?: boolean }) {
               </p>
             </div>
 
-            {/* Bottom strip */}
+            {/* Bottom strip — captura counter lives in the floating mazo outside
+                the cream panel; only the progress percentage remains here. */}
             <div
-              className="px-6 py-3 flex items-center justify-between"
+              className="px-6 py-3 flex items-center justify-end"
               style={{ borderTop: "1px solid var(--landing-hairline)" }}
             >
-              <p
-                className="text-[0.72rem] italic text-[color:var(--landing-ink-faint)]"
-                style={{ fontFamily: "var(--font-geist-mono), monospace" }}
-              >
-                127 palabras capturadas
-              </p>
               <p
                 className="text-[0.72rem] text-[color:var(--landing-ink-faint)]"
                 style={{ fontFamily: "var(--font-geist-mono), monospace" }}

@@ -59,4 +59,16 @@ describe("HeroStage", () => {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
+
+  it("renders the floating mazo with the captured word and counter (PRODUCT.md §54-60 signature frame)", () => {
+    const { container } = render(<HeroStage />);
+    const mazos = container.querySelectorAll("[data-hero-mazo]");
+    expect(mazos.length).toBeGreaterThan(0);
+    const counters = container.querySelectorAll("[data-hero-mazo-counter]");
+    expect(counters.length).toBeGreaterThan(0);
+    expect(counters[0].textContent).toMatch(/127/);
+    const tops = container.querySelectorAll("[data-hero-mazo-top]");
+    expect(tops.length).toBeGreaterThan(0);
+    expect(tops[0].textContent?.toLowerCase()).toMatch(/glimpse/);
+  });
 });

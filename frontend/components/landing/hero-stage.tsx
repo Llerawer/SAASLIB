@@ -2,19 +2,26 @@
 
 import { useRef } from "react";
 import Link from "next/link";
-import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
+import { motion, useInView, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { MockupReader } from "./mockups/mockup-reader";
+import { HeroMazo } from "./hero-mazo";
 
 const REVEAL_EASE = [0.22, 1, 0.36, 1] as const;
 
 /**
- * Simplified hero: centered editorial copy + a single reader mockup below.
- * The mockup scroll-unfolds (rotateX -12 → -2, scale 0.94 → 1, y 60 → 0,
- * opacity 0.6 → 1). No paragraph/popup/deck choreography — clarity over
- * sophistication. The mockup itself shows the core loop frame.
+ * Hero — restores the signature frame from PRODUCT.md §54-60:
+ * editorial copy + reader mockup with `glimpse` underlined + a 3-card mazo
+ * floating OUTSIDE the cream panel with the `127` counter, connected by a
+ * thin terracota hairline that draws "captured word → lives in your deck".
+ *
+ * The reader mockup keeps the scroll-unfold (rotateX, scale, y, opacity).
+ * The mazo enters with its own reveal (opacity + translateY 14, 500ms,
+ * delay 0.5s). On mobile the mazo stacks below the mockup centered.
  */
 export function HeroStage() {
   const heroRef = useRef<HTMLElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const stageInView = useInView(stageRef, { once: true, margin: "-80px" });
   const prefersReduced = useReducedMotion();
 
   const { scrollYProgress } = useScroll({
@@ -70,6 +77,14 @@ export function HeroStage() {
         >
           Lee libros, artículos, videos. Captura palabras sin romper el flow. Tu biblioteca te recuerda.
         </motion.p>
+        <motion.p
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: prefersReduced ? 0 : 0.5, ease: REVEAL_EASE, delay: 0.2 }}
+          className="prose-serif italic text-[clamp(0.95rem,1.4vw,1.1rem)] text-[color:var(--stage-ink-faint)] mt-3"
+        >
+          Lee. Captura. No olvides.
+        </motion.p>
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -118,10 +133,69 @@ export function HeroStage() {
         </motion.p>
       </header>
 
-      {/* Single mockup with scroll-unfold motion */}
-      <motion.div style={motionStyle}>
-        <MockupReader tilt={false} />
-      </motion.div>
+      {/* Signature frame: reader mockup + mazo floating to its right.
+          Desktop: mazo is absolutely positioned outside the cream panel.
+          Mobile: mazo stacks below, centered. */}
+      <div ref={stageRef} className="relative">
+        <motion.div style={motionStyle}>
+          <MockupReader tilt={false} />
+        </motion.div>
+
+        {/* Connecting hairline — terracota SVG path from `glimpse` underline
+            up-and-right to the top card of the mazo. Desktop only; the mazo
+            sits below on mobile so the connection makes no sense there.
+            Draws in over 800ms once both are in view. */}
+        <motion.svg
+          aria-hidden="true"
+          className="hidden lg:block pointer-events-none absolute z-0"
+          style={{
+            top: "44%",
+            right: "-30px",
+            width: 160,
+            height: 90,
+            overflow: "visible",
+            opacity: 0.18,
+          }}
+          viewBox="0 0 160 90"
+          fill="none"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={
+            stageInView
+              ? { pathLength: 1, opacity: 0.18 }
+              : { pathLength: 0, opacity: 0 }
+          }
+          transition={{
+            duration: prefersReduced ? 0 : 0.8,
+            ease: REVEAL_EASE,
+            delay: prefersReduced ? 0 : 0.9,
+          }}
+        >
+          <motion.path
+            d="M 0 70 C 50 70, 90 30, 150 18"
+            stroke="var(--stage-accent)"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            fill="none"
+            initial={{ pathLength: 0 }}
+            animate={stageInView ? { pathLength: 1 } : { pathLength: 0 }}
+            transition={{
+              duration: prefersReduced ? 0 : 0.8,
+              ease: REVEAL_EASE,
+              delay: prefersReduced ? 0 : 0.9,
+            }}
+          />
+        </motion.svg>
+
+        {/* Desktop mazo — floats absolutely to the right of the cream panel */}
+        <div className="hidden lg:block absolute top-1/2 -translate-y-1/2 right-[-180px] z-10">
+          <HeroMazo />
+        </div>
+
+        {/* Mobile/tablet mazo — stacks below the reader, centered */}
+        <div className="lg:hidden mt-10 flex justify-center">
+          <HeroMazo />
+        </div>
+      </div>
     </article>
   );
 }
