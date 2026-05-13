@@ -9,7 +9,6 @@ import { SectionPricing } from "@/components/landing/section-pricing";
 import { SectionSocial } from "@/components/landing/section-social";
 import { LandingFooter } from "@/components/landing/landing-footer";
 import { LandingSidenav } from "@/components/landing/landing-sidenav";
-import { ScrollProgress } from "@/components/landing/scroll-progress";
 import { SectionDivider } from "@/components/landing/section-divider";
 import { InstallPrompt } from "@/components/landing/install-prompt";
 
@@ -17,7 +16,6 @@ export default function LandingPreviewPage() {
   return (
     <main className="relative min-h-screen">
       <LandingBgEffects />
-      <ScrollProgress />
       <LandingSidenav />
       <InstallPrompt />
       <div className="relative">

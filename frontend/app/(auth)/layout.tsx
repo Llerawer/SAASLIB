@@ -136,13 +136,13 @@ export default function AuthLayout({
                 className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--landing-ink-faint)]"
                 style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
               >
-                Ex libris
+                Tu biblioteca
               </span>
               <span
                 className="text-[0.78rem] italic text-[color:var(--landing-ink-muted)]"
                 style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
               >
-                tu acceso personal
+                LinguaReader · ediciones
               </span>
             </div>
           </div>
