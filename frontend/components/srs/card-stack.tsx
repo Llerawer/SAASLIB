@@ -525,6 +525,8 @@ function CardFace({
             <img
               src={card.user_image_url}
               alt={card.word}
+              loading="lazy"
+              decoding="async"
               className="max-h-full max-w-full object-contain rounded-lg"
             />
             {interactive && (

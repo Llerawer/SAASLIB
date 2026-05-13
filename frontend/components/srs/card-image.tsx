@@ -55,6 +55,8 @@ export function CardImage({ cardId, url, alt }: Props) {
         <img
           src={url}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           className="block max-h-72 w-auto object-contain"
         />
       </button>
