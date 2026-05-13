@@ -54,9 +54,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  ReaderPronounceSheet,
+  type ReaderPronounceSheetState,
+} from "@/components/reader/reader-pronounce-sheet";
 
 import { TAG_OPTIONS, tagTone, sortTags } from "@/lib/vocabulary/tags";
-import { pronounceHref } from "@/lib/reader/pronounce-link";
 
 export default function VocabularyPage() {
   const pendingQuery = useCapturesList({ promoted: false, limit: 200 });
@@ -70,6 +73,12 @@ export default function VocabularyPage() {
   // enrich; null means the modal is closed.
   const [enrichTargetIds, setEnrichTargetIds] = useState<string[] | null>(null);
   const [enrichPreview, setEnrichPreview] = useState<EnrichPreview | null>(null);
+  // Pronounce sheet — same overlay we use in the EPUB reader, so the
+  // user stays on the inbox page instead of being yanked to /pronounce/...
+  const [pronounceSheet, setPronounceSheet] =
+    useState<ReaderPronounceSheetState | null>(null);
+  // Bulk-delete confirm dialog state (replaces window.confirm).
+  const [deleteConfirmIds, setDeleteConfirmIds] = useState<string[] | null>(null);
 
   const promote = usePromoteCaptures();
   const del = useDeleteCapture();
@@ -126,16 +135,20 @@ export default function VocabularyPage() {
     }
   }
 
-  async function handleDeleteIds(ids: string[]) {
+  /** Opens the typed confirm dialog. Actual deletion happens in
+   * `confirmDelete` after the user clicks "Borrar". */
+  function handleDeleteIds(ids: string[]) {
     if (ids.length === 0) return;
-    if (
-      !confirm(
-        ids.length === 1
-          ? "¿Borrar esta captura? Esta acción no se puede deshacer."
-          : `¿Borrar ${ids.length} capturas? Esta acción no se puede deshacer.`,
-      )
-    )
+    setDeleteConfirmIds(ids);
+  }
+
+  async function confirmDelete() {
+    const ids = deleteConfirmIds;
+    if (!ids || ids.length === 0) {
+      setDeleteConfirmIds(null);
       return;
+    }
+    setDeleteConfirmIds(null);
     setRemovingIds((prev) => new Set([...prev, ...ids]));
     try {
       await Promise.all(ids.map((id) => del.mutateAsync(id)));
@@ -307,15 +320,21 @@ export default function VocabularyPage() {
                       </p>
                     )}
                   </div>
-                  <Link
-                    href={pronounceHref(c.word_normalized)}
-                    onClick={(e) => e.stopPropagation()}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPronounceSheet({
+                        word: c.word_normalized,
+                        autoPlay: true,
+                      });
+                    }}
                     className="shrink-0 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     aria-label={`Escuchar nativos pronunciar ${c.word_normalized}`}
                     title="Escuchar nativos"
                   >
                     <Headphones className="h-3.5 w-3.5" />
-                  </Link>
+                  </button>
                 </div>
               </li>
             );
@@ -485,6 +504,41 @@ export default function VocabularyPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk-delete confirm dialog (typed AlertDialog, not native confirm()). */}
+      <AlertDialog
+        open={deleteConfirmIds !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmIds(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirmIds && deleteConfirmIds.length === 1
+                ? "¿Borrar esta captura?"
+                : `¿Borrar ${deleteConfirmIds?.length ?? 0} capturas?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDelete}>
+              Borrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Inline pronounce overlay — same component the EPUB reader uses,
+          so the click stays on this page instead of routing the user
+          to /pronounce/{word}. */}
+      <ReaderPronounceSheet
+        state={pronounceSheet}
+        onClose={() => setPronounceSheet(null)}
+      />
     </div>
   );
 }

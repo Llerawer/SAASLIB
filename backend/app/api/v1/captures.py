@@ -415,11 +415,22 @@ async def enrich_batch(
             failed += 1
             continue
 
-        # Tag which path filled it so analytics + future re-enrich
-        # logic can distinguish cache hits from paid LLM responses.
-        client.table("captures").update({"enrichment": result}).eq(
-            "id", r["id"]
-        ).execute()
+        # Map the provider's flat dict onto the captures columns.
+        # The enrichment schema uses *_es suffixes (Spanish target);
+        # captures columns are language-neutral (translation / definition).
+        # We write defensively — only set non-null fields so a partial
+        # provider response doesn't wipe existing data.
+        patch: dict = {}
+        if result.get("translation"):
+            patch["translation"] = result["translation"]
+        if result.get("definition_es") or result.get("definition"):
+            patch["definition"] = result.get("definition_es") or result.get("definition")
+        if result.get("ipa"):
+            patch["ipa"] = result["ipa"]
+        if result.get("examples_es") or result.get("examples"):
+            patch["examples"] = result.get("examples_es") or result.get("examples")
+        if patch:
+            client.table("captures").update(patch).eq("id", r["id"]).execute()
         enriched += 1
         if is_local:
             local += 1
