@@ -3,7 +3,7 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -428,18 +428,24 @@ export default function ReadPage({
             <CubeLoader title="Cargando libro" subtitle={title} />
           </div>
         )}
-        {/* Immersive overlay: when chrome is hidden, a tap anywhere on
-            the reader surface brings the chrome back. The overlay also
-            blocks iframe interaction while hidden — reading mode is
-            visual-only; to capture a word the user taps once to wake
-            the chrome, then double-clicks the word. */}
+        {/* Immersive mode affordance: a small pill at top-center when
+            chrome is hidden. Earlier iteration used a full-area overlay
+            but that blocked swipe / scroll inside the iframe — the user
+            couldn't navigate pages with the chrome down. Subtle pill
+            keeps the rest of the surface free for engine gestures
+            (swipe horizontal / scroll vertical) and gives an explicit
+            way to bring chrome back without surprise tap-zones. */}
         {chromeHidden && (
           <button
             type="button"
             onClick={() => setChromeHidden(false)}
-            className="absolute inset-0 z-10 cursor-pointer"
+            className="absolute left-1/2 -translate-x-1/2 z-10 mt-2 inline-flex items-center gap-1 rounded-full bg-foreground/10 backdrop-blur-sm px-3 py-1.5 text-xs text-foreground/70 hover:bg-foreground/15 transition-colors"
+            style={{ top: "env(safe-area-inset-top, 0px)" }}
             aria-label="Mostrar controles del lector"
-          />
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+            Controles
+          </button>
         )}
       </div>
 
