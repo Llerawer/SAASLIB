@@ -628,6 +628,7 @@ export default function WatchPage({
             knownSet={knownSet}
             onWordClick={handleWordClick}
             onCueSeek={(s) => playerRef.current?.seekTo(s)}
+            onToggleHideSubs={() => setHideSubs((v) => !v)}
           />
         </div>
       </div>

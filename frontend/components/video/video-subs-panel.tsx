@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronUp, X } from "lucide-react";
+import { ChevronUp, Eye, EyeOff, X } from "lucide-react";
 import { tokenize } from "@/lib/video/tokenize";
 import { formatTime } from "@/lib/video/format-time";
 import type { VideoCue } from "@/lib/api/queries";
@@ -40,6 +40,7 @@ export function VideoSubsPanel({
   matchHeight = null,
   onWordClick,
   onCueSeek,
+  onToggleHideSubs,
 }: {
   prevCues: VideoCue[];
   currentCue: VideoCue | null;
@@ -59,6 +60,10 @@ export function VideoSubsPanel({
   matchHeight?: number | null;
   onWordClick: (payload: WordClickPayload) => void;
   onCueSeek: (cueStart: number) => void;
+  /** Optional handler for the in-panel eye button. Lets the user
+   * toggle subs visibility even when the YouTube iframe has focus
+   * and the global H shortcut can't fire. */
+  onToggleHideSubs?: () => void;
 }) {
   // Detect desktop only on client; SSR-safe default false.
   const [isDesktop, setIsDesktop] = useState(false);
@@ -202,6 +207,21 @@ export function VideoSubsPanel({
               <span className="text-xs tabular text-muted-foreground">
                 {formatTime(currentCue.start_s)}
               </span>
+            )}
+            {onToggleHideSubs && (
+              <button
+                type="button"
+                onClick={onToggleHideSubs}
+                className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 flex items-center justify-center transition-colors"
+                aria-label={hideSubs ? "Mostrar subtítulos" : "Ocultar subtítulos"}
+                title={hideSubs ? "Mostrar subtítulos (H)" : "Ocultar subtítulos (H)"}
+              >
+                {hideSubs ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </button>
             )}
           </div>
         </div>
