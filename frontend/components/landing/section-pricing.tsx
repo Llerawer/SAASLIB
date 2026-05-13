@@ -81,16 +81,7 @@ function PricingPanel({
   variant: "muted" | "accent";
 }) {
   return (
-    <div className="relative" style={{ perspective: "1600px" }}>
-      <div
-        aria-hidden="true"
-        className="absolute -inset-5 rounded-[24px] pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(ellipse at center, oklch(0.72 0.16 38 / 0.10), transparent 70%)",
-          filter: "blur(36px)",
-        }}
-      />
+    <div className="relative">
       <div
         className="landing-paper relative rounded-[16px] bg-paper-noise overflow-hidden p-8 md:p-10 flex flex-col h-full"
         style={{

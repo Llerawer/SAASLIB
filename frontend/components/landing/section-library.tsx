@@ -12,7 +12,7 @@ export function SectionLibrary() {
     <section
       id="biblioteca"
       aria-labelledby="library-heading"
-      className="relative w-full max-w-[1080px] mx-auto px-6 md:px-10 py-20 md:py-32"
+      className="relative w-full max-w-[1200px] mx-auto px-6 md:px-10 py-20 md:py-32"
     >
       <header className="text-center max-w-[44rem] mx-auto mb-12 md:mb-16">
         <SectionReveal
