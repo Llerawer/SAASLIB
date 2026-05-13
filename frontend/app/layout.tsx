@@ -34,16 +34,49 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
-  title: "LinguaReader",
-  description: "Lee en inglés, captura palabras, repasa con SRS.",
+  // Placeholder production URL — swap to the real domain when known. Required
+  // so Next resolves opengraph-image / twitter-image into absolute URLs for
+  // social previews (Twitter/X, Facebook, Telegram, WhatsApp, Reddit, etc.).
+  metadataBase: new URL("https://linguareader.app"),
+  title: {
+    default: "LinguaReader — Aprende inglés sin dejar de leer lo que amas",
+    template: "%s · LinguaReader",
+  },
+  description:
+    "Lee libros, artículos, videos. Captura palabras sin romper el flow. Tu biblioteca te recuerda.",
+  keywords: [
+    "aprender inglés",
+    "lectura en inglés",
+    "pronunciación",
+    "spaced repetition",
+    "extensión navegador",
+    "EPUB",
+    "subtítulos",
+  ],
   applicationName: "LinguaReader",
   appleWebApp: {
     capable: true,
     title: "LinguaReader",
     statusBarStyle: "default",
   },
+  openGraph: {
+    title: "LinguaReader — Aprende inglés sin dejar de leer lo que amas",
+    description: "Lee. Captura. No olvides.",
+    url: "https://linguareader.app",
+    siteName: "LinguaReader",
+    type: "website",
+    locale: "es_ES",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LinguaReader — Aprende inglés sin dejar de leer lo que amas",
+    description: "Lee. Captura. No olvides.",
+  },
+  robots: { index: true, follow: true },
   // /manifest.webmanifest is served automatically from app/manifest.ts.
   // Next 16 also auto-links app/icon.png + app/apple-icon.png in <head>.
+  // Open Graph + Twitter images are auto-wired from app/opengraph-image.tsx
+  // and app/landing-preview/{opengraph,twitter}-image.tsx.
 };
 
 export const viewport: Viewport = {
