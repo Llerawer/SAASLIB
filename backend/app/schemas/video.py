@@ -48,3 +48,7 @@ class VideoListItem(BaseModel):
     last_position_s: int | None = None
     last_viewed_at: datetime | None = None
     captures_count: int = 0
+    # When set, this video belongs to an imported series. The library
+    # grid uses this to render one SeriesCard per series instead of N
+    # loose VideoCards. Null for videos ingested as standalones.
+    series_id: str | None = None

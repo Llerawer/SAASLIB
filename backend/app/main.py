@@ -24,6 +24,7 @@ from app.api.v1 import (
     internal,
     pronounce,
     reviews,
+    series,
     stats,
     translate,
     videos,
@@ -157,6 +158,7 @@ app.include_router(highlights.router)
 app.include_router(internal.router)
 app.include_router(pronounce.router)
 app.include_router(reviews.router)
+app.include_router(series.router)
 app.include_router(stats.router)
 app.include_router(translate.router)
 app.include_router(videos.router)

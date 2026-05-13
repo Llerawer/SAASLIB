@@ -243,7 +243,7 @@ async def list_videos(
         client.table("videos")
         .select(
             "video_id, title, duration_s, thumb_url, "
-            "status, error_reason, created_at, updated_at"
+            "status, error_reason, created_at, updated_at, series_id"
         )
         .order("updated_at", desc=True)
         .limit(LIST_LIMIT + len(hidden_ids))
