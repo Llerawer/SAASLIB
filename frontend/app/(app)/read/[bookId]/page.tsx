@@ -1,17 +1,63 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 
-import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 
-type EpubUrlResponse = { url: string };
-type BookOut = {
+import { api } from "@/lib/api/client";
+import { WordPopup } from "@/components/word-popup";
+import { ReaderToolbar } from "@/components/reader/reader-toolbar";
+import { ReaderProgressBar } from "@/components/reader/reader-progress-bar";
+import { ReaderSelectionToolbar } from "@/components/reader/reader-selection-toolbar";
+import { ReaderHighlightNoteDialog } from "@/components/reader/reader-highlight-note-dialog";
+import { ReaderHighlightPopover } from "@/components/reader/reader-highlight-popover";
+import { ReaderLastWordMark } from "@/components/reader/reader-last-word-mark";
+import {
+  ReaderPronounceSheet,
+  type ReaderPronounceSheetState,
+} from "@/components/reader/reader-pronounce-sheet";
+import CubeLoader from "@/components/ui/cube-loader";
+
+import {
+  useBookmarks,
+  useCapturedWords,
+  useCreateHighlight,
+  useDeleteBookmark,
+  useDeleteHighlight,
+  useHighlights,
+  useRegisterGutenberg,
+  useSavedProgress,
+  useSaveProgress,
+  useUpdateHighlight,
+  type HighlightColor,
+} from "@/lib/api/queries";
+import { useEpubReader, type TextSelectionEvent } from "@/lib/reader/use-epub-reader";
+import { useReaderSettings } from "@/lib/reader/settings";
+import { useIsMobile } from "@/lib/use-is-mobile";
+import { useWordColors } from "@/lib/reader/word-colors";
+import { buildFormToLemma } from "@/lib/reader/form-to-lemma";
+import { formatPageLabel } from "@/lib/reader/page-label";
+import { DEFAULT_HIGHLIGHT_COLOR } from "@/lib/reader/highlight-colors";
+
+const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8095";
+
+type PopupState = {
+  word: string;
+  normalizedClient: string;
+  contextSentence: string | null;
+  bookId: string | null;
+  pageOrLocation: string | null;
+  position: { x: number; y: number };
+};
+
+type HighlightPopoverState = {
   id: string;
-  title: string;
-  source_ref: string;
+  color: HighlightColor;
+  x: number;
+  y: number;
 };
 
 export default function ReadPage({
@@ -20,114 +66,454 @@ export default function ReadPage({
   params: Promise<{ bookId: string }>;
 }) {
   const { bookId: gutenbergId } = use(params);
-  const searchParams = useSearchParams();
-  const title = searchParams.get("title") ?? "Libro";
-  const author = searchParams.get("author") ?? "";
+  const sp = useSearchParams();
+  const title = sp.get("title") ?? "Libro";
+  const author = sp.get("author") ?? "";
 
-  const viewerRef = useRef<HTMLDivElement | null>(null);
-  const renditionRef = useRef<unknown>(null);
-  const internalBookIdRef = useRef<string | null>(null);
-  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [error, setError] = useState<string | null>(null);
+  // ---------- Persistence: register book → unlock dependent queries ----------
+  const registerGutenberg = useRegisterGutenberg();
+  const [internalBookId, setInternalBookId] = useState<string | null>(null);
+  const [registerError, setRegisterError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let cleanup: (() => void) | null = null;
-
-    (async () => {
-      try {
-        const registered = await api.post<BookOut>(
-          "/api/v1/books/gutenberg/register",
-          {
-            gutenberg_id: Number(gutenbergId),
-            title,
-            author: author || null,
-            language: "en",
-          },
-        );
-        if (cancelled) return;
-        internalBookIdRef.current = registered.id;
-
-        const { url } = await api.get<EpubUrlResponse>(
-          `/api/v1/books/${gutenbergId}/epub-url`,
-        );
-        if (cancelled || !viewerRef.current) return;
-
-        const ePub = (await import("epubjs")).default;
-        const book = ePub(url, { openAs: "epub" });
-        const rendition = book.renderTo(viewerRef.current, {
-          width: "100%",
-          height: "100%",
-          flow: "paginated",
-          manager: "default",
-          spread: "auto",
-        });
-        rendition.display();
-        renditionRef.current = rendition;
-
-        rendition.on("relocated", (location: { start: { cfi: string; percentage: number } }) => {
-          if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
-          progressTimerRef.current = setTimeout(() => {
-            const internalId = internalBookIdRef.current;
-            if (!internalId) return;
-            api
-              .put(`/api/v1/books/${internalId}/progress`, {
-                location: location.start.cfi,
-                percent: Math.round((location.start.percentage ?? 0) * 100),
-              })
-              .catch(() => {
-                /* silent — progress is best-effort */
-              });
-          }, 1500);
-        });
-
-        cleanup = () => {
-          if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
-          rendition.destroy();
-          book.destroy();
-        };
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
+    registerGutenberg
+      .mutateAsync({
+        gutenberg_id: Number(gutenbergId),
+        title,
+        author: author || null,
+        language: "en",
+      })
+      .then((b) => { if (!cancelled) setInternalBookId(b.id); })
+      .catch((err) => {
+        if (!cancelled) setRegisterError(err instanceof Error ? err.message : String(err));
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gutenbergId, title, author]);
 
-  return (
-    <div className="h-[calc(100vh-57px)] flex flex-col">
-      <div className="border-b px-4 py-2 flex items-center gap-2">
+  const savedProgress = useSavedProgress(internalBookId);
+  const saveProgress = useSaveProgress(internalBookId);
+  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ---------- Dependent queries (gated by internalBookId) ----------
+  const captured = useCapturedWords(internalBookId);
+  const bookmarks = useBookmarks(internalBookId);
+  const deleteBookmarkMut = useDeleteBookmark(internalBookId);
+  const highlightsQuery = useHighlights(internalBookId);
+  const createHighlight = useCreateHighlight();
+  const updateHighlight = useUpdateHighlight();
+  const deleteHighlightMut = useDeleteHighlight(internalBookId);
+
+  // ---------- UI state (NO va al hook) ----------
+  const [popup, setPopup] = useState<PopupState | null>(null);
+  const [pronounceSheet, setPronounceSheet] =
+    useState<ReaderPronounceSheetState | null>(null);
+  const [optimisticCaptured, setOptimisticCaptured] = useState<Set<string>>(new Set());
+  const [selectionAnchor, setSelectionAnchor] = useState<{ x: number; y: number } | null>(null);
+  const selectionContextRef = useRef<TextSelectionEvent | null>(null);
+  const [highlightPopover, setHighlightPopover] = useState<HighlightPopoverState | null>(null);
+  const [pendingNoteHighlightId, setPendingNoteHighlightId] = useState<string | null>(null);
+  const [pendingNoteExcerpt, setPendingNoteExcerpt] = useState<string | null>(null);
+  // Rect of the last inspected word — drives the fading "you were here"
+  // marker so the user doesn't lose their place in the prose after
+  // closing the popup or pronounce sheet.
+  const [lastInspectedRect, setLastInspectedRect] = useState<
+    { left: number; top: number; width: number; height: number } | null
+  >(null);
+
+  // ---------- Settings (localStorage hook) ----------
+  const { settings, update, incFontSize, decFontSize, reset } = useReaderSettings();
+  const wordColors = useWordColors(internalBookId);
+  const isMobile = useIsMobile();
+
+  // On phones a two-page spread crams text into unreadable narrow columns.
+  // Override at engine level so even if the user toggled "Dos hojas" on
+  // desktop and then picked up their phone, the reader renders single-page.
+  // The settings sheet also hides the spread/gesture sections on mobile
+  // (see reader-settings-sheet.tsx) so the UI matches reality.
+  const effectiveSettings = useMemo(
+    () =>
+      isMobile
+        ? { ...settings, spread: "single" as const }
+        : settings,
+    [settings, isMobile],
+  );
+
+  // Chrome auto-hide for less-cluttered reading. NO Fullscreen API —
+  // tried it briefly but epub.js doesn't auto-resize when the viewport
+  // dimensions change, leaving the rendition rendering off-screen
+  // (visible as a black page after entering fullscreen). The system
+  // status bar staying visible is a smaller compromise than a broken
+  // book; only the in-app chrome toggles here.
+  const [chromeHidden, setChromeHidden] = useState(false);
+
+  // ---------- Derived data (memoized — F1) ----------
+  const capturedMap = useMemo(
+    () => buildFormToLemma(captured.data ?? [], optimisticCaptured),
+    [captured.data, optimisticCaptured],
+  );
+  const mergedCapturedSize = useMemo(() => {
+    const set = new Set(optimisticCaptured);
+    for (const w of captured.data ?? []) set.add(w.word_normalized);
+    return set.size;
+  }, [captured.data, optimisticCaptured]);
+
+  // ---------- Engine ----------
+  const ready = !!internalBookId && (savedProgress.isSuccess || savedProgress.isError);
+  const epubUrl = ready ? `${apiBase}/api/v1/books/${gutenbergId}/epub` : "";
+  const initialCfi = savedProgress.data?.current_location ?? null;
+
+  const reader = useEpubReader({
+    epubUrl,
+    initialCfi,
+    settings: effectiveSettings,
+    highlights: highlightsQuery.data ?? [],
+    capturedMap,
+    getWordColor: wordColors.getColor,
+    onWordCapture: (e) => {
+      setPopup({
+        word: e.word,
+        normalizedClient: e.normalized,
+        contextSentence: e.contextSentence,
+        bookId: internalBookId,
+        pageOrLocation: null,
+        position: e.iframeCoords,
+      });
+      setLastInspectedRect(e.wordRect);
+    },
+    onTextSelection: (e) => {
+      selectionContextRef.current = e;
+      if (e === null) {
+        setSelectionAnchor(null);
+        return;
+      }
+      const rangeRect = e.range.getBoundingClientRect();
+      const x = e.iframeRect.left + rangeRect.left + rangeRect.width / 2;
+      const y = e.iframeRect.top + rangeRect.top;
+      setSelectionAnchor({ x, y });
+    },
+    onHighlightClick: (e) => {
+      const h = highlightsQuery.data?.find((x) => x.id === e.highlightId);
+      if (!h) return;
+      setHighlightPopover({ id: h.id, color: h.color, x: e.iframeCoords.x, y: e.iframeCoords.y });
+    },
+    onRelocated: (e) => {
+      // F5: cierra popups con coords inválidas
+      setPopup(null);
+      setHighlightPopover(null);
+      setSelectionAnchor(null);
+      setLastInspectedRect(null);
+      // F6: persistencia desacoplada del cómputo de progress
+      if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+      if (!internalBookId) return;
+      progressTimerRef.current = setTimeout(() => {
+        saveProgress.mutate(
+          { location: e.cfi, percent: Math.round(e.percentage * 100) },
+          { onError: () => undefined },
+        );
+      }, 1500);
+    },
+  });
+
+  // Fully destructure reader so the react-hooks/refs rule doesn't flag any
+  // property access on `reader` in JSX. The rule treats the entire `reader`
+  // object as "ref-tainted" because it contains viewerRef, so every property
+  // access inside JSX triggers a false positive. By extracting all values
+  // here we keep JSX clean. Also hoisted before handlers so that
+  // readerRangeToCfi is defined before use (avoids use-before-define).
+  const {
+    viewerRef,
+    status: readerStatus,
+    error: readerError,
+    toc: readerToc,
+    progress: readerProgress,
+    prev: readerPrev,
+    next: readerNext,
+    jumpToHref,
+    jumpToPercent,
+    jumpToCfi,
+    getCurrentSnippet,
+    rangeToCfi: readerRangeToCfi,
+  } = reader;
+  const { pct: progressPct, currentLocation, totalLocations, currentCfi } = readerProgress;
+  const pageLabel = formatPageLabel(readerProgress);
+
+  useEffect(() => {
+    return () => {
+      if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+    };
+  }, []);
+
+  // ---------- Handlers ----------
+
+  const handleSavedWord = (lemma: string) => {
+    setOptimisticCaptured((prev) => new Set(prev).add(lemma));
+  };
+
+  const handleSelectionColor = async (color: HighlightColor) => {
+    const ctx = selectionContextRef.current;
+    if (!ctx || !internalBookId) return;
+    const got = readerRangeToCfi(ctx);
+    if (!got) {
+      setSelectionAnchor(null);
+      selectionContextRef.current = null;
+      return;
+    }
+    try {
+      await createHighlight.mutateAsync({
+        book_id: internalBookId,
+        cfi_range: got.cfi,
+        text_excerpt: got.excerpt,
+        color,
+      });
+      ctx.contents.window.getSelection()?.removeAllRanges();
+    } catch (err) {
+      const { toast } = await import("sonner");
+      toast.error(`Error: ${(err as Error).message}`);
+    } finally {
+      setSelectionAnchor(null);
+      selectionContextRef.current = null;
+    }
+  };
+
+  const handleSelectionAddNote = async () => {
+    const ctx = selectionContextRef.current;
+    if (!ctx || !internalBookId) return;
+    const got = readerRangeToCfi(ctx);
+    if (!got) {
+      setSelectionAnchor(null);
+      selectionContextRef.current = null;
+      return;
+    }
+    try {
+      const created = await createHighlight.mutateAsync({
+        book_id: internalBookId,
+        cfi_range: got.cfi,
+        text_excerpt: got.excerpt,
+        color: DEFAULT_HIGHLIGHT_COLOR,
+      });
+      ctx.contents.window.getSelection()?.removeAllRanges();
+      setPendingNoteHighlightId(created.id);
+      setPendingNoteExcerpt(got.excerpt);
+    } catch (err) {
+      const { toast } = await import("sonner");
+      toast.error(`Error: ${(err as Error).message}`);
+    } finally {
+      setSelectionAnchor(null);
+      selectionContextRef.current = null;
+    }
+  };
+
+  const handleSaveNote = async (note: string) => {
+    const id = pendingNoteHighlightId;
+    if (!id) return;
+    setPendingNoteHighlightId(null);
+    setPendingNoteExcerpt(null);
+    if (!note) return;
+    try {
+      await api.patch(`/api/v1/highlights/${id}`, { note });
+    } catch (err) {
+      const { toast } = await import("sonner");
+      toast.error(`No se pudo guardar la nota: ${(err as Error).message}`);
+    }
+  };
+
+  const handleCancelNote = () => {
+    setPendingNoteHighlightId(null);
+    setPendingNoteExcerpt(null);
+  };
+
+  const handleDeleteBookmark = (id: string) => {
+    deleteBookmarkMut.mutate(id);
+  };
+
+  const handleDeleteHighlight = async (id: string) => {
+    try {
+      await deleteHighlightMut.mutateAsync(id);
+    } catch (err) {
+      const { toast } = await import("sonner");
+      toast.error(`Error: ${(err as Error).message}`);
+    }
+  };
+
+  const handlePopoverColorChange = async (color: HighlightColor) => {
+    const popover = highlightPopover;
+    if (!popover) return;
+    setHighlightPopover(null);
+    try {
+      await updateHighlight.mutateAsync({
+        id: popover.id,
+        patch: { color },
+      });
+    } catch (err) {
+      const { toast } = await import("sonner");
+      toast.error(`Error: ${(err as Error).message}`);
+    }
+  };
+
+  // handleDeleteHighlight already swallows errors with a toast; no need to
+  // re-await or re-async-wrap. Just fire-and-forget after closing the popover.
+  const handlePopoverDelete = () => {
+    const popover = highlightPopover;
+    if (!popover) return;
+    setHighlightPopover(null);
+    void handleDeleteHighlight(popover.id);
+  };
+
+  // ---------- Render ----------
+
+  if (registerError) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center p-6 gap-4 max-w-md mx-auto text-center">
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm p-3 rounded-md w-full">
+          {registerError}
+        </div>
         <Link href="/library">
-          <Button variant="ghost" size="sm">
-            ← Biblioteca
+          <Button size="sm" variant="outline">
+            <ArrowLeft className="h-4 w-4 mr-1.5" />
+            Volver a la biblioteca
           </Button>
         </Link>
-        <h2 className="text-sm font-semibold flex-1 truncate">{title}</h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => (renditionRef.current as { prev: () => void } | null)?.prev()}
-        >
-          ←
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => (renditionRef.current as { next: () => void } | null)?.next()}
-        >
-          →
-        </Button>
       </div>
-      {error && (
-        <div className="bg-red-50 text-red-700 text-sm p-3 border-b">
-          {error}
+    );
+  }
+
+  return (
+    // h-dvh (dynamic viewport height) plus pt-safe so the reader toolbar
+    // doesn't sit under the iOS notch / dynamic island on mobile. On
+    // desktop the AppHeader covers this area; on mobile the global
+    // header is hidden so the toolbar is the topmost element and needs
+    // to respect the safe-area inset itself.
+    <div className="h-[100dvh] flex flex-col pt-safe">
+      {!chromeHidden && (
+        <ReaderToolbar
+          title={title}
+          pageLabel={pageLabel}
+          toc={readerToc}
+          progressPct={progressPct}
+          currentLocation={currentLocation}
+          totalLocations={totalLocations}
+          bookmarks={bookmarks.data ?? []}
+          highlights={highlightsQuery.data ?? []}
+          capturedCount={mergedCapturedSize}
+          internalBookId={internalBookId}
+          settings={settings}
+          onJumpHref={jumpToHref}
+          onJumpPercent={jumpToPercent}
+          onJumpCfi={jumpToCfi}
+          onSettingsChange={update}
+          onIncFontSize={incFontSize}
+          onDecFontSize={decFontSize}
+          onResetSettings={reset}
+          onDeleteBookmark={handleDeleteBookmark}
+          onDeleteHighlight={handleDeleteHighlight}
+          getColor={wordColors.getColor}
+          setColor={wordColors.setColor}
+          getCurrentSnippet={getCurrentSnippet}
+          currentCfi={currentCfi}
+          onTapTitle={() => setChromeHidden(true)}
+        />
+      )}
+
+      {readerError && (
+        <div className="bg-destructive/10 text-destructive text-sm p-3 border-b border-destructive/30">
+          {readerError}
         </div>
       )}
-      <div ref={viewerRef} className="flex-1 bg-white" />
+
+      {/* Immersive mode affordance: a slim 28px bar above the viewer
+          when chrome is hidden. Lives OUTSIDE the viewer container so
+          it never overlaps book content (previous iterations put the
+          chevron `absolute` inside the viewer, where it landed on top
+          of the first lines of the page). The bar takes a thin sliver
+          at the top — visible but ergonomically out of the way of the
+          reading surface. */}
+      {chromeHidden && (
+        <button
+          type="button"
+          onClick={() => setChromeHidden(false)}
+          className="h-7 flex items-center justify-center bg-transparent text-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 transition-colors"
+          aria-label="Mostrar controles del lector"
+          title="Mostrar controles"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      <div className="flex-1 relative">
+        <div ref={viewerRef} className="absolute inset-0" />
+        {readerStatus !== "ready" && readerStatus !== "error" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <CubeLoader title="Cargando libro" subtitle={title} />
+          </div>
+        )}
+      </div>
+
+      {!chromeHidden && (
+        <ReaderProgressBar
+          pct={progressPct}
+          pageLabel={pageLabel}
+          onJumpPercent={(pct) => {
+            jumpToPercent(pct);
+          }}
+        />
+      )}
+
+      {popup && (
+        <WordPopup
+          word={popup.word}
+          normalizedClient={popup.normalizedClient}
+          contextSentence={popup.contextSentence}
+          source={{ kind: "book", bookId: popup.bookId, pageOrLocation: popup.pageOrLocation }}
+          language="en"
+          position={popup.position}
+          alreadyCaptured={capturedMap.has(popup.normalizedClient)}
+          onClose={() => setPopup(null)}
+          onSaved={handleSavedWord}
+          onListenNatives={(normalized) => {
+            // Popup disappears immediately so there's no overlap with the
+            // sheet entrance — single focus surface, no double layer.
+            setPopup(null);
+            setPronounceSheet({ word: normalized, autoPlay: true });
+          }}
+        />
+      )}
+
+      <ReaderPronounceSheet
+        state={pronounceSheet}
+        onClose={() => setPronounceSheet(null)}
+      />
+
+      <ReaderSelectionToolbar
+        position={selectionAnchor}
+        onPickColor={handleSelectionColor}
+        onAddNote={handleSelectionAddNote}
+      />
+
+      {/* "You were here" — only rendered after the popup AND sheet are
+          closed, so the user gets the visual breadcrumb exactly when
+          they need it (returning to reading), not stacked behind UI. */}
+      {!popup && !pronounceSheet && (
+        <ReaderLastWordMark
+          rect={lastInspectedRect}
+          onFaded={() => setLastInspectedRect(null)}
+        />
+      )}
+
+      <ReaderHighlightNoteDialog
+        excerpt={pendingNoteExcerpt}
+        onSave={handleSaveNote}
+        onCancel={handleCancelNote}
+      />
+
+      <ReaderHighlightPopover
+        position={highlightPopover ? { x: highlightPopover.x, y: highlightPopover.y } : null}
+        currentColor={highlightPopover?.color ?? null}
+        onPickColor={handlePopoverColorChange}
+        onDelete={handlePopoverDelete}
+        onClose={() => setHighlightPopover(null)}
+      />
     </div>
   );
 }

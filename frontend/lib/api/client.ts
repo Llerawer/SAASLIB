@@ -10,16 +10,27 @@ async function authHeader(): Promise<HeadersInit> {
   return session ? { Authorization: `Bearer ${session.access_token}` } : {};
 }
 
+export type RequestOptions = {
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+};
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
+  options: RequestOptions = {},
 ): Promise<T> {
   const headers = {
     "Content-Type": "application/json",
     ...(await authHeader()),
     ...(init.headers ?? {}),
+    ...(options.headers ?? {}),
   };
-  const r = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const r = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers,
+    signal: options.signal,
+  });
   if (!r.ok) {
     let detail: string;
     try {
@@ -35,10 +46,14 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "POST", body: JSON.stringify(body) }),
-  put: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
-  del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  get: <T>(path: string, options?: RequestOptions) =>
+    request<T>(path, {}, options),
+  post: <T>(path: string, body: unknown, options?: RequestOptions) =>
+    request<T>(path, { method: "POST", body: JSON.stringify(body) }, options),
+  put: <T>(path: string, body: unknown, options?: RequestOptions) =>
+    request<T>(path, { method: "PUT", body: JSON.stringify(body) }, options),
+  patch: <T>(path: string, body: unknown, options?: RequestOptions) =>
+    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }, options),
+  del: <T>(path: string, options?: RequestOptions) =>
+    request<T>(path, { method: "DELETE" }, options),
 };

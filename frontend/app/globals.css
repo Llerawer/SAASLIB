@@ -7,9 +7,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+
+  --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-source-serif);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-geist-sans);
+  --font-bricolage: var(--font-bricolage);
+
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -18,15 +22,26 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -39,6 +54,32 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* Product semantic tokens */
+  --color-cefr-easy: var(--cefr-easy);
+  --color-cefr-easy-foreground: var(--cefr-easy-foreground);
+  --color-cefr-mid: var(--cefr-mid);
+  --color-cefr-mid-foreground: var(--cefr-mid-foreground);
+  --color-cefr-hard: var(--cefr-hard);
+  --color-cefr-hard-foreground: var(--cefr-hard-foreground);
+
+  --color-grade-again: var(--grade-again);
+  --color-grade-again-foreground: var(--grade-again-foreground);
+  --color-grade-hard: var(--grade-hard);
+  --color-grade-hard-foreground: var(--grade-hard-foreground);
+  --color-grade-good: var(--grade-good);
+  --color-grade-good-foreground: var(--grade-good-foreground);
+  --color-grade-easy: var(--grade-easy);
+  --color-grade-easy-foreground: var(--grade-easy-foreground);
+
+  --color-captured: var(--captured);
+
+  /* Decorative background washes (masthead glows, empty-state celebrations).
+     Centralizing them as tokens keeps editorial pages, onboarding, and SRS
+     summary screens visually coherent across light/dark. */
+  --color-bg-glow-warm: var(--bg-glow-warm);
+  --color-bg-glow-success: var(--bg-glow-success);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -46,85 +87,401 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Easing tokens — out-quart, fluid */
+  --ease-out-quart: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Warm cream paper background, deep slate ink */
+  --background: oklch(0.985 0.008 85);
+  --foreground: oklch(0.18 0.012 75);
+
+  --card: oklch(1 0.004 85);
+  --card-foreground: oklch(0.18 0.012 75);
+
+  --popover: oklch(0.99 0.005 85);
+  --popover-foreground: oklch(0.18 0.012 75);
+
+  --primary: oklch(0.32 0.025 65);
+  --primary-foreground: oklch(0.985 0.005 85);
+
+  --secondary: oklch(0.94 0.012 80);
+  --secondary-foreground: oklch(0.25 0.015 70);
+
+  --muted: oklch(0.95 0.008 80);
+  --muted-foreground: oklch(0.5 0.015 70);
+
+  /* Terracotta accent (CTA, highlights, captures). Hue 30° distinguishes
+     from --warning (75° amber-yellow) and --destructive (25° but chroma
+     0.22). Reads as "vintage book cover / wax seal / fountain pen ink"
+     rather than the genre-default amber. */
+  --accent: oklch(0.6 0.17 30);
+  --accent-foreground: oklch(0.99 0.005 85);
+
+  /* Semantic */
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0.005 85);
+  --success: oklch(0.62 0.14 145);
+  --success-foreground: oklch(0.99 0.005 85);
+  --warning: oklch(0.7 0.16 75);
+  --warning-foreground: oklch(0.18 0.012 75);
+  --info: oklch(0.55 0.13 230);
+  --info-foreground: oklch(0.99 0.005 85);
+
+  --border: oklch(0.9 0.01 80);
+  --input: oklch(0.93 0.012 80);
+  --ring: oklch(0.6 0.17 30);
+
+  /* Charts: warm progressive */
+  --chart-1: oklch(0.6 0.17 30);
+  --chart-2: oklch(0.55 0.13 230);
+  --chart-3: oklch(0.62 0.14 145);
+  --chart-4: oklch(0.55 0.22 25);
+  --chart-5: oklch(0.5 0.015 70);
+
+  --radius: 0.5rem;
+
+  --sidebar: oklch(0.98 0.01 85);
+  --sidebar-foreground: oklch(0.18 0.012 75);
+  --sidebar-primary: oklch(0.32 0.025 65);
+  --sidebar-primary-foreground: oklch(0.985 0.005 85);
+  --sidebar-accent: oklch(0.95 0.008 80);
+  --sidebar-accent-foreground: oklch(0.25 0.015 70);
+  --sidebar-border: oklch(0.9 0.01 80);
+  --sidebar-ring: oklch(0.6 0.17 30);
+
+  /* CEFR */
+  --cefr-easy: oklch(0.62 0.14 145);
+  --cefr-easy-foreground: oklch(0.99 0.005 85);
+  --cefr-mid: oklch(0.7 0.16 75);
+  --cefr-mid-foreground: oklch(0.18 0.012 75);
+  --cefr-hard: oklch(0.55 0.22 25);
+  --cefr-hard-foreground: oklch(0.99 0.005 85);
+
+  /* SRS grades */
+  --grade-again: oklch(0.55 0.22 25);
+  --grade-again-foreground: oklch(0.99 0.005 85);
+  --grade-hard: oklch(0.7 0.16 75);
+  --grade-hard-foreground: oklch(0.18 0.012 75);
+  --grade-good: oklch(0.62 0.14 145);
+  --grade-good-foreground: oklch(0.99 0.005 85);
+  --grade-easy: oklch(0.65 0.13 220);
+  --grade-easy-foreground: oklch(0.99 0.005 85);
+
+  /* Captured word highlight in reader */
+  --captured: oklch(0.85 0.13 75 / 0.45);
+
+  /* Decorative gradient washes — warm cream for editorial mastheads,
+     success green for celebratory empty/summary states. */
+  --bg-glow-warm: oklch(0.94 0.05 75 / 0.6);
+  --bg-glow-success: oklch(0.92 0.08 145 / 0.45);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.16 0.008 75);
+  --foreground: oklch(0.96 0.005 80);
+
+  --card: oklch(0.21 0.01 75);
+  --card-foreground: oklch(0.96 0.005 80);
+
+  --popover: oklch(0.22 0.01 75);
+  --popover-foreground: oklch(0.96 0.005 80);
+
+  --primary: oklch(0.92 0.012 80);
+  --primary-foreground: oklch(0.21 0.01 75);
+
+  --secondary: oklch(0.27 0.012 75);
+  --secondary-foreground: oklch(0.96 0.005 80);
+
+  --muted: oklch(0.27 0.012 75);
+  --muted-foreground: oklch(0.7 0.012 75);
+
+  --accent: oklch(0.7 0.17 30);
+  --accent-foreground: oklch(0.18 0.012 75);
+
+  --destructive: oklch(0.65 0.21 25);
+  --destructive-foreground: oklch(0.99 0.005 85);
+  --success: oklch(0.7 0.14 145);
+  --success-foreground: oklch(0.18 0.012 75);
+  --warning: oklch(0.78 0.16 75);
+  --warning-foreground: oklch(0.18 0.012 75);
+  --info: oklch(0.7 0.13 230);
+  --info-foreground: oklch(0.18 0.012 75);
+
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.7 0.17 30);
+
+  --chart-1: oklch(0.7 0.17 30);
+  --chart-2: oklch(0.7 0.13 230);
+  --chart-3: oklch(0.7 0.14 145);
+  --chart-4: oklch(0.65 0.21 25);
+  --chart-5: oklch(0.7 0.012 75);
+
+  --sidebar: oklch(0.21 0.01 75);
+  --sidebar-foreground: oklch(0.96 0.005 80);
+  --sidebar-primary: oklch(0.92 0.012 80);
+  --sidebar-primary-foreground: oklch(0.21 0.01 75);
+  --sidebar-accent: oklch(0.27 0.012 75);
+  --sidebar-accent-foreground: oklch(0.96 0.005 80);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.7 0.17 30);
+
+  --cefr-easy: oklch(0.7 0.14 145);
+  --cefr-easy-foreground: oklch(0.18 0.012 75);
+  --cefr-mid: oklch(0.78 0.16 75);
+  --cefr-mid-foreground: oklch(0.18 0.012 75);
+  --cefr-hard: oklch(0.65 0.21 25);
+  --cefr-hard-foreground: oklch(0.99 0.005 85);
+
+  --grade-again: oklch(0.65 0.21 25);
+  --grade-again-foreground: oklch(0.99 0.005 85);
+  --grade-hard: oklch(0.78 0.16 75);
+  --grade-hard-foreground: oklch(0.18 0.012 75);
+  --grade-good: oklch(0.7 0.14 145);
+  --grade-good-foreground: oklch(0.18 0.012 75);
+  --grade-easy: oklch(0.7 0.13 220);
+  --grade-easy-foreground: oklch(0.18 0.012 75);
+
+  --captured: oklch(0.78 0.13 75 / 0.35);
+
+  /* Same gradient washes as light mode — consumers dim them per surface
+     via dark:opacity-XX on the wrapper, so we don't double-dim here. */
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  /* Prevent any descendant from causing horizontal page scroll. `clip` is
+     preferred over `hidden` because it doesn't establish a new scroll
+     container — avoids breaking position:sticky / scroll-restoration. */
+  html,
+  body {
+    overflow-x: clip;
+  }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+    /* Mobile-first: base reading size is 16px so iOS Safari won't auto-zoom
+       focused inputs (anything <16px triggers zoom). Bumped to 17px from
+       md: up so desktop reads slightly larger without harming mobile. */
+    font-size: 16px;
   }
   html {
     @apply font-sans;
+    /* Cover the notch / dynamic island. Pairs with .pt-safe / .pb-safe
+       utilities below for content that sits at the edges. */
+    /* (viewport meta `viewport-fit=cover` is set by Next 16 default; this
+        is the CSS side of that pairing.) */
+    -webkit-tap-highlight-color: transparent;
   }
+  /* Inputs / textareas / selects: explicit 16px floor on mobile to suppress
+     iOS auto-zoom. Tailwind utilities like `text-sm` (14px) on form fields
+     reintroduce zoom — beware. */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1rem);
+  }
+  /* Editorial serif utility for reading content */
+  .prose-serif {
+    font-family: var(--font-serif), Georgia, serif;
+    font-feature-settings: "kern", "liga";
+    line-height: 1.65;
+  }
+  /* Tabular figures for stats / counts */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* =========================================================================
+   Mobile foundations — utilities that pair with PWA + safe areas + thumb
+   ergonomics. These are global so any surface can opt in without per-page
+   reimplementation. Keep this section tight — anything page-specific lives
+   with the page, not here.
+   ========================================================================= */
+
+/* ----- Safe area utilities (iOS notch + Android nav bar) ----- */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pl-safe { padding-left: env(safe-area-inset-left); }
+.pr-safe { padding-right: env(safe-area-inset-right); }
+.px-safe {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+/* Additive variants — preserve existing padding and add the safe inset on
+   top. Use these when a CTA/sheet already has px-4 but you also need to
+   respect the notch (very common in sticky bottom bars). */
+.pb-safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + var(--pb-safe-extra, 0px)); }
+.pt-safe-top    { padding-top:    calc(env(safe-area-inset-top)    + var(--pt-safe-extra, 0px)); }
+
+/* ----- Touch target floor -----
+   Apple HIG + Material Design both recommend ≥44px tappable area. Apply
+   this on any clickable element that doesn't already have generous size
+   from a component library. Use ON THE ELEMENT THAT RECEIVES THE TAP,
+   not on a wrapper. */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ----- No hover assumption -----
+   For surfaces that hide affordances behind hover on desktop, this class
+   keeps them visible always on coarse pointers (touch). Apply on the
+   parent of any "appears on hover" affordance. */
+@media (pointer: coarse) {
+  .reveal-on-hover { opacity: 1 !important; }
+}
+
+@keyframes lr-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Subtle "we're starting again" cue. Pure transform — no background-color
+   animation, because the highlight base (--captured) is already amber. A
+   bg jump on every segment loop reads as flicker, not pulse. */
+@keyframes pulse-once {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+.animate-pulse-once {
+  animation: pulse-once 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Landing "dark stage" scoped tokens. The cream panel sits inside this
+   dark warm world. Arc/Cursor/Raycast register: warm-ink-on-dark with one
+   terracota accent. Apply on the outermost landing wrapper. */
+.landing-stage {
+  --stage-bg: oklch(0.14 0.018 60);
+  --stage-bg-elevated: oklch(0.18 0.020 60);
+  --stage-ink: oklch(0.96 0.012 80);
+  --stage-ink-muted: oklch(0.72 0.014 70);
+  --stage-ink-faint: oklch(0.52 0.014 70);
+  --stage-accent: oklch(0.72 0.16 38);
+  --stage-accent-soft: oklch(0.72 0.16 38 / 0.12);
+  --stage-accent-glow: oklch(0.72 0.16 38 / 0.22);
+  --stage-hairline: oklch(1 0 0 / 0.10);
+  background-color: var(--stage-bg);
+  color: var(--stage-ink);
+}
+
+/* Landing "paper register" scoped tokens. Used only inside `.landing-paper`
+   wrappers so the warm cream / sepia ink palette doesn't leak into the app
+   interior, which has its own theme. Arbitrary-value Tailwind classes
+   (`bg-[color:var(--landing-bg)]`) resolve these. */
+.landing-paper {
+  --landing-bg: oklch(0.96 0.03 78);
+  --landing-ink: oklch(0.22 0.025 50);
+  --landing-ink-muted: oklch(0.45 0.025 55);
+  --landing-ink-faint: oklch(0.62 0.020 55);
+  --landing-accent: oklch(0.56 0.18 38);
+  --landing-accent-soft: oklch(0.56 0.18 38 / 0.12);
+  --landing-hairline: oklch(0.22 0.025 50 / 0.18);
+}
+
+/* Subtle paper-grain background for landing + empty states.
+   Inline SVG noise at ~2% opacity. Casi subliminal — si se nota
+   como textura, está mal aplicado. */
+.bg-paper-noise {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/></svg>");
+  background-repeat: repeat;
+}
+
+/* =========================================================================
+   "Warm room lights" — multi-layer atmospheric backdrop for auth + similar
+   dark scenes. Replaces shader libraries with CSS-only radial gradients
+   that drift ULTRA slowly (almost imperceptible). Target: "habitación de
+   lectura con luz cálida moviéndose lentamente", NOT "GPU shader benchmark".
+
+   Three light sources, each terracota / warm-brown only. No neon, no
+   pulsing, no glow rings. Drift cycles 32–44s so motion is felt, not seen.
+   ========================================================================= */
+
+@keyframes warm-light-drift-1 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(40px, -28px, 0); }
+}
+@keyframes warm-light-drift-2 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(-32px, 36px, 0); }
+}
+@keyframes warm-light-drift-3 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(20px, 24px, 0); }
+}
+
+.warm-room-light {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(90px);
+  will-change: transform;
+}
+.warm-room-light--1 {
+  top: -8%;
+  left: -6%;
+  width: 38vw;
+  max-width: 480px;
+  height: 38vw;
+  max-height: 480px;
+  background: radial-gradient(circle, oklch(0.72 0.16 38 / 0.18), transparent 70%);
+  animation: warm-light-drift-1 36s ease-in-out infinite;
+}
+.warm-room-light--2 {
+  bottom: -10%;
+  right: -8%;
+  width: 44vw;
+  max-width: 560px;
+  height: 44vw;
+  max-height: 560px;
+  background: radial-gradient(circle, oklch(0.62 0.14 50 / 0.14), transparent 70%);
+  filter: blur(110px);
+  animation: warm-light-drift-2 44s ease-in-out infinite;
+  animation-delay: -8s;
+}
+.warm-room-light--3 {
+  top: 38%;
+  right: 12%;
+  width: 26vw;
+  max-width: 320px;
+  height: 26vw;
+  max-height: 320px;
+  background: radial-gradient(circle, oklch(0.72 0.16 38 / 0.08), transparent 70%);
+  animation: warm-light-drift-3 32s ease-in-out infinite;
+  animation-delay: -14s;
+}
+
+/* Bottom vignette — adds page-edge depth without darkening the whole frame */
+.warm-room-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 60%,
+    oklch(0 0 0 / 0.22) 100%
+  );
 }

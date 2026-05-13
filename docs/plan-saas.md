@@ -341,28 +341,72 @@ Recibir USD de un MoR extranjero y declararlo en México como exportación de se
 
 ### Módulo 4 — Pronunciation (YouGlish propio) — Fase 3
 
-**Propósito**: búsqueda de palabra → galería de clips donde nativos la dicen, con embed YouTube al timestamp exacto.
+**Propósito**: búsqueda de palabra → galería de clips donde nativos la dicen, con embed YouTube al timestamp del subtítulo.
 
-**Arquitectura legal clean:**
-- Corpus curado (~500-1000 videos: TED, podcasts con captions públicas, canales educativos)
-- WhisperX server-side una sola vez → extrae `(video_id, word, start_ms, end_ms, phrase)` a Postgres
-- **Nunca** se descarga audio ni video
-- Runtime: iframe embed YouTube con `?start=X&end=Y` — YouTube sirve el video
-- Embed está explícitamente permitido por ToS de YouTube
+**Decisión de arquitectura (2026-04-25): caption-based, NO audio processing.**
 
-**Features Fase 3:**
+YouGlish no procesa audio — indexa subtítulos pre-existentes y embed iframe YouTube. Replicamos esa arquitectura. WhisperX queda descartado para v1; se reconsidera en Fase 3.5 si métricas de uso lo justifican.
+
+**Pipeline v1 (caption-based):**
+
+1. **Curación corpus inicial**: ~500-1000 videos con licencia clara:
+   - TED Talks (CC BY-NC-ND, captions oficiales en múltiples idiomas)
+   - BBC Learning English (canales con permisos de uso secundario)
+   - Charlas/podcasts educativos con licencias CC verificadas
+   - **Excluir**: contenido scrapeado de YouTube general (zona gris ToS)
+2. **Extractor**: `yt-dlp` baja `.vtt` / `.srt` de cada video (texto, no audio).
+3. **Parser**: tokeniza captions → tabla `pronunciation_clips`:
+
+   ```sql
+   (id, video_id, channel, language, accent, sentence_text,
+    sentence_start_ms, sentence_end_ms, license)
+   ```
+
+4. **Index**: Postgres FTS + `pg_trgm` sobre `sentence_text` lemmatizado, o índice simple por palabra normalizada.
+5. **Endpoint**: `GET /api/v1/pronounce/{word}` → top N matches ordenados por canal/acento/score.
+6. **Frontend**: galería con `<iframe src="youtube.com/embed/{video_id}?start={start_ms/1000}&end={(start_ms+5000)/1000}">`.
+7. **Bandwidth + storage del video**: $0 — YouTube lo sirve vía embed (explícitamente permitido por ToS).
+
+**Por qué esto vs WhisperX:**
+
+| | Caption-based (v1) | WhisperX (descartado v1) |
+|---|---|---|
+| Tiempo construir | 1-2 semanas | 3-4 semanas |
+| Costo runtime | $0 (Postgres FTS) | $5-20/mes (Modal GPU) |
+| Setup one-off | scraper + parser | corpus pipeline + GPU |
+| Precisión | sentence-level (~2 seg padding) | word-level exacto |
+| Funciona en videos sin captions | ❌ | ✅ |
+| Suficiente para MVP | ✅ (es lo que YouGlish hace) | overkill |
+
+**Features Fase 3 (caption-based):**
 - Búsqueda central + galería N ocurrencias
 - Card por clip: título, canal, frase con palabra resaltada, botón ▶
-- Filtros: acento (US/UK/AU), duración, confidence
+- Filtros: canal, idioma del subtítulo, duración del clip
 - Integración cross-module: click palabra desde Reader/Vocab/SRS → abre Pronunciation filtrado
+
+**Trigger para Fase 3.5 (WhisperX upgrade) — solo si:**
+
+- ≥30% de usuarios Pro usan Pronunciation activamente, Y
+- Feedback explícito pide precisión word-level ("salta 2 seg tarde", "quiero ir al milisegundo exacto"), Y
+- 100+ Pro users sostienen el costo Modal sin angustia.
+
+Hasta que se cumplan los tres, NO se construye el pipeline GPU.
 
 **Features Fase 4:**
 - Favoritos por usuario
-- Control velocidad (0.5×-1.5×)
+- Control velocidad (0.5×-1.5×) en el iframe (postMessage al player)
 - Overlay de subtítulos
-- Corpus expandido a 5000+ videos
+- Corpus expandido a 5000+ videos (TED + BBC + canales educativos verificados)
 
-**Infra**: Modal.com serverless GPU para WhisperX. Costo one-off inicial $20-40 USD, luego $5-20/mes para mantener corpus.
+**Riesgo legal (mitigado):**
+
+- ❌ NO scrapear YouTube general — solo videos cuya licencia permite uso secundario.
+- ❌ NO almacenar audio ni video — solo texto de captions + timestamps.
+- ✅ Embed iframe siempre — alinea incentivos con YouTube (cuenta views).
+- ✅ Tabla `pronunciation_clips.license` documenta licencia por video; queries pueden filtrar.
+- ✅ Si crece, negociar API directa con TED/BBC (su modelo lo permite).
+
+**Infra**: Postgres existente (Supabase). **$0/mes runtime**. Worker de extracción puede correr local en cualquier laptop una vez por semana — no requiere infra dedicada.
 
 **Gating:**
 
@@ -370,7 +414,7 @@ Recibir USD de un MoR extranjero y declararlo en México como exportación de se
 |---|---|---|
 | Tiempo reproducción | 5 min/día | Ilimitado |
 | Clips por palabra | Top 3 | Todos |
-| Filtros acento | ❌ | ✅ |
+| Filtros (canal, idioma) | ❌ | ✅ |
 
 ### Módulo 5 — Community — Fase 4
 

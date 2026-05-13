@@ -4,14 +4,19 @@ from pydantic import BaseModel, Field
 
 
 class GutenbergRegisterRequest(BaseModel):
-    gutenberg_id: int
-    title: str
-    author: str | None = None
-    language: str = "en"
+    gutenberg_id: int = Field(..., ge=1, le=10_000_000)
+    title: str = Field(..., min_length=1, max_length=500)
+    author: str | None = Field(default=None, max_length=300)
+    language: str = Field(default="en", min_length=2, max_length=5)
 
 
 class ProgressUpdateRequest(BaseModel):
-    location: str = Field(..., description="EPUB CFI or page number string")
+    location: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="EPUB CFI or page number string",
+    )
     percent: float = Field(..., ge=0, le=100)
 
 

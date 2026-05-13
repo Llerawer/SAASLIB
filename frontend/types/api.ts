@@ -127,10 +127,272 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/books/{book_id}/captured-words": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Captured Words
+         * @description Words captured in this book by this user, with frequency and
+         *     first-seen timestamp. Used by the reader to color words and animate
+         *     newly-discovered ones.
+         */
+        get: operations["list_captured_words_api_v1_books__book_id__captured_words_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/captures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Captures */
+        get: operations["list_captures_api_v1_captures_get"];
+        put?: never;
+        /** Create Capture */
+        post: operations["create_capture_api_v1_captures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/captures/{capture_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Capture */
+        put: operations["update_capture_api_v1_captures__capture_id__put"];
+        post?: never;
+        /** Delete Capture */
+        delete: operations["delete_capture_api_v1_captures__capture_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/captures/batch-prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Prompt
+         * @description Generate the markdown prompt the user pastes into Claude/ChatGPT
+         *     for the selected captures. Returned ready to copy to clipboard.
+         */
+        post: operations["batch_prompt_api_v1_captures_batch_prompt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cards */
+        get: operations["list_cards_api_v1_cards_get"];
+        put?: never;
+        /** Create Card */
+        post: operations["create_card_api_v1_cards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/promote-from-captures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote */
+        post: operations["promote_api_v1_cards_promote_from_captures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/parse-ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Ai
+         * @description Parse YAML/markdown response from Claude/ChatGPT into preview cards.
+         *     Does NOT persist — used by /vocabulary/import for preview.
+         */
+        post: operations["parse_ai_api_v1_cards_parse_ai_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cards/{card_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Card */
+        put: operations["update_card_api_v1_cards__card_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dictionary/{word}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lookup Word */
+        get: operations["lookup_word_api_v1_dictionary__word__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reviews/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Queue
+         * @description Cards due now, ordered by due_at ASC, fsrs_difficulty DESC.
+         *
+         *     Joins card_schedule + cards via two queries (Supabase REST PostgREST
+         *     relational embedding); we keep them separate for clarity.
+         */
+        get: operations["queue_api_v1_reviews_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reviews/{card_id}/grade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grade
+         * @description Grade a card. Atomic-ish: reads → computes → updates with CAS check
+         *     on (card_id, last_reviewed_at). Failure on race → retry once.
+         */
+        post: operations["grade_api_v1_reviews__card_id__grade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reviews/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo
+         * @description Restore the user's last review: revert card_schedule, delete review row.
+         */
+        post: operations["undo_api_v1_reviews_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Stats */
+        get: operations["my_stats_api_v1_stats_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BatchPromptInput */
+        BatchPromptInput: {
+            /** Capture Ids */
+            capture_ids: string[];
+        };
+        /** BatchPromptOutput */
+        BatchPromptOutput: {
+            /** Markdown */
+            markdown: string;
+            /** Count */
+            count: number;
+        };
         /** BookOut */
         BookOut: {
             /** Id */
@@ -153,6 +415,221 @@ export interface components {
             /** Is Public */
             is_public: boolean;
         };
+        /** CaptureCreate */
+        CaptureCreate: {
+            /** Word */
+            word: string;
+            /** Context Sentence */
+            context_sentence?: string | null;
+            /** Page Or Location */
+            page_or_location?: string | null;
+            /** Book Id */
+            book_id?: string | null;
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+            /** Tags */
+            tags?: string[];
+        };
+        /** CaptureOut */
+        CaptureOut: {
+            /** Id */
+            id: string;
+            /** User Id */
+            user_id: string;
+            /** Word */
+            word: string;
+            /** Word Normalized */
+            word_normalized: string;
+            /** Context Sentence */
+            context_sentence: string | null;
+            /** Page Or Location */
+            page_or_location: string | null;
+            /** Book Id */
+            book_id: string | null;
+            /** Tags */
+            tags: string[];
+            /** Promoted To Card */
+            promoted_to_card: boolean;
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Translation */
+            translation?: string | null;
+            /** Definition */
+            definition?: string | null;
+            /** Ipa */
+            ipa?: string | null;
+            /** Audio Url */
+            audio_url?: string | null;
+            /** Examples */
+            examples?: string[];
+        };
+        /** CaptureUpdate */
+        CaptureUpdate: {
+            /** Context Sentence */
+            context_sentence?: string | null;
+            /** Page Or Location */
+            page_or_location?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+        };
+        /** CapturedWord */
+        CapturedWord: {
+            /** Word Normalized */
+            word_normalized: string;
+            /** Count */
+            count: number;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /**
+             * Forms
+             * @description Raw word forms observed for this lemma (e.g. ['Gleaming', 'GLEAMED']). Used by the reader to highlight inflected forms client-side without running spaCy in the browser.
+             */
+            forms?: string[];
+        };
+        /** CardCreate */
+        CardCreate: {
+            /** Word */
+            word: string;
+            /** Word Normalized */
+            word_normalized?: string | null;
+            /** Translation */
+            translation?: string | null;
+            /** Definition */
+            definition?: string | null;
+            /** Ipa */
+            ipa?: string | null;
+            /** Audio Url */
+            audio_url?: string | null;
+            /** Examples */
+            examples?: string[];
+            /** Mnemonic */
+            mnemonic?: string | null;
+            /** Cefr */
+            cefr?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+        };
+        /** CardOut */
+        CardOut: {
+            /** Id */
+            id: string;
+            /** User Id */
+            user_id: string;
+            /** Word */
+            word: string;
+            /** Word Normalized */
+            word_normalized: string;
+            /** Translation */
+            translation: string | null;
+            /** Definition */
+            definition: string | null;
+            /** Ipa */
+            ipa: string | null;
+            /** Audio Url */
+            audio_url: string | null;
+            /** Examples */
+            examples: string[];
+            /** Mnemonic */
+            mnemonic: string | null;
+            /** Cefr */
+            cefr: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Source Capture Ids */
+            source_capture_ids: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** CardUpdate */
+        CardUpdate: {
+            /** Translation */
+            translation?: string | null;
+            /** Definition */
+            definition?: string | null;
+            /** Ipa */
+            ipa?: string | null;
+            /** Audio Url */
+            audio_url?: string | null;
+            /** Examples */
+            examples?: string[] | null;
+            /** Mnemonic */
+            mnemonic?: string | null;
+            /** Cefr */
+            cefr?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** DictionaryEntry */
+        DictionaryEntry: {
+            /** Word Normalized */
+            word_normalized: string;
+            /** Language */
+            language: string;
+            /** Translation */
+            translation: string | null;
+            /** Definition */
+            definition: string | null;
+            /** Ipa */
+            ipa: string | null;
+            /** Audio Url */
+            audio_url: string | null;
+            /** Examples */
+            examples?: string[];
+            /** Source */
+            source: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Cache Status */
+            cache_status: string;
+        };
+        /** GradeInput */
+        GradeInput: {
+            /**
+             * Grade
+             * @enum {integer}
+             */
+            grade: 1 | 2 | 3 | 4;
+        };
+        /** GradeResult */
+        GradeResult: {
+            /** Card Id */
+            card_id: string;
+            /** State Before */
+            state_before: {
+                [key: string]: unknown;
+            };
+            /** State After */
+            state_after: {
+                [key: string]: unknown;
+            };
+            /** Review Id */
+            review_id: string;
+        };
         /** GutenbergRegisterRequest */
         GutenbergRegisterRequest: {
             /** Gutenberg Id */
@@ -172,6 +649,67 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HeatmapDay */
+        HeatmapDay: {
+            /** Date */
+            date: string;
+            /** Reviews */
+            reviews: number;
+            /** Captures */
+            captures: number;
+        };
+        /** ParseAiCard */
+        ParseAiCard: {
+            /** Word */
+            word: string;
+            /** Translation */
+            translation?: string | null;
+            /** Definition */
+            definition?: string | null;
+            /** Ipa */
+            ipa?: string | null;
+            /** Cefr */
+            cefr?: string | null;
+            /** Mnemonic */
+            mnemonic?: string | null;
+            /**
+             * Examples
+             * @default []
+             */
+            examples: string[];
+            /** Tip */
+            tip?: string | null;
+            /** Etymology */
+            etymology?: string | null;
+            /** Grammar */
+            grammar?: string | null;
+        };
+        /** ParseAiError */
+        ParseAiError: {
+            /** Line */
+            line: number | null;
+            /** Chunk */
+            chunk: string;
+            /** Error */
+            error: string;
+        };
+        /** ParseAiInput */
+        ParseAiInput: {
+            /** Text */
+            text: string;
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+        };
+        /** ParseAiResult */
+        ParseAiResult: {
+            /** Cards */
+            cards: components["schemas"]["ParseAiCard"][];
+            /** Errors */
+            errors: components["schemas"]["ParseAiError"][];
+        };
         /** ProgressUpdateRequest */
         ProgressUpdateRequest: {
             /**
@@ -181,6 +719,95 @@ export interface components {
             location: string;
             /** Percent */
             percent: number;
+        };
+        /** PromoteFromCapturesInput */
+        PromoteFromCapturesInput: {
+            /** Capture Ids */
+            capture_ids: string[];
+            /** Ai Data */
+            ai_data?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /** PromoteResult */
+        PromoteResult: {
+            /** Cards */
+            cards: components["schemas"]["CardOut"][];
+            /** Created Count */
+            created_count: number;
+            /** Merged Count */
+            merged_count: number;
+        };
+        /** ReviewQueueCard */
+        ReviewQueueCard: {
+            /** Card Id */
+            card_id: string;
+            /** Word */
+            word: string;
+            /** Word Normalized */
+            word_normalized: string;
+            /** Translation */
+            translation: string | null;
+            /** Definition */
+            definition: string | null;
+            /** Ipa */
+            ipa: string | null;
+            /** Audio Url */
+            audio_url: string | null;
+            /** Examples */
+            examples?: string[];
+            /** Mnemonic */
+            mnemonic: string | null;
+            /** Cefr */
+            cefr: string | null;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Due At
+             * Format: date-time
+             */
+            due_at: string;
+            /** Fsrs State */
+            fsrs_state: number;
+            /** Fsrs Difficulty */
+            fsrs_difficulty: number | null;
+            /** Fsrs Stability */
+            fsrs_stability: number | null;
+        };
+        /** StatsOut */
+        StatsOut: {
+            /** Cards Today Due */
+            cards_today_due: number;
+            /** Cards Today Done */
+            cards_today_done: number;
+            /**
+             * Retention 30D
+             * @description (Good + Easy) / total reviews in the last 30 days. None if no reviews. Hard does NOT count as correct.
+             */
+            retention_30d?: number | null;
+            /** Streak Days */
+            streak_days: number;
+            /** Heatmap 90D */
+            heatmap_90d: components["schemas"]["HeatmapDay"][];
+            totals: components["schemas"]["StatsTotals"];
+        };
+        /** StatsTotals */
+        StatsTotals: {
+            /** Captures */
+            captures: number;
+            /** Cards */
+            cards: number;
+            /** Reviews */
+            reviews: number;
+        };
+        /** UndoResult */
+        UndoResult: {
+            /** Restored Card Id */
+            restored_card_id: string;
+            /** Restored State */
+            restored_state: {
+                [key: string]: unknown;
+            };
         };
         /** ValidationError */
         ValidationError: {
@@ -414,6 +1041,558 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_captured_words_api_v1_books__book_id__captured_words_get: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapturedWord"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_captures_api_v1_captures_get: {
+        parameters: {
+            query?: {
+                book_id?: string | null;
+                promoted?: boolean | null;
+                tag?: string | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_capture_api_v1_captures_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_capture_api_v1_captures__capture_id__put: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_capture_api_v1_captures__capture_id__delete: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_prompt_api_v1_captures_batch_prompt_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchPromptInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchPromptOutput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cards_api_v1_cards_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_card_api_v1_cards_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_api_v1_cards_promote_from_captures_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteFromCapturesInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoteResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_ai_api_v1_cards_parse_ai_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseAiInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseAiResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_card_api_v1_cards__card_id__put: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_word_api_v1_dictionary__word__get: {
+        parameters: {
+            query?: {
+                language?: string;
+            };
+            header: {
+                authorization: string;
+            };
+            path: {
+                word: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_api_v1_reviews_queue_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueueCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grade_api_v1_reviews__card_id__grade_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradeInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_api_v1_reviews_undo_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_stats_api_v1_stats_me_get: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsOut"];
                 };
             };
             /** @description Validation Error */

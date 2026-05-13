@@ -1,17 +1,77 @@
+from pathlib import Path
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env relative to the backend/ root regardless of where the process
+# was launched from (e.g. uvicorn --app-dir, pytest from monorepo root, etc.).
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_ENV_FILE = _BACKEND_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_SERVICE_ROLE_KEY: str
+    # Anon key — used by user-scoped client so RLS applies (auth.uid() = JWT sub).
+    SUPABASE_ANON_KEY: str = ""
     # Optional: only required for legacy HS256 projects.
     # Modern projects (asymmetric ES256/RS256) verify via the public JWKS endpoint.
     SUPABASE_JWT_SECRET: str = ""
     DATABASE_URL: str = ""
     ENVIRONMENT: str = "development"
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    # External APIs (optional — services degrade gracefully if missing).
+    DEEPL_API_KEY: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # ===== Card enrichment (LLM-powered POS / tense / phrasal / CEFR / etc.) =====
+    # Background worker pulls cards with NULL enrichment every N minutes and
+    # asks the configured providers in order. If a provider's keys are all
+    # exhausted, the chain falls through to the next one. If every provider
+    # is exhausted the card stays NULL and the next cron run retries —
+    # capture and study flow are never blocked by enrichment availability.
+    #
+    # Comma-separated CSV; order = priority. Default `gemini,groq` so when
+    # Gemini's daily quota burns through, Groq picks up automatically (if
+    # GROQ_API_KEYS is configured). Single-provider setups still work — the
+    # chain trivially collapses to one element.
+    # Order matters: providers are tried left-to-right and the first
+    # non-None result wins. local_dict goes first so high-frequency
+    # words skip the LLM round-trip entirely (saves quota + latency).
+    ENRICHMENT_PROVIDERS: str = "local_dict,gemini,groq"
+    GEMINI_API_KEYS: str = ""  # comma-separated, e.g. "AIza...,AIza...,AIza..."
+    GROQ_API_KEYS: str = ""    # comma-separated, e.g. "gsk_...,gsk_..."
+    # How often the enrichment cron runs (minutes). 5 is the V1 default.
+    ENRICHMENT_INTERVAL_MIN: int = 5
+    # Max cards to enrich per cron tick. Calibrated for Gemini Flash free
+    # tier (15 req/min/key): 5 cards × 1 req each leaves headroom even on
+    # a single key. Bump if you have 4+ keys and want to drain backlogs
+    # faster, but watch the rate-limit logs first.
+    ENRICHMENT_BATCH_SIZE: int = 5
+
+    # ===== Admin gating =====
+    # Comma-separated Supabase user_ids allowed to hit /api/v1/admin/* endpoints.
+    # Empty string = no admin access (default — fail closed).
+    ADMIN_USER_IDS: str = ""
+
+    # ===== Cache / distributed lock backend selection =====
+    # auto   = use Redis if REDIS_URL is reachable, else in-memory.
+    #          Convenient for dev. NOT recommended for prod (silent fallback
+    #          masks Redis outages).
+    # redis  = REQUIRE Redis. App fails to boot if REDIS_URL is missing or
+    #          unreachable. Production-safe.
+    # memory = NEVER use Redis even if REDIS_URL is set. Useful for single-
+    #          process deployments where you want fully predictable behavior.
+    CACHE_MODE: Literal["auto", "redis", "memory"] = "auto"
+    REDIS_URL: str = ""
+
+    # ===== Background-warmer ownership =====
+    # In multi-pod deploys we don't want every pod hammering Gutendex with
+    # its own warmup cycle (N pods × 50 calls × every 6 h). Set this true on
+    # exactly ONE pod (the "leader") and false on the rest. Default true so
+    # single-pod deployments need zero config.
+    WARMER_ENABLED: bool = True
+
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), extra="ignore")
 
 
 settings = Settings()

@@ -1,0 +1,160 @@
+/* Popup is a 320x420 panel; keep styles tight + self-contained.
+   No Tailwind here — explicit CSS keeps the bundle tiny and avoids
+   pulling in a framework just for one screen. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 320px;
+  min-height: 240px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  background: #0f0f12;
+  color: #e5e5e7;
+}
+
+#root {
+  padding: 16px;
+}
+
+h1 {
+  font-family: Georgia, "Iowan Old Style", serif;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #a1a1aa;
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.field label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a1a1aa;
+}
+
+.field input {
+  padding: 8px 10px;
+  border: 1px solid #2a2a30;
+  border-radius: 6px;
+  background: #18181b;
+  color: #e5e5e7;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: #ea580c;
+}
+
+.btn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background: #ea580c;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn:hover { background: #c2410c; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  color: #a1a1aa;
+  border: 1px solid #2a2a30;
+}
+.btn-ghost:hover { background: #18181b; color: #e5e5e7; }
+
+.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.connected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  flex-shrink: 0;
+}
+
+.email {
+  font-size: 13px;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.tip {
+  font-size: 11px;
+  color: #71717a;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #18181b;
+  border: 1px solid #2a2a30;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #71717a;
+}
+.stat-value {
+  font-family: Georgia, "Iowan Old Style", serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #ea580c;
+  font-variant-numeric: tabular-nums;
+}
+.stat-suffix {
+  font-size: 11px;
+  color: #a1a1aa;
+}
