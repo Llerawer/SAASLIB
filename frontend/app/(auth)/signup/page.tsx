@@ -33,9 +33,9 @@ export default function SignupPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      <header className="flex flex-col gap-2">
-        <h1 className="prose-serif text-[1.75rem] leading-tight text-[color:var(--landing-ink)]">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <header className="flex flex-col gap-1.5">
+        <h1 className="prose-serif text-[2rem] leading-[1.1] text-[color:var(--landing-ink)]">
           Empieza tu biblioteca.
         </h1>
         <p className="prose-serif italic text-[0.95rem] text-[color:var(--landing-ink-muted)]">

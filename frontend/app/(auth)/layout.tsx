@@ -83,7 +83,7 @@ export default function AuthLayout({
 
       {/* RIGHT — cream paper form surface */}
       <main
-        className="landing-paper relative md:flex-[2] flex items-center justify-center px-6 md:px-10 py-12 md:py-16"
+        className="landing-paper relative md:flex-[2] flex items-center justify-center px-6 md:px-10 py-8 md:py-10"
         style={{ backgroundColor: "var(--landing-bg)" }}
       >
         <div className="absolute top-4 right-6 md:top-6 md:right-10">
@@ -96,10 +96,49 @@ export default function AuthLayout({
           </Link>
         </div>
         <div
-          className="w-full max-w-[400px]"
+          className="w-full max-w-[420px] flex flex-col gap-5"
           style={{ color: "var(--landing-ink)" }}
         >
+          {/* Bookplate-style brand mark — "ex libris" stamp identifying the form surface */}
+          <div className="flex items-center gap-3">
+            <div
+              aria-hidden="true"
+              className="inline-flex items-center justify-center h-11 w-11 rounded-full border"
+              style={{
+                borderColor: "color-mix(in oklch, var(--landing-accent) 40%, transparent)",
+                backgroundColor: "color-mix(in oklch, var(--landing-accent) 8%, transparent)",
+                color: "var(--landing-accent)",
+              }}
+            >
+              <span className="prose-serif italic text-[1.15rem] leading-none">
+                Lr
+              </span>
+            </div>
+            <div className="flex flex-col leading-tight">
+              <span
+                className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--landing-ink-faint)]"
+                style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+              >
+                Ex libris
+              </span>
+              <span
+                className="text-[0.78rem] italic text-[color:var(--landing-ink-muted)]"
+                style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+              >
+                tu acceso personal
+              </span>
+            </div>
+          </div>
+
           {children}
+
+          {/* Trust signals — small footer of the form column */}
+          <p
+            className="text-[0.7rem] italic text-[color:var(--landing-ink-faint)] text-center mt-2"
+            style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+          >
+            Sin tarjeta · Sin spam · Cancela cuando quieras
+          </p>
         </div>
       </main>
     </div>
