@@ -497,6 +497,44 @@ export function useBatchPrompt() {
   });
 }
 
+export type EnrichPreview = {
+  total: number;
+  local_hits: number;
+  llm_required: number;
+  estimated_seconds: number;
+};
+
+/** Cheap preview — backend just counts local-dict hits. No LLM calls.
+ * Used to populate the confirm modal so the user sees the breakdown
+ * before paying for any LLM round-trips. */
+export function useEnrichPreview() {
+  return useMutation<EnrichPreview, Error, { capture_ids: string[] }>({
+    mutationFn: (input) =>
+      api.post<EnrichPreview>("/api/v1/captures/enrich-preview", input),
+  });
+}
+
+export type EnrichBatchResult = {
+  enriched: number;
+  local_hits: number;
+  llm_hits: number;
+  failed: number;
+};
+
+/** Run the enrichment chain for a set of captures. Local-dict hits
+ * return instantly; LLM-bound words add ~2s each. Invalidates the
+ * captures query so the page refetches with the enriched payloads. */
+export function useEnrichBatch() {
+  const qc = useQueryClient();
+  return useMutation<EnrichBatchResult, Error, { capture_ids: string[] }>({
+    mutationFn: (input) =>
+      api.post<EnrichBatchResult>("/api/v1/captures/enrich-batch", input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["captures"] });
+    },
+  });
+}
+
 export type ReviewQueueCard = {
   card_id: string;
   word: string;

@@ -9,11 +9,11 @@ import {
   ChevronRight,
   Sparkles,
   Save,
-  Inbox,
   X,
   BookOpen,
   Wand2,
   Headphones,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,7 +22,10 @@ import {
   useUpdateCapture,
   useDeleteCapture,
   usePromoteCaptures,
+  useEnrichPreview,
+  useEnrichBatch,
   type Capture,
+  type EnrichPreview,
 } from "@/lib/api/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +39,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import { TAG_OPTIONS, tagTone, sortTags } from "@/lib/vocabulary/tags";
 import { pronounceHref } from "@/lib/reader/pronounce-link";
@@ -48,8 +66,15 @@ export default function VocabularyPage() {
   const [bulkIds, setBulkIds] = useState<Set<string>>(new Set());
   const [processedOpen, setProcessedOpen] = useState(false);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  // Enrich preview modal state. `targetIds` is the set we're about to
+  // enrich; null means the modal is closed.
+  const [enrichTargetIds, setEnrichTargetIds] = useState<string[] | null>(null);
+  const [enrichPreview, setEnrichPreview] = useState<EnrichPreview | null>(null);
 
   const promote = usePromoteCaptures();
+  const del = useDeleteCapture();
+  const previewMut = useEnrichPreview();
+  const enrichMut = useEnrichBatch();
 
   const pending = useMemo(() => {
     const list = pendingQuery.data ?? [];
@@ -63,6 +88,11 @@ export default function VocabularyPage() {
     );
   }, [pendingQuery.data, search]);
 
+  const allPendingIds = useMemo(
+    () => (pendingQuery.data ?? []).map((c) => c.id),
+    [pendingQuery.data],
+  );
+
   function toggleBulk(id: string) {
     setBulkIds((prev) => {
       const next = new Set(prev);
@@ -72,8 +102,7 @@ export default function VocabularyPage() {
     });
   }
 
-  async function handlePromoteSelected() {
-    const ids = [...bulkIds];
+  async function handlePromoteIds(ids: string[]) {
     if (ids.length === 0) return;
     setRemovingIds((prev) => new Set([...prev, ...ids]));
     try {
@@ -81,7 +110,11 @@ export default function VocabularyPage() {
       toast.success(
         `Promovidas: ${r.created_count} nuevas, ${r.merged_count} fusionadas`,
       );
-      setBulkIds(new Set());
+      setBulkIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
       if (selected && ids.includes(selected.id)) setSelected(null);
     } catch (err) {
       setRemovingIds((prev) => {
@@ -93,28 +126,80 @@ export default function VocabularyPage() {
     }
   }
 
-  async function handlePromoteOne(id: string) {
-    setRemovingIds((prev) => new Set([...prev, id]));
+  async function handleDeleteIds(ids: string[]) {
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        ids.length === 1
+          ? "¿Borrar esta captura? Esta acción no se puede deshacer."
+          : `¿Borrar ${ids.length} capturas? Esta acción no se puede deshacer.`,
+      )
+    )
+      return;
+    setRemovingIds((prev) => new Set([...prev, ...ids]));
     try {
-      const r = await promote.mutateAsync({ capture_ids: [id] });
-      toast.success(
-        r.created_count === 1
-          ? "Tarjeta creada"
-          : "Captura añadida a tarjeta existente",
-      );
-      if (selected?.id === id) setSelected(null);
+      await Promise.all(ids.map((id) => del.mutateAsync(id)));
+      toast.success(ids.length === 1 ? "Captura borrada" : `${ids.length} borradas`);
+      setBulkIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (selected && ids.includes(selected.id)) setSelected(null);
     } catch (err) {
       setRemovingIds((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        ids.forEach((id) => next.delete(id));
         return next;
       });
-      toast.error(`Error: ${(err as Error).message}`);
+      toast.error(`Error al borrar: ${(err as Error).message}`);
     }
   }
 
+  /** Open the enrich confirm modal. We pre-fetch the local-vs-LLM
+   * breakdown synchronously so the modal opens with a number, not a
+   * spinner. The endpoint is in-memory only — completes in <50ms. */
+  async function startEnrich(ids: string[]) {
+    if (ids.length === 0) return;
+    setEnrichTargetIds(ids);
+    setEnrichPreview(null);
+    try {
+      const preview = await previewMut.mutateAsync({ capture_ids: ids });
+      setEnrichPreview(preview);
+    } catch (err) {
+      toast.error(`No se pudo calcular: ${(err as Error).message}`);
+      setEnrichTargetIds(null);
+    }
+  }
+
+  async function confirmEnrich() {
+    if (!enrichTargetIds) return;
+    try {
+      const r = await enrichMut.mutateAsync({ capture_ids: enrichTargetIds });
+      const parts = [`${r.enriched} enriquecidas`];
+      if (r.local_hits) parts.push(`${r.local_hits} desde caché`);
+      if (r.llm_hits) parts.push(`${r.llm_hits} con IA`);
+      if (r.failed) parts.push(`${r.failed} fallaron`);
+      toast.success(parts.join(" · "));
+    } catch (err) {
+      toast.error(`Error al enriquecer: ${(err as Error).message}`);
+    } finally {
+      setEnrichTargetIds(null);
+      setEnrichPreview(null);
+    }
+  }
+
+  const hasSelection = bulkIds.size > 0;
+  const enrichButtonLabel = hasSelection
+    ? `Enriquecer ${bulkIds.size} seleccionada${bulkIds.size === 1 ? "" : "s"}`
+    : allPendingIds.length > 0
+      ? `Enriquecer ${allPendingIds.length} pendiente${allPendingIds.length === 1 ? "" : "s"}`
+      : "Enriquecer";
+  const enrichButtonDisabled =
+    allPendingIds.length === 0 || previewMut.isPending || enrichMut.isPending;
+
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6">
+    <div className="max-w-3xl mx-auto p-4 md:p-6 pb-24">
       <header className="mb-6">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
@@ -128,25 +213,22 @@ export default function VocabularyPage() {
               Vocabulario
             </h1>
           </div>
-          <div className="flex gap-2 items-center">
-            {bulkIds.size > 0 && (
-              <Button
-                size="sm"
-                onClick={handlePromoteSelected}
-                disabled={promote.isPending}
-              >
-                <Sparkles className="h-4 w-4 mr-1.5" aria-hidden="true" />
-                Promover {bulkIds.size}
-              </Button>
-            )}
-            <Link href="/vocabulary/import">
-              <Button variant="outline" size="sm">
-                <Wand2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
-                <span className="hidden sm:inline">Enriquecer con IA</span>
-                <span className="sm:hidden">IA</span>
-              </Button>
-            </Link>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              startEnrich(hasSelection ? [...bulkIds] : allPendingIds)
+            }
+            disabled={enrichButtonDisabled}
+            title={
+              enrichButtonDisabled && allPendingIds.length === 0
+                ? "No hay capturas pendientes"
+                : undefined
+            }
+          >
+            <Wand2 className="h-4 w-4 mr-1.5" aria-hidden="true" />
+            <span>{enrichButtonLabel}</span>
+          </Button>
         </div>
         <div className="mt-3 flex items-center gap-2">
           <div className="h-px w-10 bg-accent/70" />
@@ -159,128 +241,324 @@ export default function VocabularyPage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
-        <div>
-          <Input
-            placeholder="Buscar palabra o contexto"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="mb-4"
-            aria-label="Buscar capturas"
-          />
+      <Input
+        placeholder="Buscar palabra o contexto"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="mb-4"
+        aria-label="Buscar capturas"
+      />
 
-          {pendingQuery.isLoading ? (
-            <CaptureListSkeleton />
-          ) : pending.length === 0 ? (
-            <EmptyInbox hasFilter={!!search.trim()} />
-          ) : (
-            <ul className="space-y-2">
-              {pending.map((c) => {
-                const isSelected = selected?.id === c.id;
-                const isBulk = bulkIds.has(c.id);
-                const isRemoving = removingIds.has(c.id);
-                return (
-                  <li
-                    key={c.id}
-                    style={{
-                      opacity: isRemoving ? 0 : 1,
-                      transform: isRemoving
-                        ? "translateX(-20px)"
-                        : "translateX(0)",
-                      transition:
-                        "opacity 200ms var(--ease-out-quart), transform 200ms var(--ease-out-quart)",
-                    }}
-                    className={`border rounded-lg p-3 cursor-pointer hover:bg-accent/5 transition-colors ${
-                      isSelected ? "ring-2 ring-ring border-ring" : ""
-                    }`}
-                    onClick={() => setSelected(c)}
-                  >
-                    <div className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isBulk}
-                        onChange={() => toggleBulk(c.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="mt-1 size-4 accent-accent"
-                        aria-label={`Seleccionar ${c.word}`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold">{c.word}</span>
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {c.word_normalized}
-                          </span>
-                          {sortTags(c.tags).map((t) => (
-                            <span
-                              key={t}
-                              className={`text-xs px-1.5 py-0.5 rounded border ${tagTone(t)}`}
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                        {c.context_sentence && (
-                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2 font-serif italic">
-                            “{c.context_sentence}”
-                          </p>
-                        )}
-                      </div>
-                      <Link
-                        href={pronounceHref(c.word_normalized)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="shrink-0 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                        aria-label={`Escuchar nativos pronunciar ${c.word_normalized}`}
-                        title="Escuchar nativos"
-                      >
-                        <Headphones className="h-3.5 w-3.5" />
-                      </Link>
+      {pendingQuery.isLoading ? (
+        <CaptureListSkeleton />
+      ) : pending.length === 0 ? (
+        <EmptyInbox hasFilter={!!search.trim()} />
+      ) : (
+        <ul className="space-y-2">
+          {pending.map((c) => {
+            const isSelected = selected?.id === c.id;
+            const isBulk = bulkIds.has(c.id);
+            const isRemoving = removingIds.has(c.id);
+            return (
+              <li
+                key={c.id}
+                style={{
+                  opacity: isRemoving ? 0 : 1,
+                  transform: isRemoving
+                    ? "translateX(-20px)"
+                    : "translateX(0)",
+                  transition:
+                    "opacity 200ms var(--ease-out-quart), transform 200ms var(--ease-out-quart)",
+                }}
+                className={`border rounded-lg p-3 cursor-pointer hover:bg-accent/5 transition-colors ${
+                  isSelected ? "ring-2 ring-ring border-ring" : ""
+                }`}
+                onClick={() => setSelected(c)}
+              >
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={isBulk}
+                    onChange={() => toggleBulk(c.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-1 size-4 accent-accent"
+                    aria-label={`Seleccionar ${c.word}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold">{c.word}</span>
+                      {c.word !== c.word_normalized && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {c.word_normalized}
+                        </span>
+                      )}
+                      {sortTags(c.tags).map((t) => (
+                        <span
+                          key={t}
+                          className={`text-xs px-1.5 py-0.5 rounded border ${tagTone(t)}`}
+                        >
+                          {t}
+                        </span>
+                      ))}
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
+                    {c.context_sentence && (
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2 font-serif italic">
+                        “{c.context_sentence}”
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    href={pronounceHref(c.word_normalized)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="shrink-0 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    aria-label={`Escuchar nativos pronunciar ${c.word_normalized}`}
+                    title="Escuchar nativos"
+                  >
+                    <Headphones className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="mt-8 border-t pt-6">
+        <button
+          onClick={() => setProcessedOpen((v) => !v)}
+          className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+          aria-expanded={processedOpen}
+        >
+          {processedOpen ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+          Procesadas ({processedQuery.data?.length ?? 0})
+        </button>
+        {processedOpen && (
+          <ul className="mt-3 space-y-1">
+            {(processedQuery.data ?? []).map((c) => (
+              <li
+                key={c.id}
+                className="text-sm flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted"
+              >
+                <span className="text-muted-foreground line-through">
+                  {c.word}
+                </span>
+                {c.word !== c.word_normalized && (
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {c.word_normalized}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Right panel is now a Sheet — only mounts when a row is clicked.
+          The list takes the full width by default. */}
+      <Sheet
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+      >
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-md p-0 overflow-y-auto"
+        >
+          {selected && (
+            <CaptureDrawer
+              capture={selected}
+              onClose={() => setSelected(null)}
+              onPromote={() => handlePromoteIds([selected.id])}
+              onDelete={() => handleDeleteIds([selected.id])}
+              isPromoting={promote.isPending}
+              isDeleting={del.isPending}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Sticky bottom toolbar appears whenever at least one row is
+          checked. Disappears the instant the selection is cleared. */}
+      {hasSelection && (
+        <BulkToolbar
+          count={bulkIds.size}
+          isPromoting={promote.isPending}
+          isEnriching={previewMut.isPending || enrichMut.isPending}
+          isDeleting={del.isPending}
+          onPromote={() => handlePromoteIds([...bulkIds])}
+          onEnrich={() => startEnrich([...bulkIds])}
+          onDelete={() => handleDeleteIds([...bulkIds])}
+          onClear={() => setBulkIds(new Set())}
+        />
+      )}
+
+      {/* Enrich confirm modal. Shows the local-vs-LLM breakdown so the
+          user knows what they're paying before we touch the LLM. */}
+      <Dialog
+        open={enrichTargetIds !== null}
+        onOpenChange={(open) => {
+          if (!open && !enrichMut.isPending) {
+            setEnrichTargetIds(null);
+            setEnrichPreview(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enriquecer capturas</DialogTitle>
+            <DialogDescription>
+              Vamos a buscar traducción, IPA y definición para cada palabra.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!enrichPreview ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Calculando…</span>
+            </div>
+          ) : (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted-foreground">Total</span>
+                <span className="font-semibold tabular">
+                  {enrichPreview.total}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted-foreground">
+                  Desde caché local (instantáneo)
+                </span>
+                <span className="font-semibold tabular text-accent">
+                  {enrichPreview.local_hits}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted-foreground">Con IA</span>
+                <span className="font-semibold tabular">
+                  {enrichPreview.llm_required}
+                </span>
+              </div>
+              {enrichPreview.llm_required > 0 && (
+                <p className="pt-2 text-xs text-muted-foreground border-t">
+                  Estimado: ~{enrichPreview.estimated_seconds}s para las{" "}
+                  {enrichPreview.llm_required} que usan IA. Las{" "}
+                  {enrichPreview.local_hits} en caché aparecen al instante.
+                </p>
+              )}
+              {enrichPreview.llm_required === 0 && enrichPreview.local_hits > 0 && (
+                <p className="pt-2 text-xs text-muted-foreground border-t">
+                  Todas están en caché — no se llama al LLM.
+                </p>
+              )}
+            </div>
           )}
 
-          <div className="mt-8 border-t pt-6">
-            <button
-              onClick={() => setProcessedOpen((v) => !v)}
-              className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
-              aria-expanded={processedOpen}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setEnrichTargetIds(null);
+                setEnrichPreview(null);
+              }}
+              disabled={enrichMut.isPending}
             >
-              {processedOpen ? (
-                <ChevronDown className="h-4 w-4" />
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmEnrich}
+              disabled={!enrichPreview || enrichMut.isPending}
+            >
+              {enrichMut.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Enriqueciendo…
+                </>
               ) : (
-                <ChevronRight className="h-4 w-4" />
+                "Enriquecer"
               )}
-              Procesadas ({processedQuery.data?.length ?? 0})
-            </button>
-            {processedOpen && (
-              <ul className="mt-3 space-y-1">
-                {(processedQuery.data ?? []).map((c) => (
-                  <li
-                    key={c.id}
-                    className="text-sm flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted"
-                  >
-                    <span className="text-muted-foreground line-through">
-                      {c.word}
-                    </span>
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {c.word_normalized}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
-        <CaptureDrawer
-          key={selected?.id ?? "empty"}
-          capture={selected}
-          onClose={() => setSelected(null)}
-          onPromote={() => selected && handlePromoteOne(selected.id)}
-          isPromoting={promote.isPending}
-        />
+function BulkToolbar({
+  count,
+  isPromoting,
+  isEnriching,
+  isDeleting,
+  onPromote,
+  onEnrich,
+  onDelete,
+  onClear,
+}: {
+  count: number;
+  isPromoting: boolean;
+  isEnriching: boolean;
+  isDeleting: boolean;
+  onPromote: () => void;
+  onEnrich: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  const anyPending = isPromoting || isEnriching || isDeleting;
+  return (
+    <div
+      className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+      role="region"
+      aria-label="Acciones para seleccionadas"
+    >
+      <div className="max-w-3xl mx-auto px-4 md:px-6 py-3 flex items-center gap-2">
+        <span className="text-sm font-medium tabular">
+          {count} seleccionada{count === 1 ? "" : "s"}
+        </span>
+        <span aria-hidden className="text-muted-foreground/50 text-sm">
+          ·
+        </span>
+        <div className="flex items-center gap-1.5 flex-1 flex-wrap">
+          <Button
+            size="sm"
+            onClick={onPromote}
+            disabled={anyPending}
+          >
+            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+            Promover a SRS
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onEnrich}
+            disabled={anyPending}
+          >
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+            Enriquecer
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDelete}
+            disabled={anyPending}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5 text-destructive" />
+            Eliminar
+          </Button>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClear}
+          disabled={anyPending}
+          aria-label="Limpiar selección"
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -369,195 +647,175 @@ function CaptureDrawer({
   capture,
   onClose,
   onPromote,
+  onDelete,
   isPromoting,
+  isDeleting,
 }: {
-  capture: Capture | null;
+  capture: Capture;
   onClose: () => void;
   onPromote: () => void;
+  onDelete: () => void;
   isPromoting: boolean;
+  isDeleting: boolean;
 }) {
   const update = useUpdateCapture();
-  const del = useDeleteCapture();
-  // Initialize from prop. Parent passes a new key when capture changes, which
-  // remounts this component and resets state — no useEffect sync needed.
   const [draftContext, setDraftContext] = useState(
-    capture?.context_sentence ?? "",
+    capture.context_sentence ?? "",
   );
   const [draftTags, setDraftTags] = useState<Set<string>>(
-    () => new Set(capture?.tags ?? []),
+    () => new Set(capture.tags ?? []),
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  if (!capture) {
-    return (
-      <aside className="hidden lg:block sticky top-6 self-start">
-        <div className="border rounded-lg p-6 text-sm text-muted-foreground text-center">
-          Selecciona una captura para editarla.
-        </div>
-      </aside>
-    );
-  }
 
   function toggleTag(t: string) {
     const next = new Set(draftTags);
     if (next.has(t)) next.delete(t);
     else next.add(t);
     setDraftTags(next);
-    update.mutate({ id: capture!.id, patch: { tags: [...next] } });
+    update.mutate({ id: capture.id, patch: { tags: [...next] } });
   }
 
   function saveContext() {
-    if (draftContext === capture!.context_sentence) return;
+    if (draftContext === capture.context_sentence) return;
     update.mutate(
-      { id: capture!.id, patch: { context_sentence: draftContext } },
+      { id: capture.id, patch: { context_sentence: draftContext } },
       {
         onSuccess: () => toast.success("Contexto guardado"),
       },
     );
   }
 
-  async function handleDelete() {
-    try {
-      await del.mutateAsync(capture!.id);
-      setConfirmDelete(false);
-      onClose();
-      toast.success("Captura borrada");
-    } catch (err) {
-      toast.error(`Error al borrar: ${(err as Error).message}`);
-    }
-  }
-
   return (
-    <aside className="lg:sticky lg:top-6 self-start">
-      <div className="border rounded-lg p-4 space-y-4 bg-card">
+    <div className="p-4 space-y-4">
+      <SheetHeader className="px-0">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-lg font-semibold truncate">{capture.word}</div>
-            <div className="text-xs text-muted-foreground font-mono">
-              lema: {capture.word_normalized}
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label="Cerrar panel"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div>
-          <label
-            htmlFor="capture-context"
-            className="text-xs uppercase tracking-wide text-muted-foreground"
-          >
-            Contexto
-          </label>
-          <textarea
-            id="capture-context"
-            value={draftContext}
-            onChange={(e) => setDraftContext(e.target.value)}
-            onBlur={saveContext}
-            rows={3}
-            className="w-full text-sm border rounded-md p-2 mt-1 resize-none bg-background font-serif italic focus-visible:ring-2 focus-visible:ring-ring outline-none"
-            placeholder="(sin contexto)"
-          />
-        </div>
-
-        <div>
-          <span className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-            <TagIcon className="h-3 w-3" aria-hidden="true" /> Marcadores
-          </span>
-          <div className="flex flex-wrap gap-1.5 mt-1.5" role="group">
-            {TAG_OPTIONS.map((t) => {
-              const active = draftTags.has(t);
-              return (
-                <button
-                  key={t}
-                  onClick={() => toggleTag(t)}
-                  className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
-                    active
-                      ? tagTone(t)
-                      : "bg-background text-muted-foreground border-input hover:bg-muted"
-                  }`}
-                  aria-pressed={active}
-                >
-                  {t}
-                </button>
-              );
-            })}
+          <div className="min-w-0 text-left">
+            <SheetTitle className="text-lg font-semibold truncate text-left">
+              {capture.word}
+            </SheetTitle>
+            {capture.word !== capture.word_normalized && (
+              <SheetDescription className="text-xs text-muted-foreground font-mono">
+                lema: {capture.word_normalized}
+              </SheetDescription>
+            )}
           </div>
         </div>
+      </SheetHeader>
 
-        {capture.translation && (
-          <div className="text-sm">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Traducción
-            </div>
-            <p className="font-serif">{capture.translation}</p>
-          </div>
-        )}
-        {capture.definition && (
-          <div className="text-sm">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Definición
-            </div>
-            <p className="leading-relaxed font-serif">{capture.definition}</p>
-          </div>
-        )}
-
-        <div className="flex gap-2 pt-2">
-          <Button
-            size="sm"
-            onClick={onPromote}
-            disabled={isPromoting}
-            className="flex-1"
-          >
-            <Sparkles className="h-4 w-4 mr-1.5" aria-hidden="true" />
-            Promover
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={saveContext}
-            disabled={update.isPending}
-            aria-label="Guardar cambios"
-          >
-            <Save className="h-4 w-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setConfirmDelete(true)}
-            disabled={del.isPending}
-            aria-label="Borrar captura"
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-
-        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Borrar captura?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Vas a borrar &ldquo;{capture.word}&rdquo;. Esta acción no se
-                puede deshacer.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                onClick={handleDelete}
-              >
-                Borrar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      <div>
+        <label
+          htmlFor="capture-context"
+          className="text-xs uppercase tracking-wide text-muted-foreground"
+        >
+          Contexto
+        </label>
+        <textarea
+          id="capture-context"
+          value={draftContext}
+          onChange={(e) => setDraftContext(e.target.value)}
+          onBlur={saveContext}
+          rows={3}
+          className="w-full text-sm border rounded-md p-2 mt-1 resize-none bg-background font-serif italic focus-visible:ring-2 focus-visible:ring-ring outline-none"
+          placeholder="(sin contexto)"
+        />
       </div>
-    </aside>
+
+      <div>
+        <span className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+          <TagIcon className="h-3 w-3" aria-hidden="true" /> Marcadores
+        </span>
+        <div className="flex flex-wrap gap-1.5 mt-1.5" role="group">
+          {TAG_OPTIONS.map((t) => {
+            const active = draftTags.has(t);
+            return (
+              <button
+                key={t}
+                onClick={() => toggleTag(t)}
+                className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                  active
+                    ? tagTone(t)
+                    : "bg-background text-muted-foreground border-input hover:bg-muted"
+                }`}
+                aria-pressed={active}
+              >
+                {t}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {capture.translation && (
+        <div className="text-sm">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Traducción
+          </div>
+          <p className="font-serif">{capture.translation}</p>
+        </div>
+      )}
+      {capture.definition && (
+        <div className="text-sm">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Definición
+          </div>
+          <p className="leading-relaxed font-serif">{capture.definition}</p>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-2">
+        <Button
+          size="sm"
+          onClick={onPromote}
+          disabled={isPromoting}
+          className="flex-1"
+        >
+          <Sparkles className="h-4 w-4 mr-1.5" aria-hidden="true" />
+          Promover
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={saveContext}
+          disabled={update.isPending}
+          aria-label="Guardar cambios"
+        >
+          <Save className="h-4 w-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setConfirmDelete(true)}
+          disabled={isDeleting}
+          aria-label="Borrar captura"
+        >
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </div>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Borrar captura?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a borrar &ldquo;{capture.word}&rdquo;. Esta acción no se
+              puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                onDelete();
+                setConfirmDelete(false);
+                onClose();
+              }}
+            >
+              Borrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
