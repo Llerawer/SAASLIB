@@ -23,6 +23,8 @@ describe("SectionPricing", () => {
     expect(free).not.toBeNull();
     expect(free.textContent).toMatch(/empezar gratis/i);
     expect(pro).not.toBeNull();
-    expect(pro.textContent).toMatch(/empezar pro · \$8\/mes/i);
+    // Pro CTA is now just "Empezar Pro" — the $8/mes price already lives in
+    // the headline of the same card; the duplicate was redundant.
+    expect(pro.textContent?.trim().toLowerCase()).toBe("empezar pro");
   });
 });

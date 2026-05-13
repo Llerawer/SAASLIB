@@ -56,7 +56,7 @@ export function SectionPricing() {
           tier="Lector frecuente"
           price="$8/mes"
           description="Lectura sin límite, biblioteca sincronizada, pronunciaciones ilimitadas, extensión activa en toda la web. Para quienes lo van a usar todos los días."
-          ctaLabel="Empezar Pro · $8/mes"
+          ctaLabel="Empezar Pro"
           ctaHref="/signup?plan=pro"
           variant="accent"
         />

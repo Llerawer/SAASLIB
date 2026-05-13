@@ -3,16 +3,12 @@
 import { SectionReveal } from "./motion-reveal";
 
 /**
- * §7 — Social proof. Concrete (grounded) stats + 2 testimonios. Numbers are
- * believable, not "10M users". Testimonials in serif italic with em-dash
- * avoided per voice rules (we use a regular hyphen + role).
+ * §7 — Social proof. Brand-register can't afford fabricated metrics, so the
+ * "62% comprensión promedio" stat (and the rest of the STATS row) is gone.
+ * In its place: a "Capturado hoy" feed of concrete words from the imaginary
+ * community — editorial-honest and atmospheric. The two testimonios below
+ * stay (those are voice, not statistics).
  */
-const STATS = [
-  { number: "14,382", label: "palabras capturadas esta semana" },
-  { number: "847", label: "libros en bibliotecas activas" },
-  { number: "62%", label: "comprensión promedio tras 30 días" },
-] as const;
-
 const TESTIMONIALS = [
   {
     quote:
@@ -55,29 +51,21 @@ export function SectionSocial() {
         </SectionReveal>
       </header>
 
-      {/* Stats */}
-      <SectionReveal
-        delay={0.16}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-8 md:gap-12 max-w-[920px] mx-auto"
-      >
-        {STATS.map((s) => (
-          <div key={s.label} data-stat className="text-center">
-            <p
-              className="text-[clamp(2rem,4vw,2.75rem)] leading-none text-[color:var(--stage-ink)]"
-              style={{
-                fontFamily: "var(--font-bricolage), sans-serif",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {s.number}
-            </p>
-            <p
-              className="prose-serif italic text-[0.9rem] text-[color:var(--stage-ink-muted)] mt-3 leading-[1.5]"
-            >
-              {s.label}
-            </p>
-          </div>
-        ))}
+      {/* Capturado hoy — concrete artifact in place of fabricated stats */}
+      <SectionReveal delay={0.16} className="max-w-[920px] mx-auto">
+        <div data-captured-today className="text-center">
+          <p
+            className="text-xs italic uppercase tracking-[0.18em] text-[color:var(--stage-ink-faint)] mb-3"
+            style={{ fontFamily: "var(--font-bricolage), sans-serif" }}
+          >
+            Capturado hoy
+          </p>
+          <p
+            className="prose-serif italic text-[clamp(1.5rem,3.5vw,2.5rem)] text-[color:var(--stage-ink)] leading-relaxed max-w-[800px] mx-auto"
+          >
+            glimpse · ephemeral · wandering · evocative · relentless · savor · grasp · scarce
+          </p>
+        </div>
       </SectionReveal>
 
       {/* Testimonials */}

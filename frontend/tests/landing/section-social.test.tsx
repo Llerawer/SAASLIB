@@ -10,12 +10,14 @@ describe("SectionSocial", () => {
     );
   });
 
-  it("renders 3 stats with believable numbers", () => {
+  it("renders the 'Capturado hoy' concrete-words feed (no fabricated metrics)", () => {
     const { container } = render(<SectionSocial />);
-    expect(container.querySelectorAll("[data-stat]").length).toBe(3);
-    expect(screen.getByText("14,382")).toBeInTheDocument();
-    expect(screen.getByText("847")).toBeInTheDocument();
-    expect(screen.getByText("62%")).toBeInTheDocument();
+    expect(container.querySelector("[data-captured-today]")).not.toBeNull();
+    expect(screen.getByText(/capturado hoy/i)).toBeInTheDocument();
+    expect(screen.getByText(/glimpse · ephemeral · wandering/i)).toBeInTheDocument();
+    // Fabricated stats are gone.
+    expect(screen.queryByText("62%")).not.toBeInTheDocument();
+    expect(screen.queryByText("14,382")).not.toBeInTheDocument();
   });
 
   it("renders 2 testimonials with names", () => {

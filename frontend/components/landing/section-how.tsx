@@ -61,11 +61,7 @@ export function SectionHow() {
           >
             <p
               data-step-number
-              className="text-[clamp(3rem,5vw,4rem)] leading-none text-[color:var(--stage-accent)]"
-              style={{
-                fontFamily: "var(--font-geist-mono), monospace",
-                fontWeight: 500,
-              }}
+              className="prose-serif italic text-[clamp(3rem,5vw,4rem)] leading-none text-[color:var(--stage-accent)]"
             >
               {s.number}
             </p>
